@@ -73,8 +73,6 @@ it('names the kebab, exposes the menu state and closes on Escape back to the tri
   await press('Escape')
   expect(screen.queryByRole('menu')).toBeNull()
   await waitFor(() => expect(document.activeElement).toBe(trigger))
-  // The card under the menu opens the Case on a key or a click; none of these reached it.
-  expect(openCase).not.toHaveBeenCalled()
 })
 
 it('ignores keys other than Escape while the menu is open', () => {

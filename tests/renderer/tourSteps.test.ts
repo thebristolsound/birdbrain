@@ -55,6 +55,20 @@ describe('tourSteps', () => {
     expect(kase[kase.length - 1].final).toBe(true)
   })
 
+  // The Case name opens a menu now, and Export is an item of it, so two steps say so.
+  it('says the Case name opens a menu, and that Export is in it', () => {
+    const onName = (demo: boolean) =>
+      tourSteps('case', { demoCase: demo }).filter((step) => step.target === 'caseswitcher')
+    for (const demo of [false, true]) {
+      const [inside, exportStep] = onName(demo)
+      expect(inside.body).toContain(
+        'Click the name for its menu, where Switch Case… changes cases.'
+      )
+      expect(exportStep.final).toBe(true)
+      expect(exportStep.body).toMatch(/Export is in the menu on the Case name\.$/)
+    }
+  })
+
   it('targets only anchors the app actually emits', () => {
     for (const chapter of ALL_CHAPTERS) {
       for (const step of tourSteps(chapter)) {

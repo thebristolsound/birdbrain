@@ -304,7 +304,7 @@ function NameMenu({ caseId, caseData }: Extract<CaseMenuProps, { place: 'name' }
             {name}
           </span>
           {/* Below 1,000 pixels the name hides, and the button still has to say which Case. */}
-          <span className="sr-only min-[1001px]:hidden">{name}</span>
+          <span className="sr-only min-[1000px]:hidden">{name}</span>
           {exporting.progressLabel && (
             <span
               data-testid="case-export-progress"
@@ -405,8 +405,9 @@ function NameMenu({ caseId, caseData }: Extract<CaseMenuProps, { place: 'name' }
         </MenuContent>
       </Menu>
 
-      {/* The top bar drags the window, and its rule exempts buttons and inputs only. This notice
-          is neither, so it opts out itself, or the pointer could not reach its tooltip. */}
+      {/* The top bar drags the window, and its rule exempts controls such as buttons, inputs and
+          links. This notice is a span, so it opts out itself, or the pointer could not reach its
+          tooltip. */}
       {sync?.glyph && (
         <span
           tabIndex={0}

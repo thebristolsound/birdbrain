@@ -91,6 +91,14 @@ function egressDot(button: HTMLElement): HTMLElement {
   return button.querySelectorAll<HTMLElement>('[data-testid="status-dot"]')[1]
 }
 
+// The ring is hollow: an inset shadow and no fill, with a border where forced colours drop the
+// shadow.
+function expectRing(dot: HTMLElement) {
+  expect(dot.className).toContain('shadow-[inset_0_0_0_1.5px_var(--color-warning-fg)]')
+  expect(dot.className).toContain('forced-colors:border-2')
+  expect(dot.className).not.toMatch(/(^| )bg-/)
+}
+
 // docs/design-handoff/2026-11-08-top-bar/, Option B: one control for the three signals.
 describe('StatusGroup', () => {
   it('reads the whole state in its accessible name and paints no background', async () => {
@@ -177,6 +185,21 @@ describe('StatusGroup', () => {
     await waitFor(() => expect(button.dataset.severity).toBe('danger'))
     expect(button.textContent).toContain('23')
     expect(within(button).getByTestId('status-word').textContent).toBe('3 failed')
+  })
+
+  // An advisory has no word, so a running session's count stands alone beside the ring.
+  it('shows the count alone beside the ring while a session runs under an advisory', async () => {
+    useAppStore.setState({
+      sessionActive: true,
+      captureStats: { successCount: 23, failCount: 0, skipCount: 0 }
+    })
+    renderWith({ kind: 'direct' }, false)
+    const button = await screen.findByTestId('status-group')
+    await waitFor(() => expect(button.dataset.severity).toBe('warning'))
+    // The count's own line holds nothing else: no separator and no word.
+    expect(within(button).getByText('23').parentElement?.textContent).toBe('23')
+    expect(within(button).queryByTestId('status-word')).toBeNull()
+    expectRing(egressDot(button))
   })
 
   it('opens the three rows and the capture log behind Capture log', async () => {
@@ -296,6 +319,7 @@ describe('StatusGroup before the VPN check answers', () => {
     expect(within(button).queryByTestId('status-word')).toBeNull()
     expect(button.querySelector('svg')).toBeNull()
     expect(egressDot(button).dataset.severity).toBe('warning')
+    expectRing(egressDot(button))
   })
 
   // A VPN drops outside Birdbrain, so the reading before a failed check says nothing.
@@ -453,8 +477,7 @@ describe('StatusGroup announcements and popover', () => {
     await waitFor(() => expect(button.dataset.severity).toBe('warning'))
     const dots = [...button.querySelectorAll('[data-testid="status-dot"]')].map((d) => d.className)
     expect(dots[0]).toContain('bg-text-faint')
-    expect(dots[1]).toContain('shadow-[inset_0_0_0_1.5px_var(--color-warning-fg)]')
-    expect(dots[1]).not.toMatch(/(^| )bg-/)
+    expectRing(egressDot(button))
     expect(dots[2]).toContain('bg-text-faint')
     expect(within(button).queryByTestId('status-word')).toBeNull()
     expect(button.querySelector('svg')).toBeNull()
@@ -478,7 +501,11 @@ describe('StatusGroup announcements and popover', () => {
     useAppStore.setState({ captureStats: { successCount: 1, failCount: 1, skipCount: 0 } })
     renderWith({ kind: 'direct' }, false)
     const button = await screen.findByTestId('status-group')
-    await waitFor(() => expect(button.dataset.severity).toBe('danger'))
+    // The failure is a problem from the first render, so wait for the advisory itself.
+    await waitFor(() =>
+      expect(button.getAttribute('aria-label')).toContain('Egress: Direct · VPN not seen')
+    )
+    expect(button.dataset.severity).toBe('danger')
     expect(egressDot(button).dataset.severity).toBe('nominal')
     expect(egressDot(button).className).toContain('bg-text-faint')
   })
@@ -492,6 +519,7 @@ describe('StatusGroup announcements and popover', () => {
     const row = await screen.findByTestId('status-row-egress')
     expect(row.textContent).toContain('Direct · VPN not seen')
     expect(within(row).getByTestId('status-dot').dataset.severity).toBe('warning')
+    expectRing(within(row).getByTestId('status-dot'))
   })
 
   // Both are off nominal here, so the icon has an Egress icon to lose to.

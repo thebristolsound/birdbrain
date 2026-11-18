@@ -22,8 +22,9 @@ import { CaptureLog, useSelfTest } from '@renderer/components/status/CaptureHeal
 // Nothing in the chrome paints a status background. A problem's icon joins its dot and both take
 // the danger colour, with one short word. An advisory is a hollow ring in the warning colour in
 // place of its dot, with no icon and no word, so it differs from nominal by shape as well as
-// colour (ADR-0032 VPN rule 2). The pill itself stays unfilled. The button's accessible name is
-// the whole state (statusGroupModel's summary), and a
+// colour (ADR-0032 VPN rule 2, amended after that folder's notes, which still give an advisory a
+// word). The pill itself stays unfilled. The button's accessible name is the whole state
+// (statusGroupModel's summary), and a
 // polite live region announces severity changes only, never each count. Click opens the three
 // rows, and above the buttons the held Batches, which an earlier session or a restore left
 // waiting, each with its Resume.
@@ -35,7 +36,9 @@ const FG: Record<Severity, string> = {
 }
 const DOT: Record<Severity, string> = {
   nominal: 'h-1.5 w-1.5 bg-text-faint',
-  warning: 'h-[7px] w-[7px] shadow-[inset_0_0_0_1.5px_var(--color-warning-fg)]',
+  // Forced colours drop a shadow and keep a border, so the ring has one there.
+  warning:
+    'h-[7px] w-[7px] shadow-[inset_0_0_0_1.5px_var(--color-warning-fg)] forced-colors:border-2',
   danger: 'h-1.5 w-1.5 bg-danger-fg'
 }
 

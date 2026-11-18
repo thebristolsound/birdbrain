@@ -46,10 +46,14 @@ export function TopBar() {
   const caseMatch = isOnWizard ? false : matchRoute({ to: '/cases/$caseId', fuzzy: true })
   const activeCaseId = caseMatch ? (caseMatch as { caseId: string }).caseId : null
 
-  const { data: activeCase } = useQuery({
+  const { data: activeCase, isPending: caseLoading } = useQuery({
     ...caseQueryOptions(activeCaseId ?? ''),
     enabled: !!activeCaseId
   })
+  // The Case the capture control acts on. While the Case on a Case screen is still loading it is
+  // the one the address names, so a click then does not ask which Case. An address that names
+  // no Case, or one that could not be read, leaves none.
+  const controlCaseId = activeCase?.id ?? (activeCaseId && caseLoading ? activeCaseId : null)
   // Simplified settings header
   if (isOnSettings) {
     return (
@@ -130,7 +134,7 @@ export function TopBar() {
         <StatusGroup />
         {hasRail ? (
           <div className="flex shrink-0 items-center gap-2" style={END_INSET}>
-            <LaunchControl caseId={activeCase?.id ?? null} showOpenCase={false} />
+            <LaunchControl caseId={controlCaseId} showOpenCase={false} />
           </div>
         ) : (
           <>

@@ -21,6 +21,7 @@ import { cn } from '@renderer/lib/utils'
 import { InfoTip } from '@renderer/components/launchedBrowser/InfoTip'
 import {
   NO_BROWSER_REFUSAL,
+  CASES_UNREAD_REFUSAL,
   NO_CASE_REFUSAL,
   UNREADABLE_EGRESS_REFUSAL,
   busyRefusal,
@@ -54,10 +55,12 @@ export function StartDialog() {
   const picking = useAppStore((s) => s.startDialogPicking)
   const close = useAppStore((s) => s.closeStartDialog)
   const sessionActive = useAppStore((s) => s.sessionActive)
+  const setPanelHidden = useAppStore((s) => s.setCaptureSessionPanelHidden)
   const navigate = useNavigate()
   const open = namedCaseId !== null || picking
 
-  const { data: cases = [] } = useQuery(casesQueryOptions)
+  const { data: readCases, isError: casesFailed } = useQuery(casesQueryOptions)
+  const cases = readCases ?? []
   const { data: settings } = useQuery(settingsQueryOptions)
   const [pickedCaseId, setPickedCaseId] = useState('')
   // The Case to launch into: the one the dialog was opened for, else the Operator's pick, else
@@ -110,7 +113,10 @@ export function StartDialog() {
   const blocked =
     unavailableRefusal(status) ??
     busyRefusal(status) ??
-    (picking && pickable.length === 0 ? NO_CASE_REFUSAL : null) ??
+    // No Case to pick is said only of a list that was read: a failed read has its own words,
+    // and one still in flight holds Launch without a reason, since `caseId` is null.
+    (picking && casesFailed && !readCases ? CASES_UNREAD_REFUSAL : null) ??
+    (picking && readCases && pickable.length === 0 ? NO_CASE_REFUSAL : null) ??
     (browsers?.length === 0 ? NO_BROWSER_REFUSAL : null) ??
     (egress?.kind === 'unavailable' ? UNREADABLE_EGRESS_REFUSAL : null)
   const shownRefusal = launching ? null : (blocked ?? refusal)
@@ -173,6 +179,8 @@ export function StartDialog() {
   function showPanel() {
     if (!browserCaseId) return
     dismiss()
+    // The top bar's mark can have hidden the panel, and this button says it shows it.
+    setPanelHidden(false)
     void navigate({ to: '/cases/$caseId/captures', params: { caseId: browserCaseId } })
   }
 

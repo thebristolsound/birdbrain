@@ -11,11 +11,11 @@ import { cn } from '@renderer/lib/utils'
 // Recording, without the camcorder (docs/design-handoff/2026-11-08-top-bar/): a 6px danger dot,
 // a mono elapsed timer where the session's start is known (a launched browser's), and the source
 // in secondary text. No pill, no fill, no pulse, no "REC". It is the running state of the top
-// bar's capture control. `showSource` is off on a Case screen while a launched browser is open,
-// since the Capture Session panel names it, and `trigger` adds the chevron of what the mark
-// opens. Two facts nothing else in the window states follow the source: the Case that Captures
-// go into, when it is not the one on screen, and the extension, while it records beside an open
-// launched browser.
+// bar's capture control. `showSource` is off on a Case screen while a launched browser is open
+// and its Capture Session panel shows, since the panel names it, and `trigger` adds the chevron
+// of what the mark opens. Two facts nothing else in the window states follow the source: the
+// Case that Captures go into, when it is not the one on screen, and the extension, while it
+// records beside an open launched browser.
 export function RecordingMark({
   trigger = false,
   showSource = true,

@@ -68,7 +68,7 @@ interface AppState {
   // mark. It shows again with the mark, and with the next launched browser.
   captureSessionPanelHidden: boolean
   // The confirmation before a Capture Session with a launched browser open stops (`1i`), opened
-  // from the panel's Stop… and from the Capture Session switch.
+  // from the panel's Stop….
   stopConfirmOpen: boolean
   // Clicked Captures (#1832): the tab the Operator picked as the capture target, whether the next
   // Capture runs Scroll-to-load (off by default, per Capture), and the tab picker the shortcut

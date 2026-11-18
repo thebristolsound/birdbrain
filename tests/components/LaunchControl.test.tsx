@@ -18,13 +18,27 @@ vi.mock('@renderer/components/launchedBrowser/CaptureSessionPanel', async (origi
     <div data-testid="panel">{`${form}:${showOpenCase ? 'open-case' : 'no-open-case'}`}</div>
   )
 }))
+// The way each opening of the paste dialog reports that it should close, in the order opened,
+// as a queue that finishes late would still hold it.
+const pasteCloses = vi.hoisted(() => [] as Array<() => void>)
 vi.mock('@renderer/components/captures/PasteUrlsDialog', () => ({
-  PasteUrlsDialog: ({ caseId, open }: { caseId: string; open: boolean }) =>
-    open ? (
+  PasteUrlsDialog: ({
+    caseId,
+    open,
+    onOpenChange
+  }: {
+    caseId: string
+    open: boolean
+    onOpenChange: (open: boolean) => void
+  }) => {
+    if (!open) return null
+    pasteCloses.push(() => onOpenChange(false))
+    return (
       <div role="dialog" aria-label="Paste URLs to capture">
         {caseId}
       </div>
-    ) : null
+    )
+  }
 }))
 
 import { LaunchControl } from '@renderer/components/status/LaunchControl'
@@ -97,6 +111,7 @@ function openMenu(): HTMLElement {
 
 beforeEach(() => {
   stubResizeObserver()
+  pasteCloses.length = 0
   route.onSettings = false
   navigate.mockClear()
   useAppStore.setState({
@@ -220,6 +235,25 @@ describe("the capture control's menu", () => {
       </QueryClientProvider>
     )
     expect(screen.getByRole('dialog', { name: 'Paste URLs to capture' }).textContent).toBe('case-1')
+  })
+
+  // A queue for one opening can finish after that dialog has closed and another has opened.
+  it('lets a late finish of an earlier paste close nothing that opened after it', () => {
+    const { rerender, client } = setup()
+    fireEvent.click(within(openMenu()).getByTestId('launch-control-paste'))
+    const closeFirst = pasteCloses[pasteCloses.length - 1]
+    act(() => closeFirst())
+    expect(screen.queryByRole('dialog', { name: 'Paste URLs to capture' })).toBeNull()
+
+    rerender(
+      <QueryClientProvider client={client}>
+        <LaunchControl caseId="case-2" showOpenCase={false} />
+      </QueryClientProvider>
+    )
+    fireEvent.click(within(openMenu()).getByTestId('launch-control-paste'))
+    expect(screen.getByRole('dialog', { name: 'Paste URLs to capture' }).textContent).toBe('case-2')
+    act(() => closeFirst())
+    expect(screen.getByRole('dialog', { name: 'Paste URLs to capture' }).textContent).toBe('case-2')
   })
 
   // Inside the bar the dialog's backdrop would lie in the window drag region.

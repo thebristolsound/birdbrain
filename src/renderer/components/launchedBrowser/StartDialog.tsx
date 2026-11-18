@@ -55,6 +55,7 @@ export function StartDialog() {
   const picking = useAppStore((s) => s.startDialogPicking)
   const close = useAppStore((s) => s.closeStartDialog)
   const sessionActive = useAppStore((s) => s.sessionActive)
+  const setPanelHidden = useAppStore((s) => s.setCaptureSessionPanelHidden)
   const navigate = useNavigate()
   const open = namedCaseId !== null || picking
 
@@ -178,6 +179,8 @@ export function StartDialog() {
   function showPanel() {
     if (!browserCaseId) return
     dismiss()
+    // The top bar's mark can have hidden the panel, and this button says it shows it.
+    setPanelHidden(false)
     void navigate({ to: '/cases/$caseId/captures', params: { caseId: browserCaseId } })
   }
 

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, cleanup } from '@testing-library/react'
+import { render, screen, cleanup, within } from '@testing-library/react'
 import { useAppStore } from '@renderer/stores/appStore'
 
 const routerState = vi.hoisted(() => ({ pathname: '/cases/case-1/notes' }))
@@ -46,13 +46,11 @@ describe("CaseActionBar as the Case's action row", () => {
       useAppStore.setState({ sessionActive, connectedToExtension: true })
       render(<CaseActionBar />)
       const bar = screen.getByTestId('case-action-bar')
-      // The second child is the spacer that pushes the switch to the right.
-      expect(Array.from(bar.children, (el) => el.getAttribute('data-testid'))).toEqual([
-        'case-action-bar-section',
-        null,
-        'session-controls'
-      ])
-      expect(screen.queryByTestId('topbar-rec')).toBeNull()
+      expect(within(bar).getByTestId('case-action-bar-section')).toBeTruthy()
+      expect(within(bar).getByTestId('session-controls')).toBeTruthy()
+      // Nothing else in the row is a control: no capture action and no recording mark.
+      expect(within(bar).queryAllByRole('button')).toEqual([])
+      expect(within(bar).queryByTestId('topbar-rec')).toBeNull()
       cleanup()
     }
   })

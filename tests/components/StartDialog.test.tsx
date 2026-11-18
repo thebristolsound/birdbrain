@@ -470,12 +470,15 @@ describe('StartDialog (S2)', () => {
     expect(card.textContent).not.toMatch(/^\d/)
     expect(card.className).not.toContain('border-l-danger-fg')
     expect(launchButton('Launch').disabled).toBe(true)
+    // The top bar's mark can have hidden the panel, and Show panel has to bring it back.
+    act(() => useAppStore.getState().setCaptureSessionPanelHidden(true))
     fireEvent.click(within(card).getByRole('button', { name: 'Show panel' }))
     expect(navigate).toHaveBeenCalledWith({
       to: '/cases/$caseId/captures',
       params: { caseId: 'case-9' }
     })
     expect(useAppStore.getState().startDialogCaseId).toBeNull()
+    expect(useAppStore.getState().captureSessionPanelHidden).toBe(false)
   })
 
   it('refuses before the launch when the Egress could not be read', async () => {

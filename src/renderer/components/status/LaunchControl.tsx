@@ -1,4 +1,4 @@
-import { useEffect, useId, useState, type ComponentProps } from 'react'
+import { useEffect, useId, useRef, useState, type ComponentProps } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useMatchRoute, useNavigate } from '@tanstack/react-router'
 import { AppWindow, ChevronDown, CircleAlert, ClipboardList, Puzzle, Shield } from 'lucide-react'
@@ -182,8 +182,13 @@ function LaunchSplit({ caseId }: { caseId: string | null }) {
   const { data: launched } = useQuery(launchedBrowserStatusQueryOptions)
   const { extension, egress } = useContactSignals()
   // The paste dialog keeps the Case it was opened for. The palette can change the Case on screen
-  // while the dialog is up, and the pasted addresses must not then go into the other Case.
-  const [paste, setPaste] = useState<{ caseId: string; open: boolean } | null>(null)
+  // while the dialog is up, and the pasted addresses must not then go into the other Case. Each
+  // opening has a number, so a queue that finishes after its dialog closed cannot close a later
+  // opening or put its Case back.
+  const [paste, setPaste] = useState<{ caseId: string; open: boolean; opening: number } | null>(
+    null
+  )
+  const openings = useRef(0)
   const reasonId = useId()
 
   // One launched browser at a time: while one starts, a launch is held. An open or closing
@@ -265,7 +270,11 @@ function LaunchSplit({ caseId }: { caseId: string | null }) {
             data-testid="launch-control-paste"
             disabled={!caseId}
             title={caseId ? undefined : 'Open a Case first'}
-            onSelect={() => caseId && setPaste({ caseId, open: true })}
+            onSelect={() => {
+              if (!caseId) return
+              openings.current += 1
+              setPaste({ caseId, open: true, opening: openings.current })
+            }}
           >
             <ClipboardList className={ITEM_ICON} strokeWidth={1.8} />
             Paste URLs to capture…
@@ -296,9 +305,12 @@ function LaunchSplit({ caseId }: { caseId: string | null }) {
       {paste &&
         createPortal(
           <PasteUrlsDialog
+            key={paste.opening}
             caseId={paste.caseId}
             open={paste.open}
-            onOpenChange={(open) => setPaste({ caseId: paste.caseId, open })}
+            onOpenChange={(open) =>
+              setPaste((now) => (now?.opening === paste.opening ? { ...now, open } : now))
+            }
           />,
           document.body
         )}

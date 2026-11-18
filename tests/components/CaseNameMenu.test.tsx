@@ -456,8 +456,6 @@ describe('exporting from the Case menu', () => {
     expect(progress.getAttribute('title')).toBe('Bundling captures... — 55%')
     sendProgress({ caseId: 'other-case', step: 'Should not show', percent: 99 })
     expect(screen.queryByText(/Should not show/)).toBeNull()
-    // Another Case's steps leave no record behind, which would hold that Case's items for good.
-    expect(Object.keys(useCaseExports.getState().pending)).toEqual(['case-1'])
 
     const menu = openMenu()
     expect(isDisabledItem(within(menu).getByTestId('case-menu-export-report'))).toBe(true)
@@ -470,6 +468,25 @@ describe('exporting from the Case menu', () => {
     expect(isDisabledItem(within(menu).getByTestId('case-menu-export-archive'))).toBe(false)
     // The export stops listening once it has settled.
     expect(progressListeners.size).toBe(0)
+  })
+
+  // Steps that name another Case leave nothing behind for it: its export stays free to start.
+  it("leaves another Case's export free when its steps arrive during this export", async () => {
+    exportArchive.mockReturnValue(NEVER)
+    const { rerender, client } = setup()
+    fireEvent.click(within(openMenu()).getByTestId('case-menu-export-archive'))
+    await screen.findByTestId('case-export-progress')
+    sendProgress({ caseId: 'case-2', step: 'Should not show', percent: 99 })
+    rerender(
+      <QueryClientProvider client={client}>
+        <CaseMenu place="name" caseId="case-2" caseData={{ ...CASE, id: 'case-2' }} />
+      </QueryClientProvider>
+    )
+    expect(screen.queryByTestId('case-export-progress')).toBeNull()
+    const item = within(theMenu()).getByTestId('case-menu-export-archive')
+    expect(isDisabledItem(item)).toBe(false)
+    fireEvent.click(item)
+    await waitFor(() => expect(exportArchive).toHaveBeenLastCalledWith('case-2'))
   })
 
   it('keeps a failed export on screen until the Operator dismisses it', async () => {

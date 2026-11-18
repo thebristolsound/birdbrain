@@ -174,4 +174,4 @@ Organized by feature under `src/renderer/components/`:
 - **signals/** - SignalsOverview (the consolidated Signals screen), AutoCaptureCard, AddSelectorRow, AddTagRow, BulkImportDrawer, SignalRow, CoverageStrip, SignalDetailRail, signalsModel.ts
 - **status/** - StatusGroup (the top bar's one status control: Egress, extension connection and Capture Health, over the pure `statusGroupModel.ts` and `egressText.ts`), `CaptureLog` in `CaptureHealth.tsx` (the capture log the status popover opens, with `useSelfTest`, the pipeline and HTTP test state the status group holds for it), RecordingMark, SessionControls
 - **tags/** - TagBadge
-- **ui/** - Shared primitives re-exported from `ui/index.ts`: badge, button, card, context-menu, dialog, input, label, menu (the menu that opens from a button), popover, scroll-area, skeleton, tabs, textarea
+- **ui/** - Shared primitives re-exported from `ui/index.ts`: badge, button, card, context-menu, dialog, input, label, menu (the menu that opens from a button), popover, scroll-area, section-label, skeleton, tabs, textarea, toaster

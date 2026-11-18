@@ -83,7 +83,11 @@ Each is one pull request and follows the rules in the consolidation plan under "
 - [ ] **L2. Per-entity routes open the one dialog.** #830's registry entries in `entityMenu.ts`
   open `ExportDialog` with the scope filled in: this Capture, this Note, this Selector's
   Captures, this Tag's Captures. Depends on slice 4.2 of the consolidation plan. This is
-  #830's deliverable; the slice lands under that issue.
+  #830's deliverable; the slice lands under that issue. What happens to a loose output on those
+  routes follows question 1. If loose files stay as quick controls, the dialog holds no loose
+  choice, so the Selector's CSV row and the Tag's "Copy as markdown" keep their own rows in
+  `entityMenu.ts` beside the item that opens the dialog; the table above lists no loose output
+  for a Note. If they become a fourth choice, those rows go and L3's "Files" choice lists them.
 - [ ] **L3. The "Files" choice, if question 1 says yes.** A fourth choice in the dialog that
   lists the loose outputs available for the scope, each with its file type. Needs a frame in
   the design bundle
@@ -105,7 +109,9 @@ Each is one pull request and follows the rules in the consolidation plan under "
 ## Acceptance
 
 - [ ] Each loose output has one name wherever it is offered.
-- [ ] From any Capture, Note, Selector or Tag, export is one menu item that opens the same
-  dialog.
+- [ ] From any Capture, Note, Selector or Tag, export of a package is one menu item that opens
+  the same dialog. Under the quick-controls answer to question 1, each loose output keeps one
+  row of its own beside it. Under the fourth-choice answer, it is in the dialog and has no
+  other row.
 - [ ] If question 2 is yes, every loose file states that it is not an Evidence Package.
 - [ ] #830 is closed, or rewritten to what is left.

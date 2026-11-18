@@ -36,7 +36,8 @@ with its findings ranked, and stops there. Fixes are planned afterwards, from th
   that starts one, slice 5.5 removes it, and the popup can stop a session but not start one
   (`startSession()` in `extension/src/utils/api.ts` has no caller). This pass shows the
   maintainer what the popup offers today, so it informs that answer, and the extension's
-  wording should agree with whatever the app says afterwards.
+  wording should agree with whatever the app says afterwards. Decision 7 of the parent plan
+  gave the answer on 2026-11-17, so the pass now checks the extension's wording against it.
 - **Method.**
   - Build with `pnpm build:extension` and load the output unpacked into a Chromium profile.
     Nothing under `e2e/` loads the extension today, so the pass starts by finding out whether
@@ -124,8 +125,9 @@ with its findings ranked, and stops there. Fixes are planned afterwards, from th
 
 Pass 3 first: it decides whether a slice of the consolidation plan is right. Pass 2 before
 slices 1.2 and 6.1 are reviewed, since each moves status colour onto plain surfaces or dots.
-Pass 1 before the maintainer answers the parent plan's open question 1, and so before slices
-5.4 and 5.5.
+Pass 1 was ordered before the maintainer's answer to the parent plan's open question 1, and
+so before slices 5.4 and 5.5. Decision 7 gave that answer on 2026-11-17, so pass 1 no longer
+comes before them.
 
 ## Not in these passes
 

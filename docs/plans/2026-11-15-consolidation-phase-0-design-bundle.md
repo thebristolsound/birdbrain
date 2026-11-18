@@ -20,7 +20,8 @@ The bundle draws inside these rulings and does not reopen them.
 
 - Share, Export, Import Case Archive and Case settings live in a menu on the Case name
   (decision 1).
-- An advisory status colours its dot and adds no icon or word (decision 2).
+- An advisory status shows as a hollow amber ring in place of its dot and adds no icon or word
+  (decision 2, as ruled again on 2026-11-17).
 - A launch carries its VPN warning inside the launch dialog (decision 3).
 - The primary control is a filled button labelled "Launch browser" (decision 4).
 - The bundle names the rows of the standalone mock it supersedes (decision 5).
@@ -28,10 +29,10 @@ The bundle draws inside these rulings and does not reopen them.
 - Labels use `CONTEXT.md`'s terms: Evidence Package, Working Copy, Case Archive, Capture
   Session.
 
-Two things are the maintainer's to answer before the bundle can draw them, under "Open
-questions" in the parent plan: how a Capture Session starts when only the extension is
-connected, and what the Data screen's two Verify buttons say. The bundle draws the answers. It
-does not give them.
+Two things were the maintainer's to answer, under "Open questions" in the parent plan: how a
+Capture Session starts when only the extension is connected, and what the Data screen's two
+Verify buttons say. Decision 7 of the parent plan answered the first on 2026-11-17. The second
+is still open, and it is not among the frames below.
 
 ## Where the chrome starts from
 
@@ -70,27 +71,29 @@ Each frame is drawn at 1440 and 1100 pixels wide, and the top bar also below 1,0
   closed and open; the Case Archive choice with the fields that do not apply hidden; the footer
   fixed in view at 900 pixels of height.
 - [ ] **H. Status tiers.** Nominal, advisory, problem, and a problem with an advisory behind it,
-  each with its popover. Decision 2 allows the advisory to show as a coloured dot only, which
-  leaves it apart from nominal by colour alone. The frame draws one option with a difference
-  that does not depend on colour, such as a ring in place of a filled dot, beside the
-  colour-only one, so the maintainer can rule between them.
+  each with its popover. Decision 2 first allowed the advisory to show as a coloured dot only,
+  which leaves it apart from nominal by colour alone. The frame draws one option with a
+  difference that does not depend on colour, such as a ring in place of a filled dot, beside
+  the colour-only one, so the maintainer can rule between them. The maintainer ruled for the
+  ring on 2026-11-17, and decision 2 records it.
 - [ ] **I. Overview cards.** Selectors and Tags as counts with recent changes and a link to
   Signals.
 - [ ] **R. Rules.** One sheet stating which control owns which fact, and the superseded rows.
 
 ## Questions the bundle has to answer
 
-Each one is open today and blocks the slice named.
+Each one was open when this plan was written and blocked the slice named. Decision 7 of the
+parent plan, of 2026-11-17, accepts the bundle's answer to each, and its ten numbered answers
+follow the order below. No slice named here waits any longer.
 
 1. **What does Launch browser do with no Case open?** `openStartDialog` takes a Case id, and the
    dashboard has no Active Case until one is chosen. Options: disabled with a reason, or a Case
    picker first. Blocks 5.4.
 2. **Where does an extension-only Capture Session start and stop?** This is the parent plan's
-   open question 1 and waits for the maintainer. The switch in `SessionControls.tsx` is the
+   open question 1, which decision 7 answers. The switch in `SessionControls.tsx` is the
    only control that starts an extension-only session; the launch dialog starts a session only
    by launching a browser, and the extension's popup can stop one but not start one. Slice 5.5
-   removes the switch. Once the maintainer answers, the bundle draws the answer. Blocks 5.4
-   and 5.5.
+   removes the switch. Blocks 5.4 and 5.5.
 3. **How wide is the labelled rail?** `Sidebar.tsx` is 48 pixels, and `SIDE_RAIL_PX` in
    `src/renderer/components/captures/captureColumns.ts` feeds the fold rules for the details
    panel and the Capture Session rail. A wider rail moves those thresholds. Blocks 5.2.
@@ -131,8 +134,9 @@ Each one is open today and blocks the slice named.
   mock rows it supersedes, the 2026-11-08 top bar among them. The parent plan cites the
   2026-11-08 bundle as a precedent for superseding rows of the mock. Neither that bundle's
   README nor its index row says it supersedes any, and the index still calls the 2026-08-21
-  standalone the single design source. This row would be the first to record a supersession,
-  so its wording, and the sentence about the single source, are the maintainer's.
+  standalone the single design source. The index already records one bundle superseding
+  another in three rows. This row would be the first to supersede rows of the 2026-08-21
+  standalone, so its wording, and the sentence about the single source, are the maintainer's.
 - [ ] A feasibility assessment under `docs/specs/` with a verdict per frame.
 - [x] The maintainer's ruling, recorded in the parent plan under "Decisions taken".
 

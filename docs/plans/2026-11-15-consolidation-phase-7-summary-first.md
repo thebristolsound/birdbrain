@@ -12,8 +12,10 @@ switch sits at the top of a Case's Signals (U11). Code references are to `origin
 
 Reconciled on 2026-11-16 against the merged parent plan and the review notes left on #2201.
 
-Slices 7.1, 7.2 and 7.4 can start at once. Slice 7.3 waits for frame I and question 7 of
-`docs/plans/2026-11-15-consolidation-phase-0-design-bundle.md`.
+Slices 7.1 and 7.4 can start at once. Slice 7.2 follows review pass 3 of
+`docs/plans/2026-11-15-unreviewed-surfaces-review-passes.md`. Slice 7.3 waited for frame I and
+question 7 of `docs/plans/2026-11-15-consolidation-phase-0-design-bundle.md`; decision 7 of the
+parent plan ruled on both on 2026-11-17, so it can start too.
 
 The rules every slice follows are in the parent plan under "Slices" and in `CLAUDE.md` under
 "Posting surfaces".
@@ -87,11 +89,12 @@ Findings U14 and A4.
   - [ ] The star's and the checkbox's hit areas are at least 24 by 24 pixels.
 - **Open.** The review pass on a large Case, in
   `docs/plans/2026-11-15-unreviewed-surfaces-review-passes.md`, may show the chips earn their
-  place when rows differ. If it lands first, read its findings before starting.
+  place when rows differ. That plan puts the pass first and has its assessment say whether
+  this slice goes ahead as written, so the slice starts after the assessment.
 
 ## Slice 7.3: the Overview points to the sections that own the data
 
-Finding U12. Waits for the bundle.
+Finding U12. No longer waits: decision 7 of the parent plan ruled on the bundle.
 
 - **Today.** `OverviewSelectorsBlock.tsx` adds Selectors and toggles them, and
   `OverviewTagsBlock.tsx` creates Tags. Signals does both as well. #1547 moves these cards

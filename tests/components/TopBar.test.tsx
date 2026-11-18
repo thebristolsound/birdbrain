@@ -230,6 +230,16 @@ describe('Launch browser', () => {
     expect(screen.getByTestId('topbar-case-name')).toBeTruthy()
   })
 
+  // While the Case on screen is still loading, the control acts on the Case the address names
+  // and does not ask which.
+  it('launches for the Case in the address while that Case is still loading', async () => {
+    getCase.mockReturnValue(new Promise(() => {}))
+    renderWith({ state: 'none' })
+    fireEvent.click(await screen.findByRole('button', { name: 'Launch browser' }))
+    expect(useAppStore.getState().startDialogCaseId).toBe('case1')
+    expect(useAppStore.getState().startDialogPicking).toBe(false)
+  })
+
   // A closed browser leaves its Capture Session running. The control stays the session's, and
   // the panel it shows offers Launch again.
   it('stays the session control once the launched browser has closed', async () => {

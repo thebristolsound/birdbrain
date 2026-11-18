@@ -68,6 +68,8 @@ const HARBOR: Case = { ...FERRY, id: 'case-2', name: 'Harbor Desk' }
 interface MountOptions {
   browsers?: LaunchedBrowserOption[]
   cases?: Case[]
+  // The read of the Case list, where a test needs it to fail or to stay in flight.
+  listCases?: () => Promise<Case[]>
   lastActiveCaseId?: string | null
   status?: LaunchedBrowserStatus
   operatorName?: string
@@ -109,7 +111,7 @@ function mount(options: MountOptions = {}) {
     : quietVpnWarning().checkVpnWarning
   fakeBridge({
     egress: { vpnStatus, checkVpnWarning, answerVpnWarning: vi.fn(async () => undefined) },
-    cases: { list: vi.fn(async () => cases) },
+    cases: { list: vi.fn(options.listCases ?? (async () => cases)) },
     settings: { get: vi.fn(async () => ({ operatorName, egress, lastActiveCaseId })) },
     session: { activateCase },
     launchedBrowser: {
@@ -227,6 +229,31 @@ describe('StartDialog with no Case named', () => {
         .map((o) => o.textContent)
     ).toEqual(['Harbor Desk'])
     expect(picker.value).toBe('case-2')
+  })
+
+  // A list that could not be read is not an installation with no Case.
+  it('says the Cases could not be read, and does not say to create one', async () => {
+    const { launch } = mount({
+      listCases: async () => {
+        throw new Error('database is locked')
+      }
+    })
+    openPicker()
+    const body = await pickerDialog()
+    const card = await within(body).findByRole('status')
+    expect(card.textContent).toBe('The Cases could not be readClose this dialog and open it again.')
+    expect(body.textContent).not.toContain('Create a Case first')
+    expect(launchButton('Launch').disabled).toBe(true)
+    expect(launch).not.toHaveBeenCalled()
+  })
+
+  it('holds the launch, with no refusal, while the Cases are still being read', async () => {
+    mount({ listCases: () => new Promise<Case[]>(() => {}) })
+    openPicker()
+    const body = await pickerDialog()
+    expect(launchButton('Launch').disabled).toBe(true)
+    expect(body.textContent).not.toContain('No Case to capture into')
+    expect(body.textContent).not.toContain('could not be read')
   })
 
   it('refuses, and holds the launch, where there is no Case', async () => {

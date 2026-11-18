@@ -40,6 +40,13 @@ export const NO_CASE_REFUSAL: LaunchRefusal = {
   detail: 'Create a Case first.'
 }
 
+// Opened with no Case on screen, and the list of Cases could not be read. That is not an
+// installation with no Case, so it does not say to create one.
+export const CASES_UNREAD_REFUSAL: LaunchRefusal = {
+  title: 'The Cases could not be read',
+  detail: 'Close this dialog and open it again.'
+}
+
 const ONE_AT_A_TIME = 'Only one can be open at a time.'
 
 const BUSY_TITLES: Readonly<Record<'starting' | 'open' | 'closing', string>> = {

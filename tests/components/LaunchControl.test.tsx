@@ -222,6 +222,15 @@ describe("the capture control's menu", () => {
     expect(screen.getByRole('dialog', { name: 'Paste URLs to capture' }).textContent).toBe('case-1')
   })
 
+  // Inside the bar the dialog's backdrop would lie in the window drag region.
+  it('renders the paste dialog outside the bar', () => {
+    setup()
+    fireEvent.click(within(openMenu()).getByTestId('launch-control-paste'))
+    const dialog = screen.getByRole('dialog', { name: 'Paste URLs to capture' })
+    expect(screen.getByTestId('launch-control').contains(dialog)).toBe(false)
+    expect(dialog.parentElement).toBe(document.body)
+  })
+
   it('holds Paste URLs where no Case is on screen, and says why', () => {
     setup({ caseId: null })
     const paste = within(openMenu()).getByTestId('launch-control-paste')
@@ -316,12 +325,15 @@ describe('the capture control with a notice', () => {
     expect(launch.querySelector('svg')).not.toBeNull()
     expect(launch.textContent).toBe('Launch browser. 1 notice: Browser closed: the Egress changed')
     const menu = openMenu()
+    // The third line is main's own account of why the browser closed.
     expect(within(menu).getByTestId('launch-control-notice').textContent).toBe(
-      'Browser closed: the Egress changedThe Capture Session ended.'
+      'Browser closed: the Egress changedThe Capture Session ended.' +
+        'The Egress changed while the browser was open.'
     )
     // The label is hidden from assistive technology, so the menu's name carries its words.
     expect(menu.getAttribute('aria-label')).toBe(
-      'Capture. Browser closed: the Egress changed. The Capture Session ended.'
+      'Capture. Browser closed: the Egress changed. The Capture Session ended. ' +
+        'The Egress changed while the browser was open.'
     )
   })
 
@@ -360,6 +372,18 @@ describe("the capture control while a launched browser's session runs", () => {
     await screen.findByRole('timer')
     expect(mark.getAttribute('aria-label')).toBeNull()
     expect(screen.getByRole('button', { name: /^Capture Session, ?Recording ?00:0\d$/ })).toBe(mark)
+  })
+
+  // The panel names an open browser, so the mark leaves the name out. With the panel hidden
+  // nothing else on a Case screen names it, so the mark does.
+  it('names the open browser on the mark while its panel is hidden', () => {
+    useAppStore.setState({ sessionActive: true })
+    setup({ status: OPEN })
+    const mark = screen.getByTestId('topbar-capture-session')
+    expect(mark.textContent).not.toContain('Google Chrome')
+    fireEvent.click(mark)
+    expect(useAppStore.getState().captureSessionPanelHidden).toBe(true)
+    expect(mark.textContent).toContain('Google Chrome')
   })
 
   it('hides and shows the Capture Session panel on a Case', () => {

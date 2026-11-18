@@ -40,9 +40,10 @@ export function useCaseExport(caseId: string) {
       pending: { ...s.pending, [id]: { step: 'Preparing archive…', percent: 0 } },
       failed: without(s.failed, id)
     }))
-    // The export listens for its own steps for as long as it runs, whether or not the menu is
-    // on screen, so coming back shows how far it has got. Steps of any other Case's export,
-    // such as one the Members tab started, are not its to keep.
+    // The export listens for its Case's steps for as long as it runs, whether or not the menu
+    // is on screen, so coming back shows how far it has got. Steps of another Case's export
+    // are not its to keep. An export of this same Case started elsewhere, as the Members tab
+    // can, reports under the same Case, so its steps land here too.
     const stopListening = window.birdbrain.onArchiveProgress(({ caseId: from, step, percent }) => {
       if (from !== id) return
       useCaseExports.setState((s) =>

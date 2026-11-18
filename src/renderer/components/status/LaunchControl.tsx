@@ -28,6 +28,7 @@ import {
 import { noticeCard } from '@renderer/components/launchedBrowser/captureSessionPanelModel'
 import { busyRefusal } from '@renderer/components/launchedBrowser/startDialogModel'
 import { PasteUrlsDialog } from '@renderer/components/captures/PasteUrlsDialog'
+import { createPortal } from 'react-dom'
 
 interface LaunchControlProps {
   /** The Case on screen, or null where none is: the dashboard, Settings, the new-Case wizard. */
@@ -38,8 +39,8 @@ interface LaunchControlProps {
 
 // The top bar's one capture control, on every screen. At rest it is the bar's one filled button,
 // Launch browser, with a menu beside it for the other way to capture and for the two facts that
-// matter before a contact: the extension and the Egress. While a launched browser is open, or
-// has closed with its Capture Session still running, it is the session's control: the recording
+// matter before a contact: the extension and the Egress. While a launched browser is open or
+// closing, or has closed with its Capture Session still running, it is the session's control: the recording
 // mark while the session records, and an outline button naming the Capture Session while a
 // browser is open with none recording yet. On a Case it shows or hides the Capture Session
 // panel, and where there is no panel on screen it opens the panel as a popover.
@@ -59,9 +60,10 @@ export function LaunchControl({ caseId, showOpenCase }: LaunchControlProps) {
     return caseId ? (
       <SessionTrigger
         recording={sessionActive}
-        // The panel on a Case screen names an open browser. Once the browser closes, the source
-        // is the extension, when one is connected, and nothing else on the screen says so.
-        showSource={view.kind !== 'open'}
+        // The panel on a Case screen names an open browser, so the mark leaves the name out
+        // while the panel shows. With the panel hidden, or once the browser closes and the
+        // source is the extension, nothing else on the screen names the source.
+        showSource={view.kind !== 'open' || hidden}
         selected={!hidden}
         aria-expanded={!hidden}
         title={hidden ? 'Show the Capture Session panel' : 'Hide the Capture Session panel'}
@@ -184,7 +186,8 @@ function LaunchSplit({ caseId }: { caseId: string | null }) {
   const [paste, setPaste] = useState<{ caseId: string; open: boolean } | null>(null)
   const reasonId = useId()
 
-  // One launched browser at a time: while one starts or closes, a launch is held.
+  // One launched browser at a time: while one starts, a launch is held. An open or closing
+  // browser never reaches here, since the control is then the session's.
   const busy = busyRefusal(launched)?.title
   const notice = view.kind === 'notice' ? view.notice : null
   const card = notice ? noticeCard(notice) : null
@@ -229,7 +232,11 @@ function LaunchSplit({ caseId }: { caseId: string | null }) {
           </Button>
         </MenuTrigger>
         <MenuContent
-          aria-label={card ? `Capture. ${card.title}. ${card.detail}` : 'Capture'}
+          aria-label={
+            card
+              ? `Capture. ${card.title}. ${card.detail}${card.tip ? ` ${card.tip}` : ''}`
+              : 'Capture'
+          }
           className="w-[300px]"
         >
           {notice && card && (
@@ -237,6 +244,10 @@ function LaunchSplit({ caseId }: { caseId: string | null }) {
               <MenuLabel data-testid="launch-control-notice">
                 <span className="block text-xs font-semibold text-text-primary">{card.title}</span>
                 <span className="block text-[11px] text-text-muted">{card.detail}</span>
+                {/* Main's own account of why the browser closed, which the panel shows in a tip. */}
+                {card.tip && (
+                  <span className="mt-1 block text-[11px] text-text-muted">{card.tip}</span>
+                )}
               </MenuLabel>
               <MenuItem onSelect={() => dismissNotice(notice)}>Dismiss notice</MenuItem>
               <MenuSeparator />
@@ -280,13 +291,17 @@ function LaunchSplit({ caseId }: { caseId: string | null }) {
           )}
         </MenuContent>
       </Menu>
-      {paste && (
-        <PasteUrlsDialog
-          caseId={paste.caseId}
-          open={paste.open}
-          onOpenChange={(open) => setPaste({ caseId: paste.caseId, open })}
-        />
-      )}
+      {/* The dialog renders at the end of the document. Inside the bar its backdrop would lie in
+          the window drag region, where a click starts a drag and does not close it. */}
+      {paste &&
+        createPortal(
+          <PasteUrlsDialog
+            caseId={paste.caseId}
+            open={paste.open}
+            onOpenChange={(open) => setPaste({ caseId: paste.caseId, open })}
+          />,
+          document.body
+        )}
     </div>
   )
 }

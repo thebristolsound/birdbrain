@@ -146,6 +146,19 @@ describe('the case chrome', () => {
     expect(screen.getByTestId('status-group')).toBeTruthy()
     expect(screen.queryByTitle('Settings')).toBeNull()
   })
+
+  // The last item on the right keeps clear of the window's own buttons. With the gear gone, that
+  // is the status group's wrapper.
+  it.each(['/cases/new', '/cases/case1/overview'])(
+    'gives the status group the window inset at %s',
+    (path) => {
+      renderAt(path)
+      const controls = screen.getByTestId('topbar-controls')
+      const last = controls.lastElementChild as HTMLElement
+      expect(within(last).getByTestId('status-group')).toBeTruthy()
+      expect(last.getAttribute('style')).toContain('margin-right: var(--window-controls-right')
+    }
+  )
 })
 
 describe('Launch browser', () => {
@@ -447,7 +460,7 @@ describe('the Capture Session button', () => {
     expect(screen.queryByRole('button', { name: /^Open\b/ })).toBeNull()
   })
 
-  it('opens it on the new-Case wizard, which has no rail', async () => {
+  it('opens it on the new-Case wizard, which has no action bar', async () => {
     bridgeWith(OPEN)
     renderAt('/cases/new')
     expect(await openPopover()).toBeTruthy()

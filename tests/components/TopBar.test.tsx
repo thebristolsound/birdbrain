@@ -148,14 +148,14 @@ describe('the case chrome', () => {
   })
 
   // The last item on the right keeps clear of the window's own buttons. With the gear gone, that
-  // is the status group's wrapper.
+  // is the capture control's wrapper, which follows the status group.
   it.each(['/cases/new', '/cases/case1/overview'])(
-    'gives the status group the window inset at %s',
+    'gives the capture control the window inset at %s',
     (path) => {
       renderAt(path)
       const controls = screen.getByTestId('topbar-controls')
       const last = controls.lastElementChild as HTMLElement
-      expect(within(last).getByTestId('status-group')).toBeTruthy()
+      expect(last.previousElementSibling).toBe(screen.getByTestId('status-group'))
       expect(last.getAttribute('style')).toContain('margin-right: var(--window-controls-right')
     }
   )

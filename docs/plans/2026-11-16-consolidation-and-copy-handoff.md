@@ -123,7 +123,7 @@ button it changes.
 | 6.1 | `feat/chrome-6.1-status-tiers` | #2230 | Merged on 2026-11-18 as `1ef4456a`, under the maintainer's override label after two reviews with no blocking finding. Two comments on the pull request answer the findings |
 | 5.2 | `feat/chrome-5.2-labelled-rail` | #2231 | Merged on 2026-11-18 as `8c7f99d6`. The review passed at `c08d4869` with fourteen findings, none blocking |
 | 5.3 | `feat/chrome-5.3-case-menu` | #2232 | Merged on 2026-11-18 as `c1099fab`. The third review passed at `4ec8808e` with five findings, none blocking, after two fix rounds |
-| 5.4 | `feat/chrome-5.4-launch-control` | #2233 | Next for review, based on `main`, with the fix for the last review of #2232 as commit `9a2e1850` |
+| 5.4 | `feat/chrome-5.4-launch-control` | #2233 | Next for review at `f04793f5`, based on `main`, with the fix for the last review of #2232 as commit `9a2e1850` and two fixes of its own |
 | 5.5 | `feat/chrome-5.5-one-row` | #2234 | Draft, based on the 5.4 branch |
 | 5.6 | `feat/chrome-5.6-docs` | #2235 | Draft, based on the 5.5 branch |
 
@@ -233,6 +233,13 @@ What the slices found that the plans did not say:
     it held on one, and that one test file covered every fix. A description says what the
     code does and names each test file, and says nothing about earlier review rounds, which
     the reviewers cannot read.
+- Each branch of the stack has to pass the end-to-end suite itself, not only the top one. On
+  the 5.4 branch the recording mark stands beside the Launch browser button, the bar's widest
+  state, and with the longest status word the page was 25 pixels too wide at a 1,000 pixel
+  window. The 5.5 branch replaces that arrangement, so the top of the stack passed while 5.4
+  failed in CI. Commit `f04793f5` hides the mark's source from view below 1,100 pixels there,
+  and merging it up keeps the 5.5 side. Commit `f356d6c7` makes the paste dialog keep the Case
+  it was opened for, the same fault the reviews found in the Case menu's export dialog.
 - This file is on `main` since #2236. Later updates ride on the 5.6 branch, the docs slice.
 - The linked WSL machine stopped answering on 2026-11-18. Preflights then ran on Omarchy, in
   about ten minutes each, after the scratch tree's test image library was rebuilt.

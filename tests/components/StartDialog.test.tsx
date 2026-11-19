@@ -926,6 +926,75 @@ describe('StartDialog (S2)', () => {
       expect(launchButton('Launch without VPN').disabled).toBe(false)
     })
 
+    it('keeps the mute tick when the name cannot be saved', async () => {
+      const { body } = await warned({
+        operatorName: '',
+        saveSettings: async () => Promise.reject(new Error('disk full'))
+      })
+      fireEvent.change(within(body).getByRole('textbox', { name: 'Operator Name' }), {
+        target: { value: 'A. Marsh' }
+      })
+      fireEvent.click(muteBox(body)!)
+      fireEvent.click(launchButton('Launch without VPN'))
+      await within(body).findByRole('alert')
+      expect(muteBox(body)?.checked).toBe(true)
+    })
+
+    it('saves nothing, answers nothing and launches nothing when cancelled while main is asked on the press', async () => {
+      const {
+        body,
+        checkVpnWarning,
+        answerVpnWarning,
+        saveSettings,
+        activateCase,
+        launch,
+        cancelLaunch
+      } = await warned({ operatorName: '' })
+      fireEvent.change(within(body).getByRole('textbox', { name: 'Operator Name' }), {
+        target: { value: 'A. Marsh' }
+      })
+      let answerMain: (check: VpnWarningCheck) => void = () => {}
+      checkVpnWarning.mockImplementationOnce(
+        () =>
+          new Promise<VpnWarningCheck>((resolve) => {
+            answerMain = resolve
+          })
+      )
+      fireEvent.click(launchButton('Launch without VPN'))
+      fireEvent.click(await within(body).findByRole('button', { name: 'Cancel' }))
+      await waitFor(() => expect(cancelLaunch).toHaveBeenCalledOnce())
+      act(() => answerMain({ caseId: 'case-1', warn: true, canMute: true }))
+      await waitFor(() => expect(useAppStore.getState().startDialogCaseId).toBeNull())
+      expect(saveSettings).not.toHaveBeenCalled()
+      expect(answerVpnWarning).not.toHaveBeenCalled()
+      expect(activateCase).not.toHaveBeenCalled()
+      expect(launch).not.toHaveBeenCalled()
+    })
+
+    it('answers nothing and launches nothing when cancelled while the name is being saved', async () => {
+      let finishSave: () => void = () => {}
+      const { body, answerVpnWarning, saveSettings, activateCase, launch, cancelLaunch } =
+        await warned({
+          operatorName: '',
+          saveSettings: (partial) =>
+            new Promise((resolve) => {
+              finishSave = () => resolve({ operatorName: '', ...partial } as BirdbrainSettings)
+            })
+        })
+      fireEvent.change(within(body).getByRole('textbox', { name: 'Operator Name' }), {
+        target: { value: 'A. Marsh' }
+      })
+      fireEvent.click(launchButton('Launch without VPN'))
+      await waitFor(() => expect(saveSettings).toHaveBeenCalledOnce())
+      fireEvent.click(await within(body).findByRole('button', { name: 'Cancel' }))
+      await waitFor(() => expect(cancelLaunch).toHaveBeenCalledOnce())
+      act(() => finishSave())
+      await waitFor(() => expect(useAppStore.getState().startDialogCaseId).toBeNull())
+      expect(answerVpnWarning).not.toHaveBeenCalled()
+      expect(activateCase).not.toHaveBeenCalled()
+      expect(launch).not.toHaveBeenCalled()
+    })
+
     it('asks again each time it opens, and keeps nothing from the opening before', async () => {
       const { body, checkVpnWarning } = await warned()
       fireEvent.click(muteBox(body)!)

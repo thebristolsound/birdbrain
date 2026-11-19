@@ -33,7 +33,7 @@ import {
 } from '@renderer/components/launchedBrowser/startDialogModel'
 
 // A session warning main says is due for a Case (ADR-0032 VPN rule 3), with the Operator's
-// choice to stop warning on this network. A new answer from main starts with the choice unmade.
+// choice to stop warning on this network. The choice starts unmade.
 interface SessionWarning {
   caseId: string
   canMute: boolean
@@ -205,11 +205,13 @@ export function StartDialog() {
     }
   }
 
-  // Asked again on the press: the network can change while the dialog is open.
+  // Asked again on the press: the network can change while the dialog is open. A tick the
+  // Operator made stays while the network can still be muted, so a held launch does not undo it.
   async function askVpnWarningAgain(forCase: string): Promise<VpnWarningCheck> {
     lastAsk.current += 1
     const check = await birdbrain.egress.checkVpnWarning({ caseId: forCase }, 'session')
-    setWarning(sessionWarning(forCase, check))
+    const next = sessionWarning(forCase, check)
+    setWarning(next && dueWarning ? { ...next, mute: dueWarning.mute && next.canMute } : next)
     return check
   }
 
@@ -238,12 +240,22 @@ export function StartDialog() {
       // (ADR-0032 VPN rule 3). A warning the pressed form did not show holds the launch: the
       // form shows it now, and the Operator presses the button that names it.
       const check = await askVpnWarningAgain(caseId)
+      // A cancel pressed during the question stops here, before a name is saved or main is told
+      // the Operator went ahead.
+      if (cancelled.current) {
+        dismiss()
+        return
+      }
       if (cameDue(check)) {
-        holdLaunch()
+        setLaunching(null)
         return
       }
       if (!(await nameSaved())) {
         holdLaunch()
+        return
+      }
+      if (cancelled.current) {
+        dismiss()
         return
       }
       if (check.warn) await answerVpnWarning(caseId, check.canMute)

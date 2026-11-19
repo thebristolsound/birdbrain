@@ -1,11 +1,12 @@
 import { useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { motion } from 'motion/react'
-import { Check, Download, RefreshCcw, Star, Tag as TagIcon, Trash2, X } from 'lucide-react'
+import { Check, RefreshCcw, Star, Tag as TagIcon, Trash2, X } from 'lucide-react'
 import { captureFavoritesQueryOptions, useCapturesMutations } from '@renderer/lib/api/captures'
 import { casesQueryOptions } from '@renderer/lib/api/cases'
 import { useRecaptureMutations } from '@renderer/lib/api/recapture'
 import { ExportDialog } from '@renderer/components/export/ExportDialog'
+import { ExportIcon } from '@renderer/components/export/exportIcon'
 import { BatchTagPopover } from '@renderer/components/captures/BatchTagPopover'
 import { useReduceMotion } from '@renderer/hooks/useReduceMotion'
 import { notify } from '@renderer/lib/notify'
@@ -120,7 +121,7 @@ export function CaptureSelectionBar({
         title="Export selection"
         className={`${ICON_BTN} text-text-secondary`}
       >
-        <Download className="h-[13px] w-[13px]" strokeWidth={1.9} />
+        <ExportIcon className="h-[13px] w-[13px]" strokeWidth={1.9} />
       </button>
       <div className="relative">
         <button

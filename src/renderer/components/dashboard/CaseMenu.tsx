@@ -4,10 +4,8 @@ import { useNavigate } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { AnimatePresence } from 'motion/react'
 import {
-  Archive,
   ArrowLeftRight,
   ChevronsUpDown,
-  FileText,
   FolderInput,
   Loader2,
   LoaderCircle,
@@ -39,6 +37,7 @@ import { useTimeTick } from '@renderer/hooks/useTimeTick'
 import { useAppStore } from '@renderer/stores/appStore'
 import { ExportDialog } from '@renderer/components/export/ExportDialog'
 import { useCaseExport } from '@renderer/components/export/useCaseExport'
+import { ExportIcon } from '@renderer/components/export/exportIcon'
 import { ImportCaseDialog } from '@renderer/components/dashboard/cases/ImportCaseDialog'
 import { useCaseArchiveImport } from '@renderer/components/dashboard/cases/useCaseArchiveImport'
 import { MemberCodeChip } from '@renderer/components/sharing/MemberCodeChip'
@@ -379,16 +378,16 @@ function NameMenu({ caseId, caseData }: Extract<CaseMenuProps, { place: 'name' }
             disabled={!caseData || exporting.isExporting}
             onSelect={() => caseData && setReportFor({ id: caseData.id, name: caseData.name })}
           >
-            <FileText className={NAME_ITEM_ICON} strokeWidth={1.8} />
-            Export evidence report
+            <ExportIcon className={NAME_ITEM_ICON} strokeWidth={1.8} />
+            Export Evidence Package…
           </MenuItem>
           <MenuItem
             data-testid="case-menu-export-archive"
             disabled={!caseData || exporting.isExporting}
             onSelect={() => void exporting.startArchive()}
           >
-            <Archive className={NAME_ITEM_ICON} strokeWidth={1.8} />
-            Export case file
+            <ExportIcon className={NAME_ITEM_ICON} strokeWidth={1.8} />
+            Export Case Archive…
           </MenuItem>
           <MenuItem data-testid="case-menu-import" onSelect={() => void importing.start()}>
             <FolderInput className={NAME_ITEM_ICON} strokeWidth={1.8} />

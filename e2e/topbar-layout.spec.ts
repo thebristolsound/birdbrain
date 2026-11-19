@@ -536,7 +536,7 @@ test.describe('Top bar layout', () => {
     await expect(overlay).toBeVisible()
 
     await page.getByTestId('topbar-case-name').click()
-    await page.getByRole('menuitem', { name: 'Export evidence report' }).click()
+    await page.getByRole('menuitem', { name: 'Export Evidence Package…' }).click()
     await expect(page.getByRole('dialog', { name: 'Export case' })).toBeVisible()
 
     // The topmost element over the overlay belongs to the dialog's backdrop, not the overlay.

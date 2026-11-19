@@ -171,7 +171,7 @@ test.describe('Wayback panel, compare and pinned references', () => {
       // 5. The export dialog states the pins the package will carry.
       await stubSaveDialog(electronApp, zipPath)
       await page.getByTestId('topbar-case-name').click()
-      await page.getByRole('menuitem', { name: 'Export evidence report' }).click()
+      await page.getByRole('menuitem', { name: 'Export Evidence Package…' }).click()
       await expect(page.getByRole('heading', { name: 'Export case' })).toBeVisible()
       const pinnedBlock = page.getByTestId('export-pinned-wayback')
       await expect(pinnedBlock).toBeVisible()

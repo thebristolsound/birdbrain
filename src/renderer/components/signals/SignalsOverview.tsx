@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Download, ListPlus } from 'lucide-react'
+import { ListPlus } from 'lucide-react'
 import { ExportDialog } from '@renderer/components/export/ExportDialog'
+import { ExportIcon } from '@renderer/components/export/exportIcon'
 import { caseQueryOptions } from '@renderer/lib/api/cases'
 import { duplicateTagName, tagCapturesMarkdown } from '@renderer/components/signals/tagMenuActions'
 import { SIGNAL_COVERAGE_CAPTURES } from '@shared/constants'
@@ -411,8 +412,8 @@ export function SignalsOverview() {
                   }
                   className="inline-flex items-center gap-1 text-[10px] font-semibold text-text-muted hover:text-accent disabled:opacity-50"
                 >
-                  <Download className="h-[11px] w-[11px]" strokeWidth={2} />
-                  {exporting ? 'Exporting…' : 'Export all'}
+                  <ExportIcon className="h-[11px] w-[11px]" strokeWidth={2} />
+                  {exporting ? 'Exporting…' : 'Export all matches (CSV)'}
                 </button>
                 <span className="text-[10px] text-text-faint">{COVERAGE_CAPTION}</span>
               </div>

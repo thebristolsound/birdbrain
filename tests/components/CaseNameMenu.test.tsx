@@ -34,12 +34,14 @@ vi.mock('@renderer/components/dashboard/cases/ImportCaseDialog', () => ({
 }))
 
 import { CaseMenu } from '@renderer/components/dashboard/CaseMenu'
+import { HeroSection } from '@renderer/components/dashboard/HeroSection'
 import { useCaseExports } from '@renderer/components/export/useCaseExport'
 import { queryKeys } from '@renderer/lib/api/keys'
 import { useAppStore } from '@renderer/stores/appStore'
 import { fakeBridge } from '../renderer/fakeBridge'
 import { AR, JO, members, sync } from './sharingFixtures'
 import { isDisabledItem, nextTurn, press } from './menuKeys'
+import { exportIconSelector } from './exportIcon'
 
 const CASE: Case = {
   id: 'case-1',
@@ -154,6 +156,30 @@ describe('the Case menu on the Case name', () => {
     expect(within(menu).getAllByRole('separator')).toHaveLength(2)
     expect(trigger().dataset.tour).toBe('caseswitcher')
     expect(trigger().getAttribute('title')).toBe('Harbour ledger review · Case menu')
+  })
+
+  it('names each export by what it writes, under the one export icon', () => {
+    setup()
+    const menu = openMenu()
+    const evidence = within(menu).getByTestId('case-menu-export-report')
+    const archive = within(menu).getByTestId('case-menu-export-archive')
+
+    expect(evidence.textContent).toBe('Export Evidence Package…')
+    expect(archive.textContent).toBe('Export Case Archive…')
+    expect(evidence.querySelector(exportIconSelector())).not.toBeNull()
+    expect(archive.querySelector(exportIconSelector())).not.toBeNull()
+  })
+
+  it('labels Import as the dashboard does', () => {
+    setup()
+    const inMenu = within(openMenu()).getByTestId('case-menu-import').textContent
+    cleanup()
+    render(
+      <HeroSection onNewInvestigation={vi.fn()} onOpenRecent={vi.fn()} onImportCase={vi.fn()} />
+    )
+
+    expect(inMenu).toBe('Import Case Archive…')
+    expect(screen.getByTestId('import-case-btn').textContent).toBe(inMenu)
   })
 
   it('says how many Captures the Case holds and that it is on this machine only', async () => {
@@ -398,7 +424,7 @@ function expectOutsideTheBar(dialog: HTMLElement) {
 }
 
 describe('exporting from the Case menu', () => {
-  it('opens the export dialog from Export evidence report, and hands focus back on close', async () => {
+  it('opens the export dialog from Export Evidence Package, and hands focus back on close', async () => {
     setup()
     const item = within(openMenu()).getByTestId('case-menu-export-report')
     item.focus()
@@ -423,7 +449,7 @@ describe('exporting from the Case menu', () => {
     fireEvent.click(within(openMenu()).getByTestId('case-menu-export-archive'))
     await waitFor(() => expect(notifySuccess).toHaveBeenCalledOnce())
     const [title, opts] = notifySuccess.mock.calls[0]
-    expect(title).toBe('Archive saved')
+    expect(title).toBe('Case Archive saved')
     expect(opts.description).toBe(ARCHIVE_PATH)
     expect(screen.queryByRole('alert')).toBeNull()
 

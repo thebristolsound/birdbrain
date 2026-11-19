@@ -79,7 +79,7 @@ async function stubSaveDialog(electronApp: ElectronApplication, filePath: string
 
 async function openExportDialog(page: Page): Promise<void> {
   await page.getByTestId('topbar-case-name').click()
-  await page.getByRole('menuitem', { name: 'Export evidence report' }).click()
+  await page.getByRole('menuitem', { name: 'Export Evidence Package…' }).click()
   await expect(page.getByRole('heading', { name: 'Export case' })).toBeVisible()
 }
 
@@ -121,9 +121,9 @@ test.describe('Export dialog: presets and the two export classes', () => {
       await page.click('button[aria-label="Overview"]')
       await page.waitForURL(/#\/cases\/.+\/overview/)
 
-      // --- Full evidence bundle (default preset) --------------------------
+      // --- Evidence Package (default preset) ------------------------------
       await openExportDialog(page)
-      await expect(page.getByRole('radio', { name: /Full evidence bundle/ })).toBeChecked()
+      await expect(page.getByRole('radio', { name: /^Evidence Package \(\.zip\)/ })).toBeChecked()
       await expect(page.getByTestId('export-custody-card')).toBeVisible()
       await stubSaveDialog(electronApp, fullPath)
       await runExport(page, fullPath)
@@ -141,9 +141,9 @@ test.describe('Export dialog: presets and the two export classes', () => {
       }
       expect(fullNames).not.toContain('WORKING-COPY.json')
 
-      // --- Court exhibit: evidence class without notes --------------------
+      // --- Evidence Package without Operator notes ------------------------
       await openExportDialog(page)
-      await page.getByRole('radio', { name: /Court exhibit/ }).check()
+      await page.getByRole('radio', { name: /without Operator notes \(\.zip\)/ }).check()
       await expect(page.getByTestId('export-custody-card')).toBeVisible()
       await stubSaveDialog(electronApp, courtPath)
       await runExport(page, courtPath)
@@ -154,9 +154,9 @@ test.describe('Export dialog: presets and the two export classes', () => {
       expect(courtNames).not.toContain('notes.md')
       expect(courtNames).not.toContain('WORKING-COPY.json')
 
-      // --- Working copy: non-evidentiary class ----------------------------
+      // --- Working Copy: non-evidentiary class ----------------------------
       await openExportDialog(page)
-      await page.getByRole('radio', { name: /Working copy/ }).check()
+      await page.getByRole('radio', { name: /Working Copy/ }).check()
       // The custody card gives way to the non-evidentiary notice.
       await expect(page.getByTestId('export-working-copy-notice')).toBeVisible()
       await expect(page.getByTestId('export-custody-card')).not.toBeVisible()
@@ -223,7 +223,7 @@ test.describe('Export dialog: presets and the two export classes', () => {
     await expect(page.getByRole('dialog', { name: 'Export case' })).toBeFocused()
     await page.keyboard.press('ArrowDown')
 
-    await expect(page.getByRole('radio', { name: /Full evidence bundle/ })).toBeChecked()
+    await expect(page.getByRole('radio', { name: /^Evidence Package \(\.zip\)/ })).toBeChecked()
     await expect(page.getByTestId('export-custody-card')).toBeVisible()
   })
 })

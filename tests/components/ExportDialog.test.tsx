@@ -229,19 +229,19 @@ describe('ExportDialog', () => {
     expect(rows[0].textContent).toContain('2026-06-01 09:30 UTC')
   })
 
-  it('drops the pinned-snapshot block under Working copy — there is no report', async () => {
+  it('drops the pinned-snapshot block under Working Copy — there is no report', async () => {
     listCasePins.mockResolvedValue(PINS)
     renderDialog()
 
     await screen.findByTestId('export-pinned-wayback')
-    fireEvent.click(screen.getByLabelText(/Working copy/))
+    fireEvent.click(screen.getByLabelText(/Working Copy/))
 
     // The pins are unchanged; what changed is that this class carries no report
     // for them to be "included in", so the promise must not be on screen.
     expect(screen.queryByTestId('export-pinned-wayback')).toBeNull()
     expect(screen.getByTestId('export-working-copy-notice')).toBeDefined()
 
-    fireEvent.click(screen.getByLabelText(/Full evidence bundle/))
+    fireEvent.click(screen.getByLabelText(/^Evidence Package \(\.zip\)/))
     expect(await screen.findByTestId('export-pinned-wayback')).toBeDefined()
   })
 
@@ -261,7 +261,7 @@ describe('ExportDialog', () => {
     expect(preflight).toHaveBeenCalledWith('case-1', undefined)
   })
 
-  it('exports the Full evidence bundle preset by default', async () => {
+  it('exports the Evidence Package preset by default', async () => {
     renderDialog()
 
     fireEvent.click(screen.getByText('Export'))
@@ -285,10 +285,10 @@ describe('ExportDialog', () => {
   })
 
   // AC 1: presets map to the decided classes.
-  it('maps the Working copy preset to the working-copy class and a marked filename', async () => {
+  it('maps the Working Copy preset to the working-copy class and a marked filename', async () => {
     renderDialog()
 
-    fireEvent.click(screen.getByLabelText(/Working copy/))
+    fireEvent.click(screen.getByLabelText(/Working Copy/))
     fireEvent.click(screen.getByText('Export'))
 
     await waitFor(() => expect(generateReport).toHaveBeenCalledTimes(1))
@@ -298,10 +298,10 @@ describe('ExportDialog', () => {
     expect(options.include).toEqual(EXPORT_PRESETS.working.selection.include)
   })
 
-  it('maps the Court exhibit preset to an evidence export without operator notes', async () => {
+  it('maps the preset without Operator notes to an evidence export that leaves them out', async () => {
     renderDialog()
 
-    fireEvent.click(screen.getByLabelText(/Court exhibit/))
+    fireEvent.click(screen.getByLabelText(/without Operator notes \(\.zip\)/))
     fireEvent.click(screen.getByText('Export'))
 
     await waitFor(() => expect(generateReport).toHaveBeenCalledTimes(1))
@@ -343,7 +343,7 @@ describe('ExportDialog', () => {
       fireEvent.click(invariant)
       expect(invariant.checked).toBe(true)
     }
-    // Still the Full evidence bundle: clicking the invariants changed nothing.
+    // Still the Evidence Package preset: clicking the invariants changed nothing.
     expect(screen.getByText('Customise contents')).toBeDefined()
   })
 
@@ -399,7 +399,7 @@ describe('ExportDialog', () => {
     renderDialog()
 
     await screen.findByTestId('export-pinned-wayback')
-    fireEvent.click(screen.getByLabelText(/Working copy/))
+    fireEvent.click(screen.getByLabelText(/Working Copy/))
     fireEvent.click(screen.getByText('Customise contents'))
     const wcCaptures = screen.getByLabelText('Captures (page archives)') as HTMLInputElement
     expect(wcCaptures.disabled).toBe(false)
@@ -408,7 +408,7 @@ describe('ExportDialog', () => {
     expect(screen.queryByTestId('export-captures-invariant-note')).toBeNull()
     expect(screen.queryByTestId('export-pinned-wayback')).toBeNull()
 
-    fireEvent.click(screen.getByLabelText(/Full evidence bundle/))
+    fireEvent.click(screen.getByLabelText(/^Evidence Package \(\.zip\)/))
     const captures = screen.getByLabelText('Captures (page archives)') as HTMLInputElement
     expect(captures.checked).toBe(true)
     expect(captures.disabled).toBe(true)
@@ -422,7 +422,7 @@ describe('ExportDialog', () => {
   it('lets a Working Copy export leave its page archives out', async () => {
     renderDialog()
 
-    fireEvent.click(screen.getByLabelText(/Working copy/))
+    fireEvent.click(screen.getByLabelText(/Working Copy/))
     fireEvent.click(screen.getByText('Customise contents'))
     fireEvent.click(screen.getByLabelText('Captures (page archives)'))
     expect(screen.getByText('Custom selection')).toBeDefined()
@@ -434,13 +434,13 @@ describe('ExportDialog', () => {
     expect(options.include.captures).toBe(false)
   })
 
-  it('replaces the custody card with a non-evidentiary notice under Working copy', async () => {
+  it('replaces the custody card with a non-evidentiary notice under Working Copy', async () => {
     renderDialog()
 
     expect(screen.getByTestId('export-custody-card')).toBeDefined()
     expect(screen.queryByTestId('export-working-copy-notice')).toBeNull()
 
-    fireEvent.click(screen.getByLabelText(/Working copy/))
+    fireEvent.click(screen.getByLabelText(/Working Copy/))
 
     expect(screen.queryByTestId('export-custody-card')).toBeNull()
     expect(screen.getByTestId('export-working-copy-notice').textContent).toMatch(
@@ -510,9 +510,9 @@ describe('ExportDialog', () => {
 
   // A Working Copy ships no Manifest, so the chain note would contradict the
   // working-copy notice under it.
-  it('drops the manifest note for a Working copy selection export', () => {
+  it('drops the manifest note for a Working Copy selection export', () => {
     renderDialog(vi.fn(), ['cap-1', 'cap-2'])
-    fireEvent.click(screen.getByLabelText(/Working copy/))
+    fireEvent.click(screen.getByLabelText(/Working Copy/))
 
     expect(screen.getByTestId('export-scope-row').textContent).toBe('2 selected captures')
     expect(screen.queryByTestId('export-scope-manifest-note')).toBeNull()
@@ -564,7 +564,7 @@ describe('ExportDialog', () => {
     await waitFor(() => expect(notifySuccess).toHaveBeenCalledOnce())
     const [title, opts] = notifySuccess.mock.calls[0]
     expect(title).toBe('Export written')
-    expect(opts.description).toBe('Evidence package · Case_One_evidence.zip')
+    expect(opts.description).toBe('Evidence Package · Case_One_evidence.zip')
     expect(opts.action.label).toBe('Show in folder')
     expect(onClose).toHaveBeenCalledOnce()
     // Held on the progress view while the dialog animates out, never the form.
@@ -576,20 +576,20 @@ describe('ExportDialog', () => {
     expect(openPath).not.toHaveBeenCalled()
   })
 
-  it('names a working copy as such in the toast', async () => {
+  it('names a Working Copy as such in the toast', async () => {
     generateReport.mockResolvedValue({
       canceled: false,
       filePath: '/out/Case_One_working_copy.zip'
     })
     renderDialog()
 
-    fireEvent.click(screen.getByLabelText(/Working copy/))
+    fireEvent.click(screen.getByLabelText(/Working Copy/))
     fireEvent.click(screen.getByText('Export'))
 
     await waitFor(() => expect(notifySuccess).toHaveBeenCalledOnce())
     const [title, opts] = notifySuccess.mock.calls[0]
     expect(title).toBe('Export written')
-    expect(opts.description).toBe('Working copy · /out/Case_One_working_copy.zip')
+    expect(opts.description).toBe('Working Copy · /out/Case_One_working_copy.zip')
     expect(opts.action.label).toBe('Show in folder')
     opts.action.onClick()
     expect(showItemInFolder).toHaveBeenCalledWith('/out/Case_One_working_copy.zip')
@@ -733,7 +733,7 @@ describe('ExportDialog', () => {
       renderDialog()
       await screen.findByTestId('export-demo-notice')
       await screen.findByTestId('export-trusted-time-notice')
-      fireEvent.click(screen.getByLabelText(/Working copy/))
+      fireEvent.click(screen.getByLabelText(/Working Copy/))
       fireEvent.click(screen.getByTestId('export-submit'))
       await screen.findByTestId('export-error')
 
@@ -788,7 +788,7 @@ describe('ExportDialog', () => {
       expect(document.activeElement).toBe(screen.getByRole('dialog', { name: 'Export case' }))
       fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'Tab' })
       expect(document.activeElement).toBe(
-        screen.getByRole('radio', { name: /Full evidence bundle/ })
+        screen.getByRole('radio', { name: /^Evidence Package \(\.zip\)/ })
       )
     })
 
@@ -958,7 +958,7 @@ describe('EXPORT_PRESETS / detectPreset', () => {
       })
     ).toBe('custom')
     // The class participates in detection: the court include-set under the
-    // working-copy class is not the Court exhibit preset.
+    // working-copy class is not the preset without Operator notes.
     expect(
       detectPreset({
         exportClass: 'working-copy',

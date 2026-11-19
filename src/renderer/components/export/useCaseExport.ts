@@ -60,7 +60,7 @@ export function useCaseExport(caseId: string) {
     // The notice is app-wide and names its path, so it is raised even when the
     // operator has since switched cases: that is when it is most needed.
     if (written && !written.canceled && written.filePath) {
-      notifyExportWritten('Archive saved', written.filePath, written.filePath)
+      notifyExportWritten('Case Archive saved', written.filePath, written.filePath)
     }
     stopListening()
     const failed = failure

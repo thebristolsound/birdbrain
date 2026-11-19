@@ -52,8 +52,8 @@ export const EXPORT_PRESETS: Record<
   { label: string; description: string; selection: ExportSelection }
 > = {
   full: {
-    label: 'Full evidence bundle',
-    description: 'Verifiable package: Manifest, Certification, captures, screenshots and notes',
+    label: 'Evidence Package (.zip)',
+    description: 'Verifiable: Manifest, Certification, captures, screenshots and notes',
     selection: {
       exportClass: 'evidence',
       include: {
@@ -66,7 +66,7 @@ export const EXPORT_PRESETS: Record<
     }
   },
   working: {
-    label: 'Working copy',
+    label: 'Working Copy (.zip)',
     description: 'Non-evidentiary: captures, screenshots and notes — no Certification, no Manifest',
     selection: {
       exportClass: 'working-copy',
@@ -80,8 +80,8 @@ export const EXPORT_PRESETS: Record<
     }
   },
   court: {
-    label: 'Court exhibit',
-    description: 'Evidence package with everything except operator notes',
+    label: 'Evidence Package without Operator notes (.zip)',
+    description: 'An Evidence Package with everything except Operator notes',
     selection: {
       exportClass: 'evidence',
       include: {
@@ -208,7 +208,7 @@ export function ExportDialog({ caseId, caseName, selectedCaptureIds, onClose }: 
       .mutateAsync({ caseId, options })
       .then(({ canceled, filePath }) => {
         if (canceled || !filePath) return
-        const kind = workingCopy ? 'Working copy' : 'Evidence package'
+        const kind = workingCopy ? 'Working Copy' : 'Evidence Package'
         notifyExportWritten('Export written', `${kind} · ${filePath}`, filePath)
         if (!mounted.current) return
         setClosing(true)

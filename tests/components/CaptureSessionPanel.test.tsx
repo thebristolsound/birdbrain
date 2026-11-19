@@ -8,13 +8,17 @@ import type {
   LaunchedBrowserStatus,
   LaunchedBrowserSummary
 } from '@shared/types'
+import { queryKeys } from '@renderer/lib/api/keys'
 import { useAppStore } from '@renderer/stores/appStore'
 import { fakeBridge } from '../renderer/fakeBridge'
 
 const navigate = vi.hoisted(() => vi.fn())
+// The Case the route shows, or none where the screen has no Case.
+const route = vi.hoisted(() => ({ caseId: 'case-1' as string | undefined }))
 
 vi.mock('@tanstack/react-router', () => ({
-  useNavigate: () => navigate
+  useNavigate: () => navigate,
+  useParams: () => ({ caseId: route.caseId })
 }))
 
 import {
@@ -91,6 +95,7 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] })
   vi.setSystemTime(NOW)
   navigate.mockClear()
+  route.caseId = 'case-1'
   useAppStore.setState({
     sessionActive: true,
     stopConfirmOpen: false,
@@ -105,16 +110,34 @@ afterEach(() => {
 })
 
 describe('the Capture Session panel while the browser is open', () => {
-  it('names the browser, its Egress and its Case under a running clock', async () => {
+  it('names the browser and its Egress under a running clock', async () => {
     mount()
     expect(await screen.findByText('Launched Google Chrome')).toBeTruthy()
     expect(await screen.findByText('Proxy · Harbor relay')).toBeTruthy()
-    expect(await screen.findByText('Into Ferry Line')).toBeTruthy()
     expect(screen.getByRole('timer').textContent).toBe('00:42')
     act(() => {
       vi.advanceTimersByTime(1_000)
     })
     expect(screen.getByRole('timer').textContent).toBe('00:43')
+  })
+
+  it.each(['rail', 'overlay'] as const)(
+    'says "Into this Case" in the %s on the Case the browser captures into',
+    async (form) => {
+      const { client } = mount({ form })
+      expect(await screen.findByText('Into this Case')).toBeTruthy()
+      // With the Cases loaded, the name is still not repeated.
+      await act(() => client.refetchQueries({ queryKey: queryKeys.cases }))
+      expect(client.getQueryData(queryKeys.cases)).toEqual([FERRY])
+      expect(screen.queryByText(/Ferry Line/)).toBeNull()
+    }
+  )
+
+  it("names the Case on another Case's screen", async () => {
+    route.caseId = 'case-2'
+    mount()
+    expect(await screen.findByText('Into Ferry Line')).toBeTruthy()
+    expect(screen.queryByText('Into this Case')).toBeNull()
   })
 
   it('names a Direct Egress', async () => {
@@ -236,6 +259,18 @@ describe('popping the panel out (`1g`)', () => {
 })
 
 describe('the popover form', () => {
+  it('names the Case, since no Case is on screen where it shows', async () => {
+    route.caseId = undefined
+    mount({ form: 'popover' })
+    expect(await screen.findByText('Into Ferry Line')).toBeTruthy()
+  })
+
+  it('names the Case whatever the route says', async () => {
+    mount({ form: 'popover' })
+    expect(await screen.findByText('Into Ferry Line')).toBeTruthy()
+    expect(screen.queryByText('Into this Case')).toBeNull()
+  })
+
   it('counts the tabs instead of listing them', async () => {
     mount({ form: 'popover' })
     expect(await screen.findByText('2 tabs')).toBeTruthy()
@@ -263,7 +298,7 @@ describe('the window form, in the pop-out', () => {
     expect(screen.getByRole('timer').textContent).toBe('00:42')
     expect(screen.getByRole('button', { name: 'Stop…' })).toBeTruthy()
     expect(screen.queryByRole('list', { name: 'Tabs' })).toBeNull()
-    expect(screen.queryByText('Into Ferry Line')).toBeNull()
+    expect(screen.queryByText(/^Into /)).toBeNull()
   })
 
   it('offers no Launch again…, since the start dialog is the main window’s', async () => {
@@ -328,7 +363,7 @@ describe('state 11 and the other notices', () => {
     expect(within(status).getByText('Browser closed: traffic went around the proxy')).toBeTruthy()
     expect(within(status).getByText('The Capture Session ended.')).toBeTruthy()
     expect(within(status).getByRole('img').getAttribute('title')).toBe(notice.message)
-    await waitFor(() => expect(screen.queryByText('Into Ferry Line')).toBeNull())
+    await waitFor(() => expect(screen.queryByText(/^Into /)).toBeNull())
     fireEvent.click(within(status).getByRole('button', { name: 'Dismiss' }))
     expect(useAppStore.getState().dismissedLaunchNotice).toEqual(notice)
     expect(screen.queryByRole('status')).toBeNull()

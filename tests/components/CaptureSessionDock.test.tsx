@@ -9,7 +9,8 @@ import { fakeBridge } from '../renderer/fakeBridge'
 import { stubResizeObserver, stubResizeObserverWithWidth } from './resizeObserverStub'
 
 vi.mock('@tanstack/react-router', () => ({
-  useNavigate: () => vi.fn()
+  useNavigate: () => vi.fn(),
+  useParams: () => ({ caseId: 'case-1' })
 }))
 
 import {

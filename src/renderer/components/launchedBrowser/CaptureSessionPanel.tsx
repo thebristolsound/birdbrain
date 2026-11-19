@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { useNavigate } from '@tanstack/react-router'
+import { useNavigate, useParams } from '@tanstack/react-router'
 import type {
   LaunchedBrowserNotice,
   LaunchedBrowserSummary,
@@ -199,7 +199,7 @@ function BrowserBody({
             </>
           )}
         </div>
-        {!inPopOut && <div className="text-text-muted">Into {caseName}</div>}
+        {!inPopOut && <IntoCase form={form} caseId={caseId} caseName={caseName} />}
         {kind === 'closing' && <div className="text-text-muted">Closing {name}…</div>}
       </div>
       {extensionWarnings.length > 0 && (
@@ -218,6 +218,23 @@ function BrowserBody({
       )}
     </div>
   )
+}
+
+// Where Captures go. The Case on screen is already named there, so it is "this Case". The popover
+// shows where no Case is on screen, and another Case's screen is not the browser's, so both name
+// the Case.
+function IntoCase({
+  form,
+  caseId,
+  caseName
+}: {
+  form: PanelForm
+  caseId: string
+  caseName: string
+}) {
+  const { caseId: onScreen } = useParams({ strict: false }) as { caseId?: string }
+  const here = form !== 'popover' && onScreen === caseId
+  return <div className="text-text-muted">Into {here ? 'this Case' : caseName}</div>
 }
 
 // "Open ‹Case›", which only the dashboard's popover offers.

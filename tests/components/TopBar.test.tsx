@@ -28,7 +28,10 @@ function matchRoute({ to, fuzzy }: { to: string; fuzzy?: boolean }) {
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => navigate,
   useRouter: () => ({ history: { back: vi.fn() } }),
-  useMatchRoute: () => matchRoute
+  useMatchRoute: () => matchRoute,
+  // The panel in the popover asks which Case is on screen; the screens these tests open it on
+  // have none.
+  useParams: () => ({})
 }))
 vi.mock('@renderer/hooks/useUpdateStatus', () => ({
   useUpdateStatus: () => ({ status: null })

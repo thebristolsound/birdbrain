@@ -283,11 +283,13 @@ function CaptureMenu({ caseId, recording, into }: CaptureMenuProps) {
   const busy = busyRefusal(launched)?.title
   // Stopping the session closes a launched browser, which its own panel asks about first. This
   // Stop asks nothing, so it waits until the launched browser's state is read and shows none
-  // starting. A read that failed does not hold it: the session must stay stoppable.
-  const stopHeld =
-    launched === undefined && !launchedUnreadable
+  // starting. A read that failed does not hold it, whatever an earlier read left in the cache:
+  // the session must stay stoppable.
+  const stopHeld = launchedUnreadable
+    ? undefined
+    : launched === undefined
       ? "Reading the launched browser's state"
-      : launched?.state === 'starting'
+      : launched.state === 'starting'
         ? 'A launched browser is starting'
         : undefined
   const notice = view.kind === 'notice' ? view.notice : null

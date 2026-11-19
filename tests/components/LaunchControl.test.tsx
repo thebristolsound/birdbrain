@@ -772,6 +772,35 @@ describe("the capture control during the extension's session", () => {
     expect(stop.getAttribute('title')).toBeNull()
   })
 
+  // A later read that fails leaves the earlier answer in the cache. Stop must not stay held on it.
+  it('leaves Stop usable when a read fails after one that said a browser was starting', async () => {
+    let reads = 0
+    const { client } = recording({
+      readStatus: async () => {
+        reads += 1
+        if (reads > 1) throw new Error('ipc closed')
+        return { state: 'starting', browser: BROWSER, step: 'browser' }
+      }
+    })
+    await waitFor(() =>
+      expect(client.getQueryData(queryKeys.launchedBrowserStatus)).toMatchObject({
+        state: 'starting'
+      })
+    )
+    await act(async () => {
+      await client.refetchQueries({ queryKey: queryKeys.launchedBrowserStatus })
+    })
+    const state = client.getQueryState<LaunchedBrowserStatus>(queryKeys.launchedBrowserStatus)
+    expect(state?.status).toBe('error')
+    expect(state?.data?.state).toBe('starting')
+    openMarkMenu()
+    // The query tells its readers on a later tick.
+    await waitFor(() =>
+      expect(isDisabledItem(screen.getByTestId('launch-control-stop'))).toBe(false)
+    )
+    expect(screen.getByTestId('launch-control-stop').getAttribute('title')).toBeNull()
+  })
+
   it('opens on Stop from the keyboard', async () => {
     recording()
     screen.getByTestId('topbar-capture-session').focus()

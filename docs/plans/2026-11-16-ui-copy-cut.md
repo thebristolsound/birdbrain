@@ -367,16 +367,16 @@ the index in `docs/design-handoff/README.md` (decision 1) and moves any text mar
 - [ ] **C3. Dashboard, new Case and Overview.**
 - [ ] **C4. Onboarding tour.** Twelve steps to nine, and the two false statements corrected.
   `e2e/onboarding-tour.spec.ts` and `tests/renderer/tourSteps.test.ts` follow.
-- [ ] **C5. Launch dialog and VPN warning.** Removes the dialog's three `InfoTip`s, so it does
-  not wait for C0. Lands with slices 3.1 and 3.2 of the consolidation plan. Slice 3.2 amends
-  ADR-0032 and so carries the shortened warning.
+- [x] **C5. Launch dialog and VPN warning.** Shipped in #2239. Removes the dialog's three
+  `InfoTip`s, so it does not wait for C0. Lands with slices 3.1 and 3.2 of the consolidation
+  plan. Slice 3.2 amends ADR-0032 and so carries the shortened warning.
 - [ ] **C6. Captures and the delete dialog.** `evidence-affecting`: `WaybackPanel.tsx` and
   `LinksTab.tsx` are `blocking`.
 - [ ] **C7. Capture Session panel.** After C0. `evidence-affecting`: three of its files are
   `blocking`.
-- [ ] **C8. Export dialog.** `evidence-affecting`. Lands with slices 4.1 and 4.2 of the
-  consolidation plan, so the dialog's wording changes once. The two descriptions are
-  decision 5.
+- [x] **C8. Export dialog.** Shipped in #2239. `evidence-affecting`. Lands with slices 4.1 and
+  4.2 of the consolidation plan, so the dialog's wording changes once. The two descriptions
+  are decision 5.
 
 C1 to C4 touch no `blocking` file. C1, C3 and C4 wait for nothing; C2 needs C0, for the tip on
 "Rescan all captures". C4 is worth doing first: it corrects two untrue statements in the

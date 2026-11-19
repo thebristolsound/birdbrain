@@ -62,36 +62,26 @@ behind `main` in these places:
 | Open question 2 of the parent plan: what the Data screen's two Verify buttons say | Slice 1.5 |
 | A ruling on the next tranche's verdicts, once the copy cut plan has them | Copy slices for Settings, Sharing, Data and the extension's pages |
 | The two open points under "Raised in review" in the copy cut plan: the scrolling line and the tour's Selector sentence | One row each of C7 and C4 |
-| Whether the launch dialog asks about the VPN warning again when Launch is pressed (slice 3.2 in the phase 3 plan) | That one point of slice 3.2 |
+| Whether the launch dialog keeps asking about the VPN warning again when Launch is pressed. #2239 builds it that way, which keeps the check a launch made when Launch was pressed; the phase 3 plan leaves the point to the maintainer | Nothing |
 | Whether the Investigate view keeps its panes at the default 1,200 pixel window: beside the 72 pixel rail it has 1,128 pixels, under the 1,140 of `TABS_BELOW_WIDTH`, so it shows tabs | Nothing. The review of #2231 raised it |
 
 Apart from those two rows, nothing in the copy cut's first tranche waits for the maintainer.
 
 ## What can start now
 
-Consolidation slices that wait for nothing:
+#2239 builds every consolidation slice that waited for nothing: 1.1, 1.2, 1.4, 1.6, 2.3, 2.4,
+3.1, 3.2, 4.1, 4.2, 5.1b, 7.1, 7.3 and 7.4, with the dashboard's label from 4.3. "The remaining
+slices, in one pull request" below says what it found. What is left of the consolidation:
 
-| Slice | What | Note |
+| Slice | What | Waits for |
 | --- | --- | --- |
-| 1.1 | Faint text to 4.5:1 on dark surfaces | Styling |
-| 1.2 | Export dialog: fixed footer, unfilled notices | `evidence-affecting` |
-| 1.4 | Recapture out of the add menu | Confirm `CaptureMenu.tsx`'s tier first |
-| 1.6 | One browser shown as text in the launch dialog | |
-| 2.4 | "Into this Case" in the panel | |
-| 3.1 | Operator name field in the launch dialog | `evidence-affecting` |
-| 3.2 | One VPN statement per launch | Amends ADR-0032 in the same pull request. One point of it is open, in the table above |
-| 4.1 | Ruled nouns, file types, one icon | `evidence-affecting` |
-| 5.1b | The Download menu on the shared component | `evidence-affecting` |
-| 7.1 | Capture details open on a summary | Outer section only |
-| 7.4 | Auto-capture switch to Settings | Low priority |
+| 1.5 | The scope on the Data screen's two Verify buttons | Open question 2 of the parent plan |
+| 7.2 | A count of Selector matches on each list row | Review pass 3 of `2026-11-15-unreviewed-surfaces-review-passes.md` |
+| 7.1, the inner sections | Identity and Capture environment folding on their own | The maintainer asking for it: it edits `ForensicsTab.tsx`, so it is `evidence-affecting` |
+| 0.1 | The feasibility assessment of the bundle | Nothing. The bundle is ruled on, so the assessment would record what was built |
 
-Slices 5.1a, 2.1, 2.2 and 6.1 are not in the table because they have merged, and slice 1.3 is
-not because the stack leaves it out: "Progress on the chrome slices" has both. Slice 7.2 waits
-for review pass 3 of `2026-11-15-unreviewed-surfaces-review-passes.md`, whose assessment says
-whether the slice goes ahead as written.
-
-Since decision 7, slices 2.3, 4.2 to 4.4 and 7.3 can start too. Slices 5.2 to 5.5 have
-merged, as #2231 to #2234, and slice 5.6 is #2235.
+Slice 1.3 is not built and nothing replaces it: slice 5.4 removed the button it changes. Slice
+3.3 has nothing left to build, because the copy cut removed the launch dialog's tips.
 
 Copy cut slices:
 
@@ -99,13 +89,13 @@ Copy cut slices:
 | --- | --- | --- |
 | C0 | A tip that opens on focus | No string changes |
 | C1 | Notes | |
-| C2 | Signals | After C0, for one tip. With slice 7.4 if it has not landed |
-| C3 | Dashboard, new Case and Overview | |
+| C2 | Signals | After C0, for one tip. Slice 7.4 has moved the switch and its one line |
+| C3 | Dashboard, new Case and Overview | Slice 7.3 has removed the Selectors input and its placeholder |
 | C4 | The onboarding tour | Corrects two untrue statements. A good first slice |
-| C5 | Launch dialog and VPN warning | With slices 3.1 and 3.2 |
+| C5 | Launch dialog and VPN warning | Shipped in #2239 |
 | C6 | Captures and the delete dialog | `evidence-affecting`: `WaybackPanel.tsx` and `LinksTab.tsx` are `blocking` |
 | C7 | Capture Session panel | After C0. `evidence-affecting` |
-| C8 | Export dialog | `evidence-affecting`. With slices 4.1 and 4.2 |
+| C8 | Export dialog | Shipped in #2239 |
 
 ## Progress on the chrome slices
 
@@ -125,7 +115,7 @@ button it changes.
 | 5.3 | `feat/chrome-5.3-case-menu` | #2232 | Merged on 2026-11-18 as `c1099fab`. The third review passed at `4ec8808e` with five findings, none blocking, after two fix rounds |
 | 5.4 | `feat/chrome-5.4-launch-control` | #2233 | Merged on 2026-11-18 as `d6517289`. The second review passed at `784998ed` with six findings, none blocking, after one fix round |
 | 5.5 | `feat/chrome-5.5-one-row` | #2234 | Merged on 2026-11-19 as `674089e7`. The third review passed at `c16de79f` with six findings, none blocking, after two fix rounds |
-| 5.6 | `feat/chrome-5.6-docs` | #2235 | Next for review, based on `main`, with fixes for the last review of #2234 as commits `eb3dbd94` and `6559ebcc` |
+| 5.6 | `feat/chrome-5.6-docs` | #2235 | Merged on 2026-11-19 as `54709f3e`, under the maintainer's override label |
 
 Each draft's base is the branch below it in the stack, so its diff is its slice alone. A pushed
 branch only gains commits: when a lower branch gains a fix, merge it up through each branch above
@@ -279,17 +269,45 @@ What the slices found that the plans did not say:
   and the session start; Paste URLs is held the same way. No slice here changes it and no
   issue is filed for it.
 
-The stack is complete through 5.6. What is left of phase 5:
+The stack is complete through 5.6, and #2235 merged it. Slice 5.1b, the Download menu on the
+shared component, is in #2239, which ticks slice 5.1 in the parent plan.
 
-- Slice 5.1b, the Download menu on the shared component. It edits a `blocking` file, so it is
-  its own `evidence-affecting` pull request and is not in the stack.
-- The design bundle and its row in `docs/design-handoff/README.md`. The maintainer approved
-  the drafted wording in a Claude Code session on 2026-11-17, and commit `3a180c85` on the 5.6
-  branch adds the bundle as `docs/design-handoff/2026-11-17-one-row-chrome/` with the row.
-  The row links the phase 0 plan and cites decision 7 of the parent plan. Both reached `main`
-  with #2236, which merged on 2026-11-18 as `ac5509be` under the maintainer's override label.
-- The parent plan's check boxes. The 5.6 branch ticks slices 2.1, 2.2, 5.2 to 5.6 and 6.1.
-  Slice 5.1 stays open until 5.1b merges.
+## The remaining slices, in one pull request
+
+#2239 holds the slices listed under "What can start now", one or more commits per slice. It
+edits two `blocking` files, `ExportDialog.tsx` and `CaptureDownloadMenu.tsx`, and adds a second
+place that writes the Operator name, so it carries the `evidence-affecting` label.
+
+What the slices found that the plans did not say:
+
+- The end-to-end window opens 900 pixels wide, where the details panel is folded to its rail.
+  A spec that needs a control inside the panel sets a wider viewport first, as
+  `e2e/recapture.spec.ts` now does.
+- The test switch for the VPN check always gives a router address, so no spec can reach a
+  network that cannot be muted. The unit tests cover that state.
+- The paste dialog takes about 640 milliseconds to leave after Escape. A script that clicks
+  behind it sooner clicks the closing overlay.
+- Two commits prove an unchanged hand-over by their order: the test lands first, against the
+  code as it was, and the change lands after it with the test unedited. The known-answer cases
+  for the Export dialog's selections and the hand-over test for the Download menu both do this.
+- The known-answer fixture Case holds no annotation, so a selection with burned annotations and
+  one without write the same bytes there. The three cases added for the dialog's selections pin
+  the selections as submitted, not the effect of that one option.
+- Slice 7.1 needs a default in `src/main/services/settings.ts`, which the phase 7 plan's file
+  list leaves out. It is the only file under `src/main/` that #2239 changes.
+- Slice 2.3's detail plan expects a wider viewer at 1,440 pixels than on `main`. It is not
+  wider: on `main` the details panel folded to its rail at that width while the session rail
+  was docked, and the one right panel now stays open beside the viewer. The spec asserts four
+  columns and a viewer of at least 480 pixels.
+- The launch dialog's button reads "Launch without VPN" while a warning is due, also when the
+  launch joins a running Capture Session, so that state no longer says it joins one.
+- On the Overview, a Tag with no use in the Case no longer shows, and a Selector that is
+  switched off is dimmed with nothing on that screen to say why.
+- `useSelectorsMutations().update` has no caller under `src/` since the Overview stopped
+  toggling Selectors.
+- The extension's pages still use `#71717a` for faint text. Slice 1.1 changed the app only.
+- "Check the proxy in Settings → Operator." in `startDialogModel.ts` still names the wrong tab.
+  The copy cut plan leaves that string alone.
 
 ## Slices that share a file
 
@@ -297,14 +315,14 @@ Land these in the order given, or as one pull request where the plan says so.
 
 | File | Slices, in order |
 | --- | --- |
-| `StartDialog.tsx` | 1.6, then 3.1, then 3.2 with C5. Slice 3.3 has nothing left to do: copy decision 4 removes the dialog's tips |
-| `ExportDialog.tsx` | 1.2, then 4.1 with C8's wording, then 4.2 |
+| `StartDialog.tsx` | 1.6, 3.1 and 3.2 with C5 are in #2239. Slice 3.3 has nothing left to do: copy decision 4 removes the dialog's tips |
+| `ExportDialog.tsx` | 1.2, 4.1 and 4.2 with C8's wording are in #2239 |
 | `TopBar.tsx` | 2.1, which has merged, then 5.2, 5.3 and 5.4. Slice 1.3 is left out |
 | `SessionControls.tsx` | 2.2, which has merged, then 5.5, which deletes it |
-| `CaptureMenu.tsx` | 5.1a, which has merged, then 1.4 |
-| `AutoCaptureCard.tsx`, `SignalsOverview.tsx` | 7.4 with C2 |
+| `CaptureMenu.tsx` | 5.1a, which has merged, then 1.4, in #2239 |
+| `AutoCaptureCard.tsx`, `SignalsOverview.tsx` | 7.4, in #2239, then C2 |
 | `tourSteps.ts` | C4, then 7.4 and 5.3 move their anchors |
-| `CaptureSessionPanel.tsx`, `CaptureControl.tsx` | 2.4, then C7 after C0 |
+| `CaptureSessionPanel.tsx`, `CaptureControl.tsx` | 2.4, in #2239, then C7 after C0 |
 
 ## Rules for every pull request
 

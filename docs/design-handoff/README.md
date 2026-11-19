@@ -19,7 +19,7 @@ Extracted design-handoff bundles from the claude.ai prototype loop, kept byte-fa
 
 The 2026-08-21 standalone is the single design source by maintainer ruling, except where a later
 bundle's row in the table names what it supersedes. The 2026-11-17 bundle is the first to do so.
-It ships packed, so read its README before you grep it. The prose documents the standalone does
+The standalone ships packed, so read its README before you grep it. The prose documents it does
 not carry (`HANDOFF.md`, `MOTION.md`, `IMPLEMENTATION_GUIDE.md`, `ENGINEERING_REVIEW.md`,
 `SCREEN_NOTES.md`, `github.md`) now sit in the 2026-09-14 export, which mirrors the V2 bundle
 from the `prototype/design-handoff-2026-08` branch.

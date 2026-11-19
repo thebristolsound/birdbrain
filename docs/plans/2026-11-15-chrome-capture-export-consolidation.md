@@ -372,7 +372,8 @@ Decision 7 ruled on the bundle from 0.1 and answered open question 1, so no slic
 phase waits. Decisions 1 and 4 fix the Case menu's contents and the primary control's name.
 
 - [ ] **5.1 A shared menu component (C5).** Slice 5.1a shipped in #2227: the component, with
-  `ExportMenu.tsx` and `CaptureMenu.tsx` on it. `CaptureDownloadMenu.tsx` is slice 5.1b and is open.
+  `ExportMenu.tsx`, `CaptureMenu.tsx` and the Capture actions menu in `CaptureDetailsPanel.tsx` on
+  it. Only `CaptureDownloadMenu.tsx` is left, as slice 5.1b. The slice as first written:
   `src/renderer/components/ui/menu.tsx` on the dropdown menu `radix-ui` already ships.
   `ExportMenu.tsx`, `CaptureDownloadMenu.tsx`, `CaptureMenu.tsx` and the Capture actions menu in
   `CaptureDetailsPanel.tsx` move to it, which also answers #938. Can land before the bundle: it

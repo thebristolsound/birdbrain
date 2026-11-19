@@ -72,7 +72,6 @@ async function queueUrl(page: Page, caseName: string, url: string): Promise<stri
     window.location.hash = `/cases/${id}/captures`
   }, caseId)
   await page.click('[data-testid="capture-menu-btn"]')
-  await page.click('[data-testid="capture-menu-paste-urls"]')
   await page.waitForSelector('[data-testid="add-urls-input"]', { timeout: 10000 })
   await page.fill('[data-testid="add-urls-input"]', url)
   await page.click('[data-testid="add-urls-submit"]')
@@ -150,9 +149,8 @@ test.describe('Recapture (background capture)', () => {
     await page.evaluate((id) => {
       window.location.hash = `/cases/${id}/captures`
     }, caseId)
-    // The paste-URLs box now lives in the top-bar Capture menu dialog.
+    // The add button above the capture list opens the paste-URLs dialog.
     await page.click('[data-testid="capture-menu-btn"]')
-    await page.click('[data-testid="capture-menu-paste-urls"]')
     await page.waitForSelector('[data-testid="add-urls-input"]', { timeout: 10000 })
     await page.fill('[data-testid="add-urls-input"]', `${baseUrl}/page`)
     await page.click('[data-testid="add-urls-submit"]')
@@ -201,13 +199,15 @@ test.describe('Recapture (background capture)', () => {
     }, capture.id)
     expect(verification.status).toBe('verified')
 
-    // Recapture the capture itself → linked sibling. Recapture now lives in the
-    // top-bar Capture menu; it targets the currently selected capture.
+    // Recapture the capture itself → linked sibling. Recapture is in the selected
+    // capture's own menu, in the details panel, which is folded to its rail at the
+    // launch window's width.
+    await page.setViewportSize({ width: 1280, height: 800 })
     await page.getByTestId('capture-item').filter({ hasText: 'Recapture Fixture' }).first().click()
-    await page.click('[data-testid="capture-menu-btn"]')
-    await page.click('[data-testid="recapture-btn"]')
-    // While the background job runs, the button reflects the in-flight state
-    // (driven by the recapture 'received' event, not the enqueue IPC).
+    await page.click('[data-testid="capture-details-actions-btn"]')
+    await page.click('[data-testid="capture-details-recapture-btn"]')
+    // While the background job runs, the list header says so (driven by the
+    // recapture 'received' event, not the enqueue IPC).
     await expect(page.getByTestId('recapture-in-progress')).toBeVisible({ timeout: 8000 })
     await expect(page.locator('[data-testid="supersedes-link-recapture"]')).toBeVisible({
       timeout: 60000

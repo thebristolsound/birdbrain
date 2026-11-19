@@ -63,7 +63,6 @@ async function openCaptures(page: Page, caseId: string): Promise<void> {
 
 async function submitUrl(page: Page, url: string): Promise<void> {
   await page.click('[data-testid="capture-menu-btn"]')
-  await page.click('[data-testid="capture-menu-paste-urls"]')
   await page.fill('[data-testid="add-urls-input"]', url)
   await page.click('[data-testid="add-urls-submit"]')
 }

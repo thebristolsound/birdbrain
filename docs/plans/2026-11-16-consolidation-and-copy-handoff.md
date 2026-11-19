@@ -124,8 +124,8 @@ button it changes.
 | 5.2 | `feat/chrome-5.2-labelled-rail` | #2231 | Merged on 2026-11-18 as `8c7f99d6`. The review passed at `c08d4869` with fourteen findings, none blocking |
 | 5.3 | `feat/chrome-5.3-case-menu` | #2232 | Merged on 2026-11-18 as `c1099fab`. The third review passed at `4ec8808e` with five findings, none blocking, after two fix rounds |
 | 5.4 | `feat/chrome-5.4-launch-control` | #2233 | Merged on 2026-11-18 as `d6517289`. The second review passed at `784998ed` with six findings, none blocking, after one fix round |
-| 5.5 | `feat/chrome-5.5-one-row` | #2234 | Next for review, based on `main`, with the fix for the last review of #2233 as commit `a3d0ace8` |
-| 5.6 | `feat/chrome-5.6-docs` | #2235 | Draft, based on the 5.5 branch |
+| 5.5 | `feat/chrome-5.5-one-row` | #2234 | Merged on 2026-11-19 as `674089e7`. The third review passed at `c16de79f` with six findings, none blocking, after two fix rounds |
+| 5.6 | `feat/chrome-5.6-docs` | #2235 | Next for review, based on `main`, with fixes for the last review of #2234 as commits `eb3dbd94` and `6559ebcc` |
 
 Each draft's base is the branch below it in the stack, so its diff is its slice alone. A pushed
 branch only gains commits: when a lower branch gains a fix, merge it up through each branch above
@@ -261,6 +261,23 @@ What the slices found that the plans did not say:
 - `Menu` swaps its trigger when a control changes state, as the capture control does between
   Launch browser and the recording mark. The button that held focus is unmounted, so the
   control moves focus to the button that replaced it.
+- The second review of #2234 blocked on a description sentence that said a failed start or
+  stop shows the Operator nothing. `MutationCache.onError` in `src/renderer/lib/queryClient.ts`
+  raises a toast for every failed mutation, and a unit test that builds its own query client
+  does not show it. Before a description says something does not happen, trace it through the
+  app's shared handlers.
+- A closing keyword directly before an issue's number closes that issue at the merge, even in
+  a sentence that says the pull request does not close it. The description of #2234 had such
+  a sentence, the merge closed #814, and it was reopened with a comment. #814 stays open for
+  three states where the recording mark shows and Stop is held: the launched browser's state
+  is being read, a launched browser is starting, and one is closing.
+- A query keeps its earlier answer when a later read fails. A control held on that answer
+  has to look at the failure first, as `stopHeld` in `LaunchControl.tsx` does since commit
+  `6e296dac`.
+- A held item of the shared menu is skipped by the arrow keys, so its reason, which is a
+  title, cannot be reached from the keyboard. The third review of #2234 raised it for Stop
+  and the session start; Paste URLs is held the same way. No slice here changes it and no
+  issue is filed for it.
 
 The stack is complete through 5.6. What is left of phase 5:
 
@@ -271,8 +288,8 @@ The stack is complete through 5.6. What is left of phase 5:
   branch adds the bundle as `docs/design-handoff/2026-11-17-one-row-chrome/` with the row.
   The row links the phase 0 plan and cites decision 7 of the parent plan. Both reached `main`
   with #2236, which merged on 2026-11-18 as `ac5509be` under the maintainer's override label.
-- The parent plan's check boxes for slices 5.1 to 5.6, 2.1, 2.2 and 6.1, ticked as each pull
-  request merges.
+- The parent plan's check boxes. The 5.6 branch ticks slices 2.1, 2.2, 5.2 to 5.6 and 6.1.
+  Slice 5.1 stays open until 5.1b merges.
 
 ## Slices that share a file
 

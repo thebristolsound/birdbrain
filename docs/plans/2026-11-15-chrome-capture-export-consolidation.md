@@ -295,16 +295,15 @@ Slices 2.1 and 2.2 do not wait for the bundle. They undo part of what #2125 adde
 action bar, so their
 pull requests say so.
 
-- [ ] **2.1 The action bar says recording and for how long, and nothing else (U1).**
-  `RecordingMark.tsx` drops the source text where the session panel is on screen.
+- [x] **2.1 The action bar says recording and for how long, and nothing else (U1).** Shipped in
+  #2228. `RecordingMark.tsx` drops the source text where the session panel is on screen.
   `SessionControls.tsx` drops the Case name and the source line. `CaseActionBar.tsx` hides the
-  disabled Launch browser while a browser is open. `e2e/topbar-layout.spec.ts` expects
-  "Launched Google Chrome" in the mark and a `session-source-line`; both expectations move to
-  the panel.
-- [ ] **2.2 One stop control on screen (U1).** While `CaptureSessionDock` shows the panel, its
-  **Stop** is the only stop control and the Capture Session switch does not render. The switch
-  stays where no panel shows, which today is an extension-only session. There it is also the
-  only control that starts a Capture Session (open question 1, which decision 7 answers).
+  disabled Launch browser while a browser is open. `e2e/topbar-layout.spec.ts` expects "Launched
+  Google Chrome" in the mark and a `session-source-line`; both expectations move to the panel.
+- [x] **2.2 One stop control on screen (U1).** Shipped in #2229. While `CaptureSessionDock` shows
+  the panel, its **Stop** is the only stop control and the Capture Session switch does not render.
+  The switch stays where no panel shows, which today is an extension-only session. There it is also
+  the only control that starts a Capture Session (open question 1, which decision 7 answers).
 - [ ] **2.3 Capture details and the Capture Session share one right panel (U7).** On the
   Captures section, `CaptureSessionDock.tsx` and the details column become two tabs of one
   panel, so the layout stays at four columns. Other sections keep the dock as their only right
@@ -372,41 +371,42 @@ from 0.1 (decision 5), which decision 7 gave. Decision 6 keeps loose files out o
 Decision 7 ruled on the bundle from 0.1 and answered open question 1, so no slice of this
 phase waits. Decisions 1 and 4 fix the Case menu's contents and the primary control's name.
 
-- [ ] **5.1 A shared menu component (C5).** `src/renderer/components/ui/menu.tsx` on the
-  dropdown menu `radix-ui` already ships. `ExportMenu.tsx`, `CaptureDownloadMenu.tsx`,
-  `CaptureMenu.tsx` and the Capture actions menu in `CaptureDetailsPanel.tsx` move to it, which
-  also answers #938. Can land before the bundle: it changes no layout.
-- [ ] **5.2 A labelled rail that holds Settings (H1).** `Sidebar.tsx`: a label under each icon,
-  Settings at the foot with the update dot, the `nav-*` tour anchors kept. `TopBar.tsx` loses
-  the gear.
-- [ ] **5.3 The Case name opens a Case menu (H2, U10).** `TopBar.tsx`: Switch Case, Share or
-  Members, Export, Import Case Archive, Case settings. The command palette keeps its shortcut.
-  The `caseswitcher` and `export` tour anchors and `ShareCoachMark.tsx` move to the new
+- [ ] **5.1 A shared menu component (C5).** Slice 5.1a shipped in #2227: the component, with
+  `ExportMenu.tsx` and `CaptureMenu.tsx` on it. `CaptureDownloadMenu.tsx` is slice 5.1b and is open.
+  `src/renderer/components/ui/menu.tsx` on the dropdown menu `radix-ui` already ships.
+  `ExportMenu.tsx`, `CaptureDownloadMenu.tsx`, `CaptureMenu.tsx` and the Capture actions menu in
+  `CaptureDetailsPanel.tsx` move to it, which also answers #938. Can land before the bundle: it
+  changes no layout.
+- [x] **5.2 A labelled rail that holds Settings (H1).** Shipped in #2231. `Sidebar.tsx`: a label
+  under each icon, Settings at the foot with the update dot, the `nav-*` tour anchors kept.
+  `TopBar.tsx` loses the gear.
+- [x] **5.3 The Case name opens a Case menu (H2, U10).** Shipped in #2232. `TopBar.tsx`: Switch
+  Case, Share or Members, Export, Import Case Archive, Case settings. The command palette keeps its
+  shortcut. The `caseswitcher` and `export` tour anchors and `ShareCoachMark.tsx` move to the new
   targets; `tourSteps.ts` and `e2e/onboarding-tour.spec.ts` follow.
-- [ ] **5.4 One primary capture control in the top bar, on every screen (U4, C4).** At rest it
-  is a filled Launch browser button (decision 4), with a menu for pasting URLs and two status
-  rows,
-  the extension and the Egress. While a Capture Session runs it becomes the recording mark and
-  shows or hides the Capture Session tab. It replaces `CaptureSessionButton.tsx` on the
-  dashboard and in Settings. The menu as listed starts no Capture Session; decision 7,
-  answer 2, adds the item that does, "Start Capture Session in Chrome".
-- [ ] **5.5 Remove the Case action bar (U5, U1).** `CaseActionBar.tsx` and the switch in
-  `SessionControls.tsx` go. The switch is the only control that starts an extension-only
+- [x] **5.4 One primary capture control in the top bar, on every screen (U4, C4).** Shipped in
+  #2233. At rest it is a filled Launch browser button (decision 4), with a menu for pasting URLs and
+  two status rows, the extension and the Egress. While a Capture Session runs it becomes the
+  recording mark and shows or hides the Capture Session tab. It replaces `CaptureSessionButton.tsx`
+  on the dashboard and in Settings. The menu as listed starts no Capture Session; decision 7, answer
+  2, adds the item that does, "Start Capture Session in Chrome".
+- [x] **5.5 Remove the Case action bar (U5, U1).** Shipped in #2234. `CaseActionBar.tsx` and the
+  switch in `SessionControls.tsx` go. The switch is the only control that starts an extension-only
   Capture Session, so the slice lands after 5.4, whose menu takes over that start (decision 7,
   answer 2). An extension-only session stops from the capture control's menu.
   `e2e/topbar-layout.spec.ts` is rewritten for one row.
-- [ ] **5.6 Docs and record.** `tester-guide.mdx` and `features.mdx` describe the new positions.
-  The index in `docs/design-handoff/README.md` gains the bundle's row and notes that it
-  supersedes the 2026-11-08 top bar.
+- [x] **5.6 Docs and record.** Shipped in #2235. `tester-guide.mdx` and `features.mdx` describe the
+  new positions. The index in `docs/design-handoff/README.md` gains the bundle's row and notes that
+  it supersedes the 2026-11-08 top bar.
 
 ### Phase 6: status tiers
 
-- [ ] **6.1 Advisory, problem and nominal look different (U6, A2).** Decision 2 allows it.
-  `statusGroupModel.ts` gains an advisory tier: a VPN not seen, or a failed VPN check, shows
-  as a hollow amber ring in place of its dot (decision 2, as ruled again on 2026-11-17) and
-  adds no icon or word. "Egress unknown" and capture failures keep the icon and
-  the word at every width, so the icon's presence is the signal. The accessible name and the
-  popover are unchanged. ADR-0032 VPN rule 2 is amended in the same pull request.
+- [x] **6.1 Advisory, problem and nominal look different (U6, A2).** Shipped in #2230. Decision 2
+  allows it. `statusGroupModel.ts` gains an advisory tier: a VPN not seen, or a failed VPN check,
+  shows as a hollow amber ring in place of its dot (decision 2, as ruled again on 2026-11-17) and
+  adds no icon or word. "Egress unknown" and capture failures keep the icon and the word at every
+  width, so the icon's presence is the signal. The accessible name and the popover are unchanged.
+  ADR-0032 VPN rule 2 is amended in the same pull request.
 
 ### Phase 7: summary first, and pointers instead of copies
 

@@ -85,8 +85,9 @@ describe('the case chrome', () => {
   })
 
   // The capture control starts and stops the extension's session from its menu
-  // (LaunchControl.test.tsx), so no screen has a session switch.
-  it('has no session switch', async () => {
+  // (LaunchControl.test.tsx), so the top bar holds no switch. That the screen under it holds none
+  // either is e2e/topbar-layout.spec.ts's check.
+  it('holds no session switch in the bar', async () => {
     renderAt('/cases/case1/overview')
     await waitFor(() => expect(screen.getByTestId('topbar-case-name')).toBeTruthy())
     expect(screen.queryByRole('switch')).toBeNull()

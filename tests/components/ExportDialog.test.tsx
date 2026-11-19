@@ -383,6 +383,24 @@ describe('ExportDialog', () => {
     expect(lastOptions(generateReport).outputPath).toBe('Case One_evidence.zip')
   })
 
+  it.each([
+    ['Working Copy', WORKING],
+    ['Case Archive', /^Case Archive/]
+  ])('still leaves Operator notes out after a look at %s and back', async (_name, otherChoice) => {
+    renderDialog()
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Leave out Operator notes' }))
+
+    fireEvent.click(screen.getByLabelText(otherChoice))
+    fireEvent.click(screen.getByLabelText(EVIDENCE))
+
+    expect(
+      screen.getByRole<HTMLInputElement>('checkbox', { name: 'Leave out Operator notes' }).checked
+    ).toBe(true)
+    fireEvent.click(screen.getByText('Export'))
+    await waitFor(() => expect(generateReport).toHaveBeenCalledTimes(1))
+    expect(lastSelection(generateReport)).toEqual(WITHOUT_NOTES_SELECTION)
+  })
+
   it('offers the checkbox under the Evidence Package only while it is the chosen choice', () => {
     renderDialog()
 

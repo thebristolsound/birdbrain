@@ -1651,6 +1651,7 @@ export const BirdbrainSettingsSchema = z.object({
     .default('captures'),
   hasCompletedOnboarding: z.boolean().optional().default(false),
   detailsPanelCollapsed: z.boolean().optional().default(false),
+  custodySectionOpen: z.boolean().optional().default(false),
   tooltipsSeen: z.record(z.string(), z.boolean()).optional().default({}),
   // Coach-mark tour state (#404). `onboardingChapters` records which chapters
   // have run so none auto-fires twice; `isFreshInstall` is latched once at

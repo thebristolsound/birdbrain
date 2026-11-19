@@ -4,13 +4,13 @@ import type { Mock } from 'vitest'
 import { act, render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
-import type { Capture } from '@shared/types'
+import type { BirdbrainSettings, Capture } from '@shared/types'
 
-// The panel's own chrome is what is under test. The custody section, the tag
-// popover and the inline note editor each drag in their own data graph and
-// contribute nothing to the actions menu.
+// The panel's own chrome is what is under test. The custody section's body, the
+// tag popover and the inline note editor each drag in their own data graph and
+// contribute nothing to it.
 vi.mock('@renderer/components/captures/ForensicsTab', () => ({
-  ForensicsTab: () => null
+  ForensicsTab: () => <div data-testid="forensics-tab-stub" />
 }))
 vi.mock('@renderer/components/captures/TagEditorPopover', () => ({
   TagEditorPopover: () => null
@@ -23,12 +23,13 @@ vi.mock('@renderer/components/notes/useNoteEditor', () => ({
 }))
 
 import { CaptureDetailsPanel } from '@renderer/components/captures/CaptureDetailsPanel'
+import { queryKeys } from '@renderer/lib/api/keys'
 import { settleVpnWarning, useVpnWarningStore } from '@renderer/lib/vpnWarning'
 import { fakeBridge } from '../renderer/fakeBridge'
 import { stubMatchMedia } from './matchMediaStub'
 import { pinNonUtcTimeZone } from './timeZoneStub'
 import { MAC_PLATFORM, restorePlatform, stubPlatform } from '../renderer/platformStub'
-import { isDisabledItem, press } from './menuKeys'
+import { isDisabledItem, nextTurn, press } from './menuKeys'
 
 const capture: Capture = {
   id: 'cap1',
@@ -47,15 +48,22 @@ let onCopyHash: Mock<() => void>
 let onDuplicate: Mock<() => void>
 let onOpenExternal: Mock<() => void>
 let toggleFavorite: Mock<(captureId: string) => Promise<boolean>>
+// What settings.json holds. A write changes it and the next read returns it, as main does.
+let stored: Partial<BirdbrainSettings>
+let settingsGet: Mock<() => Promise<Partial<BirdbrainSettings>>>
+let settingsUpdate: Mock<
+  (partial: Partial<BirdbrainSettings>) => Promise<Partial<BirdbrainSettings>>
+>
+let client: QueryClient
 
-function renderPanel(
-  props: { isDuplicating?: boolean; onDelete?: () => void; capture?: Capture } = {}
-) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  function Wrapper({ children }: { children: ReactNode }) {
-    return <QueryClientProvider client={client}>{children}</QueryClientProvider>
-  }
-  return render(
+interface PanelProps {
+  isDuplicating?: boolean
+  onDelete?: () => void
+  capture?: Capture
+}
+
+function panel(props: PanelProps = {}) {
+  return (
     <CaptureDetailsPanel
       capture={props.capture ?? capture}
       caseId="case1"
@@ -67,9 +75,24 @@ function renderPanel(
       isDuplicating={props.isDuplicating ?? false}
       onDelete={props.onDelete ?? vi.fn()}
       onOpenAddNote={vi.fn()}
-    />,
-    { wrapper: Wrapper }
+    />
   )
+}
+
+function renderPanel(props: PanelProps = {}) {
+  client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const mounted = client
+  function Wrapper({ children }: { children: ReactNode }) {
+    return <QueryClientProvider client={mounted}>{children}</QueryClientProvider>
+  }
+  return render(panel(props), { wrapper: Wrapper })
+}
+
+// The settings read has settled, and the panel has rendered what it returned. A check that the
+// section is closed means nothing before this.
+async function settingsSettled(): Promise<void> {
+  await waitFor(() => expect(client.getQueryState(queryKeys.settings)?.status).not.toBe('pending'))
+  await nextTurn()
 }
 
 beforeEach(() => {
@@ -79,10 +102,17 @@ beforeEach(() => {
   onDuplicate = vi.fn()
   onOpenExternal = vi.fn()
   toggleFavorite = vi.fn(async () => true)
+  stored = { custodySectionOpen: false }
+  settingsGet = vi.fn(async () => ({ ...stored }))
+  settingsUpdate = vi.fn(async (partial) => {
+    stored = { ...stored, ...partial }
+    return { ...stored }
+  })
   fakeBridge({
     notes: { list: vi.fn(async () => []) },
     tags: { list: vi.fn(async () => []), getForCapture: vi.fn(async () => []) },
-    captures: { listFavorites: vi.fn(async () => []), toggleFavorite }
+    captures: { listFavorites: vi.fn(async () => []), toggleFavorite },
+    settings: { get: settingsGet, update: settingsUpdate }
   })
 })
 
@@ -243,6 +273,155 @@ describe('CaptureDetailsPanel actions menu from the keyboard', () => {
     await press('Escape')
     expect(screen.queryByRole('menu')).toBeNull()
     await waitFor(() => expect(document.activeElement).toBe(trigger))
+  })
+})
+
+describe('CaptureDetailsPanel Chain of custody section', () => {
+  function heading(): HTMLElement {
+    return screen.getByTestId('custody-section-toggle')
+  }
+
+  function body(): HTMLElement | null {
+    return screen.queryByTestId('custody-section-body')
+  }
+
+  it('starts closed on an installation that has stored no choice', async () => {
+    renderPanel()
+    await settingsSettled()
+
+    expect(settingsGet).toHaveBeenCalled()
+    expect(body()).toBeNull()
+    expect(screen.queryByTestId('forensics-tab-stub')).toBeNull()
+    expect(heading().getAttribute('aria-expanded')).toBe('false')
+    expect(screen.getByRole('button', { name: 'Expand chain of custody' })).toBeTruthy()
+    expect(settingsUpdate).not.toHaveBeenCalled()
+  })
+
+  it('starts open on an installation that stored it open', async () => {
+    stored = { custodySectionOpen: true }
+    renderPanel()
+
+    expect(await screen.findByTestId('custody-section-body')).toBeTruthy()
+    expect(screen.getByTestId('forensics-tab-stub')).toBeTruthy()
+    expect(heading().getAttribute('aria-expanded')).toBe('true')
+    expect(screen.getByRole('button', { name: 'Collapse chain of custody' })).toBeTruthy()
+    expect(settingsUpdate).not.toHaveBeenCalled()
+  })
+
+  it('opens and closes from its heading, and writes each choice to settings', async () => {
+    renderPanel()
+    await settingsSettled()
+
+    fireEvent.click(heading())
+    expect(body()).not.toBeNull()
+    expect(screen.getByTestId('forensics-tab-stub')).toBeTruthy()
+    expect(heading().getAttribute('aria-expanded')).toBe('true')
+    await waitFor(() => expect(settingsUpdate).toHaveBeenCalledTimes(1))
+    expect(settingsUpdate).toHaveBeenLastCalledWith({ custodySectionOpen: true })
+
+    fireEvent.click(heading())
+    expect(body()).toBeNull()
+    expect(heading().getAttribute('aria-expanded')).toBe('false')
+    await waitFor(() => expect(settingsUpdate).toHaveBeenCalledTimes(2))
+    expect(settingsUpdate).toHaveBeenLastCalledWith({ custodySectionOpen: false })
+  })
+
+  it('opens and closes from the chevron, and writes each choice to settings', async () => {
+    renderPanel()
+    await settingsSettled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Expand chain of custody' }))
+    expect(body()).not.toBeNull()
+    await waitFor(() => expect(settingsUpdate).toHaveBeenCalledTimes(1))
+    expect(settingsUpdate).toHaveBeenLastCalledWith({ custodySectionOpen: true })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse chain of custody' }))
+    expect(body()).toBeNull()
+    await waitFor(() => expect(settingsUpdate).toHaveBeenCalledTimes(2))
+    expect(settingsUpdate).toHaveBeenLastCalledWith({ custodySectionOpen: false })
+  })
+
+  it('reads the stored choice back the next time the panel mounts', async () => {
+    renderPanel()
+    await settingsSettled()
+    fireEvent.click(heading())
+    await waitFor(() => expect(stored.custodySectionOpen).toBe(true))
+    cleanup()
+
+    renderPanel()
+    expect(await screen.findByTestId('custody-section-body')).toBeTruthy()
+    fireEvent.click(heading())
+    await waitFor(() => expect(stored.custodySectionOpen).toBe(false))
+    cleanup()
+
+    renderPanel()
+    await settingsSettled()
+    expect(body()).toBeNull()
+  })
+
+  it('stays as it was left when another Capture is selected', async () => {
+    const { rerender } = renderPanel()
+    await settingsSettled()
+    fireEvent.click(heading())
+    expect(body()).not.toBeNull()
+
+    rerender(panel({ capture: { ...capture, id: 'cap2' } }))
+    expect(body()).not.toBeNull()
+    expect(heading().getAttribute('aria-expanded')).toBe('true')
+  })
+
+  it('opens at once, and stays open, when the settings write fails', async () => {
+    settingsUpdate.mockRejectedValueOnce(new Error('disk full'))
+    renderPanel()
+    await settingsSettled()
+
+    fireEvent.click(heading())
+    expect(body()).not.toBeNull()
+    await waitFor(() => expect(settingsUpdate).toHaveBeenCalledTimes(1))
+    await nextTurn()
+    expect(body()).not.toBeNull()
+    expect(stored.custodySectionOpen).toBe(false)
+  })
+
+  it('opens when the settings could not be read', async () => {
+    settingsGet.mockRejectedValue(new Error('unreadable'))
+    renderPanel()
+    await settingsSettled()
+    expect(client.getQueryState(queryKeys.settings)?.status).toBe('error')
+    expect(body()).toBeNull()
+
+    fireEvent.click(heading())
+    expect(body()).not.toBeNull()
+    await waitFor(() =>
+      expect(settingsUpdate).toHaveBeenLastCalledWith({ custodySectionOpen: true })
+    )
+  })
+
+  it('re-verifies from its heading while it is closed, and stays closed', async () => {
+    let finish: (result: { status: string }) => void = () => {}
+    const verify = vi.fn(() => new Promise<{ status: string }>((resolve) => (finish = resolve)))
+    window.birdbrain.captures.verify = verify as unknown as typeof window.birdbrain.captures.verify
+    renderPanel()
+    await settingsSettled()
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+    const reverify = screen.getByTestId('forensics-reverify-btn')
+    expect(reverify.textContent).toBe('Re-verify')
+    expect(body()).toBeNull()
+
+    fireEvent.click(reverify)
+
+    await waitFor(() => expect(reverify.textContent).toBe('Verifying…'))
+    expect(verify.mock.calls).toEqual([['cap1']])
+    expect(reverify.hasAttribute('disabled')).toBe(true)
+    expect(body()).toBeNull()
+
+    finish({ status: 'verified' })
+    await waitFor(() => expect(reverify.textContent).toBe('Re-verify'))
+    // The header chip reads the Capture, which this refetch brings up to date.
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.captures('case1') })
+    expect(reverify.hasAttribute('disabled')).toBe(false)
+    expect(body()).toBeNull()
+    expect(settingsUpdate).not.toHaveBeenCalled()
   })
 })
 

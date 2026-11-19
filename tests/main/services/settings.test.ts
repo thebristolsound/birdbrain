@@ -22,6 +22,7 @@ import {
   setLaunchedBrowserExecutable
 } from '@main/services/settings'
 import { DEFAULT_TSA_URL } from '@shared/constants'
+import { PartialBirdbrainSettingsSchema } from '@shared/schemas'
 import { DEFAULT_UI_DENSITY, UI_DENSITIES, type UiDensity } from '@shared/types'
 
 describe('settings', () => {
@@ -908,6 +909,47 @@ describe('settings', () => {
       expect(settings.onboardingChapters).toEqual({})
       expect(settings.isFreshInstall).toBe(false)
       expect(settings.theme).toBe('light')
+    })
+  })
+
+  describe('the Chain of custody section preference', () => {
+    it('defaults to closed, with no settings file and in the defaults', () => {
+      expect(getDefaultSettings().custodySectionOpen).toBe(false)
+      expect(getSettings().custodySectionOpen).toBe(false)
+    })
+
+    it('is written to the file and read back, and survives an update that does not name it', () => {
+      updateSettings({ custodySectionOpen: true })
+      expect(JSON.parse(readFileSync(settingsFile, 'utf-8')).custodySectionOpen).toBe(true)
+      expect(getSettings().custodySectionOpen).toBe(true)
+
+      updateSettings({ theme: 'light' })
+      expect(getSettings().custodySectionOpen).toBe(true)
+
+      updateSettings({ custodySectionOpen: false })
+      expect(JSON.parse(readFileSync(settingsFile, 'utf-8')).custodySectionOpen).toBe(false)
+      expect(getSettings().custodySectionOpen).toBe(false)
+    })
+
+    it('reads closed from a settings file written before the key existed', () => {
+      writeFileSync(settingsFile, JSON.stringify({ theme: 'light' }), 'utf-8')
+      const settings = getSettings()
+      expect(settings.custodySectionOpen).toBe(false)
+      expect(settings.theme).toBe('light')
+    })
+
+    it('is closed where the schema fills in a key the input left out', () => {
+      expect(PartialBirdbrainSettingsSchema.parse({}).custodySectionOpen).toBe(false)
+      expect(
+        PartialBirdbrainSettingsSchema.parse({ custodySectionOpen: true }).custodySectionOpen
+      ).toBe(true)
+    })
+
+    it('rejects a value that is not a boolean, and stores nothing', () => {
+      expect(() => updateSettings({ custodySectionOpen: 'open' as unknown as boolean })).toThrow(
+        /Invalid settings: custodySectionOpen/
+      )
+      expect(existsSync(settingsFile)).toBe(false)
     })
   })
 })

@@ -53,6 +53,7 @@ const DEFAULT_SETTINGS: BirdbrainSettings = {
   lastActiveSection: 'captures',
   hasCompletedOnboarding: false,
   detailsPanelCollapsed: false,
+  custodySectionOpen: false,
   tooltipsSeen: {},
   onboardingChapters: {},
   isFreshInstall: false,

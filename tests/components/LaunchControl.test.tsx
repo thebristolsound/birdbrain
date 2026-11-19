@@ -601,6 +601,29 @@ describe("starting the extension's session from the menu", () => {
     expect(session.start).not.toHaveBeenCalled()
   })
 
+  // While a start is in flight the menu's start is held, so the warning is not asked twice and
+  // the Case is not activated twice.
+  it('holds the start while a start is in flight', async () => {
+    useAppStore.setState({ connectedToExtension: true })
+    const { session, checkVpnWarning } = setup()
+    let finish: () => void = () => {}
+    session.activateCase.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = () => resolve({ sessionActive: false, activeCaseId: 'case-1' })
+        })
+    )
+    fireEvent.click(startItem())
+    await waitFor(() => expect(session.activateCase).toHaveBeenCalledTimes(1))
+    const item = startItem()
+    expect(isDisabledItem(item)).toBe(true)
+    fireEvent.click(item)
+    expect(checkVpnWarning).toHaveBeenCalledTimes(1)
+    expect(session.activateCase).toHaveBeenCalledTimes(1)
+    await act(async () => finish())
+    await waitFor(() => expect(useAppStore.getState().sessionActive).toBe(true))
+  })
+
   it('activates the Case on screen, then starts, and becomes the recording mark', async () => {
     useAppStore.setState({ connectedToExtension: true })
     const { calls } = setup()
@@ -772,6 +795,35 @@ describe("the capture control during the extension's session", () => {
     expect(stop.getAttribute('title')).toBeNull()
   })
 
+  // A later read that fails leaves the earlier answer in the cache. Stop must not stay held on it.
+  it('leaves Stop usable when a read fails after one that said a browser was starting', async () => {
+    let reads = 0
+    const { client } = recording({
+      readStatus: async () => {
+        reads += 1
+        if (reads > 1) throw new Error('ipc closed')
+        return { state: 'starting', browser: BROWSER, step: 'browser' }
+      }
+    })
+    await waitFor(() =>
+      expect(client.getQueryData(queryKeys.launchedBrowserStatus)).toMatchObject({
+        state: 'starting'
+      })
+    )
+    await act(async () => {
+      await client.refetchQueries({ queryKey: queryKeys.launchedBrowserStatus })
+    })
+    const state = client.getQueryState<LaunchedBrowserStatus>(queryKeys.launchedBrowserStatus)
+    expect(state?.status).toBe('error')
+    expect(state?.data?.state).toBe('starting')
+    openMarkMenu()
+    // The query tells its readers on a later tick.
+    await waitFor(() =>
+      expect(isDisabledItem(screen.getByTestId('launch-control-stop'))).toBe(false)
+    )
+    expect(screen.getByTestId('launch-control-stop').getAttribute('title')).toBeNull()
+  })
+
   it('opens on Stop from the keyboard', async () => {
     recording()
     screen.getByTestId('topbar-capture-session').focus()
@@ -806,6 +858,26 @@ describe("the capture control during the extension's session", () => {
     expect(screen.getByTestId('topbar-rec').textContent).toBe('Recording▾')
     fireEvent.click(within(openMarkMenu()).getByTestId('launch-control-stop'))
     await waitFor(() => expect(session.stop).toHaveBeenCalledTimes(1))
+  })
+
+  // While a stop is in flight the menu's Stop is held, so a second one cannot be sent.
+  it('holds Stop while a stop is in flight', async () => {
+    const { session } = recording()
+    let finish: () => void = () => {}
+    session.stop.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = () => resolve({ sessionActive: false, activeCaseId: 'case-1' })
+        })
+    )
+    fireEvent.click(within(openMarkMenu()).getByTestId('launch-control-stop'))
+    await waitFor(() => expect(session.stop).toHaveBeenCalledTimes(1))
+    const stop = within(openMarkMenu()).getByTestId('launch-control-stop')
+    expect(isDisabledItem(stop)).toBe(true)
+    fireEvent.click(stop)
+    expect(session.stop).toHaveBeenCalledTimes(1)
+    await act(async () => finish())
+    await waitFor(() => expect(useAppStore.getState().sessionActive).toBe(false))
   })
 
   it('keeps the session recording when the stop fails', async () => {

@@ -75,8 +75,9 @@ export function TopBar() {
         <div className="flex-1" />
 
         {/* How the app is doing, the same control as on a Case (2026-11-08 top bar), then the
-            capture control, which carries the recording mark and opens the panel, since Settings
-            has no rail (`2d`). Open ‹Case› stays on the dashboard's. */}
+            capture control, which carries the recording mark. A launched browser's mark opens the
+            panel as a popover, since Settings has no rail (`2d`), and the extension's opens the
+            capture menu. Open ‹Case› stays on the dashboard's. */}
         <StatusGroup />
         <div className="flex shrink-0 items-center gap-2" style={END_INSET}>
           <LaunchControl caseId={null} showOpenCase={false} />

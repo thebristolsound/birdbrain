@@ -47,9 +47,8 @@ export function VpnWarningDialog() {
         <DialogHeader>
           <DialogTitle>Birdbrain did not see a VPN</DialogTitle>
           <DialogDescription>
-            The Egress is Direct, so Birdbrain contacts sites from this computer&rsquo;s own
-            connection. Birdbrain looks for a VPN on this computer&rsquo;s route only, so a VPN on
-            your router or network is not seen.
+            Sites will see this computer&rsquo;s own connection. A VPN on your router or network
+            does not show here.
           </DialogDescription>
           {request?.occasion === 'session' && (
             <DialogDescription data-testid="vpn-warning-session">
@@ -58,8 +57,7 @@ export function VpnWarningDialog() {
           )}
           {request && !request.canMute && (
             <DialogDescription data-testid="vpn-warning-no-network">
-              Birdbrain could not read this network&rsquo;s router address, so it cannot stop
-              warning on this network.
+              This network cannot be identified, so it cannot be muted.
             </DialogDescription>
           )}
         </DialogHeader>

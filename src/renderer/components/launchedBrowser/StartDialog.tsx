@@ -18,7 +18,6 @@ import {
 } from '@renderer/lib/api/launchedBrowser'
 import { useAppStore } from '@renderer/stores/appStore'
 import { cn } from '@renderer/lib/utils'
-import { InfoTip } from '@renderer/components/launchedBrowser/InfoTip'
 import {
   NO_BROWSER_REFUSAL,
   CASES_UNREAD_REFUSAL,
@@ -32,10 +31,6 @@ import {
   type LaunchRefusal,
   type StepProgress
 } from '@renderer/components/launchedBrowser/startDialogModel'
-
-const TITLE_TIP =
-  'The browser runs on a browser profile of its own. Pages in this browser can tell that ' +
-  'software drives it.'
 
 // A session warning main says is due for a Case (ADR-0032 VPN rule 3), with the Operator's
 // choice to stop warning on this network. A new answer from main starts with the choice unmade.
@@ -311,12 +306,9 @@ export function StartDialog() {
           className="max-w-[440px] rounded-md p-4 text-xs"
           data-testid="launch-start-dialog"
         >
-          <div className="flex items-center gap-1.5">
-            <DialogTitle>
-              {picking ? 'Launch a browser' : `Launch a browser for ${caseName}`}
-            </DialogTitle>
-            <InfoTip text={TITLE_TIP} />
-          </div>
+          <DialogTitle>
+            {picking ? 'Launch a browser' : `Launch a browser for ${caseName}`}
+          </DialogTitle>
           {launching ? (
             <LaunchChecklist
               browser={launching.browser}
@@ -335,8 +327,7 @@ export function StartDialog() {
           ) : (
             <>
               <p className="mt-1 text-text-muted">
-                Birdbrain opens the browser for a Capture Session and closes it when the Capture
-                Session ends.
+                Sites can tell that software drives this browser.
               </p>
               <dl className="mt-3 grid grid-cols-[96px_minmax(0,1fr)] items-start gap-x-3 gap-y-2">
                 {picking && (
@@ -407,9 +398,7 @@ export function StartDialog() {
                   )}
                 </dd>
                 <dt className="text-text-muted">Profile</dt>
-                <dd className="text-text-secondary">
-                  A new browser profile, which Birdbrain deletes when the browser closes.
-                </dd>
+                <dd className="text-text-secondary">New profile, deleted on close</dd>
                 <dt className="text-text-muted">Egress</dt>
                 <dd>
                   {knownEgress ? (
@@ -499,13 +488,7 @@ export function StartDialog() {
                   onShowPanel={shownRefusal.state === 4 && browserCaseId ? showPanel : undefined}
                 />
               )}
-              <div className="mt-3 flex items-center gap-2 border-t border-border pt-2.5">
-                <span className="min-w-0 flex-1 text-[11px] text-text-muted">
-                  {caseId !== null &&
-                    (sessionActive
-                      ? `Joins the running Capture Session in ${caseName}.`
-                      : `Starts a Capture Session in ${caseName}.`)}
-                </span>
+              <div className="mt-3 flex items-center justify-end gap-2 border-t border-border pt-2.5">
                 <Button variant="outline" className="shrink-0 whitespace-nowrap" onClick={dismiss}>
                   Cancel
                 </Button>
@@ -533,23 +516,11 @@ function optionText({ label, chosen, executablePath }: LaunchedBrowserOption): s
 }
 
 function EgressValue({ egress }: { egress: KnownEgress }) {
-  const routed = egress.kind !== 'direct'
-  const tip =
-    'Change it in Settings → Operator before launching.' +
-    (routed ? ' The Egress hides where you are, not which browser is looking.' : '')
   return (
-    <>
-      <div className="flex items-center gap-1.5">
-        <span>
-          <span className="font-semibold">{egressKindName(egress)}</span>
-          {routed && ` · ${egress.label}`}
-        </span>
-        <InfoTip text={tip} />
-      </div>
-      <p className="text-[11px] text-text-muted">
-        Fixed while the browser is open. Changing it ends the Capture Session.
-      </p>
-    </>
+    <span>
+      <span className="font-semibold">{egressKindName(egress)}</span>
+      {egress.kind !== 'direct' && ` · ${egress.label}`}
+    </span>
   )
 }
 
@@ -573,7 +544,7 @@ function RefusalCard({
     >
       <div className="min-w-0 flex-1">
         <div className="font-semibold text-text-primary">{title}</div>
-        <div className="text-text-muted">{detail}</div>
+        {detail && <div className="text-text-muted">{detail}</div>}
       </div>
       {onShowPanel && (
         <Button variant="outline" onClick={onShowPanel}>

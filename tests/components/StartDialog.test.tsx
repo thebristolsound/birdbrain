@@ -215,7 +215,6 @@ describe('StartDialog with no Case named', () => {
         .getAllByRole('option')
         .map((o) => o.textContent)
     ).toEqual(['Ferry Line', 'Harbor Desk'])
-    expect(body.textContent).toContain('Starts a Capture Session in Harbor Desk.')
     // The Case comes first, so it keeps the focus once the Browser field, which takes it
     // otherwise, has rendered.
     await within(body).findByRole('option', { name: 'Google Chrome' })
@@ -233,7 +232,6 @@ describe('StartDialog with no Case named', () => {
     const body = await pickerDialog()
     const picker = await within(body).findByRole('combobox', { name: 'Case' })
     fireEvent.change(picker, { target: { value: 'case-1' } })
-    expect(body.textContent).toContain('Starts a Capture Session in Ferry Line.')
     await within(body).findByRole('option', { name: 'Google Chrome' })
     fireEvent.click(launchButton('Launch'))
     await waitFor(() => expect(launch).toHaveBeenCalled())
@@ -353,7 +351,6 @@ describe('StartDialog with no Case named', () => {
     expect(body.textContent).not.toContain('Reading…')
     expect(body.textContent).not.toContain('Not read')
     expect(launchButton('Launch').disabled).toBe(true)
-    expect(body.textContent).not.toContain('Starts a Capture Session')
     expect(launch).not.toHaveBeenCalled()
   })
 
@@ -414,13 +411,12 @@ describe('StartDialog (S2)', () => {
     expect(await dialog()).toBeDefined()
   })
 
-  it('starts a Capture Session in the Case, with the Egress and operator shown read-only', async () => {
+  it('shows the browsers found, with the Egress and operator read-only', async () => {
     mount()
     open()
     const body = await dialog()
     await within(body).findByRole('option', { name: 'Google Chrome' })
     expect(within(body).getByRole('option', { name: 'Brave' })).toBeDefined()
-    expect(body.textContent).toContain('Starts a Capture Session in Ferry Line.')
     await waitFor(() => expect(body.textContent).toContain('Proxy · Harbor relay'))
     expect(body.textContent).toContain('A. Marsh')
     // The Egress is shown, never edited, from the dialog.
@@ -430,13 +426,45 @@ describe('StartDialog (S2)', () => {
     expect(launchButton('Launch').className).toContain('text-accent-foreground')
   })
 
-  it('says it joins a running Capture Session', async () => {
+  it('says on its button that it joins a running Capture Session', async () => {
     mount()
     useAppStore.setState({ sessionActive: true })
     open()
     const body = await dialog()
-    expect(body.textContent).toContain('Joins the running Capture Session in Ferry Line.')
-    expect(launchButton('Launch and join')).toBeDefined()
+    expect(within(body).getByRole('button', { name: 'Launch and join' })).toBeDefined()
+    expect(within(body).queryByRole('button', { name: 'Launch' })).toBeNull()
+  })
+
+  // The copy cut of 2026-11-16: the dialog keeps the one consequence, in view, and holds no tip.
+  it.each([
+    [
+      'joining a session through a Proxy',
+      PROXY,
+      true,
+      'EgressProxy · Harbor relay',
+      'Launch and join'
+    ],
+    ['starting one on a Direct Egress', DIRECT, false, 'EgressDirect', 'Launch']
+  ])('says only what a site can tell and how long the profile lasts, %s', async (...row) => {
+    const [, egress, sessionActive, egressRow, button] = row
+    mount({ egress })
+    useAppStore.setState({ sessionActive })
+    open()
+    const body = await dialog()
+    await within(body).findByRole('option', { name: 'Brave' })
+    await waitFor(() => expect(body.textContent).toContain(egressRow))
+    await waitFor(() => expect(body.textContent).toContain('OperatorA. Marsh'))
+    expect(body.textContent).toBe(
+      'Launch a browser for Ferry Line' +
+        'Sites can tell that software drives this browser.' +
+        'BrowserGoogle ChromeBrave149.0.7827.55from its last launch' +
+        'ProfileNew profile, deleted on close' +
+        egressRow +
+        'OperatorA. Marsh' +
+        'Cancel' +
+        button
+    )
+    expect(within(body).queryByRole('img')).toBeNull()
   })
 
   it('shows a Direct Egress with no label', async () => {
@@ -445,7 +473,6 @@ describe('StartDialog (S2)', () => {
     const body = await dialog()
     await waitFor(() => expect(body.textContent).toContain('Direct'))
     expect(body.textContent).not.toContain('Harbor relay')
-    expect(within(body).queryByRole('img', { name: /hides where you are/ })).toBeNull()
   })
 
   it('shows the version from the last launch, or none', async () => {
@@ -1112,8 +1139,9 @@ describe('StartDialog (S2)', () => {
     open()
     const body = await dialog()
     const card = await within(body).findByRole('status')
-    expect(card.textContent).toContain('A launched browser is already open')
-    expect(card.textContent).toContain('Only one can be open at a time.')
+    expect(card.textContent).toBe('A launched browser is already openShow panel')
+    // The title is the reason, so no line of detail is drawn under it.
+    expect(card.firstElementChild?.childElementCount).toBe(1)
     // The canvas numbers its states for its catalogue; the app shows no number, and state 4
     // refuses nothing that went wrong, so it has no danger rule.
     expect(card.textContent).not.toMatch(/^\d/)
@@ -1135,7 +1163,9 @@ describe('StartDialog (S2)', () => {
     open()
     const body = await dialog()
     const card = await within(body).findByRole('status')
-    expect(card.textContent).toContain('Birdbrain could not read the Egress setting')
+    expect(card.textContent).toBe(
+      'Birdbrain could not read the Egress settingChoose an Egress in Settings → Network.'
+    )
     expect(launchButton('Launch').disabled).toBe(true)
   })
 

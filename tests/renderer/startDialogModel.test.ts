@@ -72,8 +72,7 @@ describe('refusalFor', () => {
     )
     expect(refusalFor(error, 'Google Chrome', PROXY)).toEqual({
       state: 4,
-      title: 'A launched browser is already open',
-      detail: 'Only one can be open at a time.'
+      title: 'A launched browser is already open'
     })
   })
 
@@ -111,11 +110,11 @@ describe('refusalFor', () => {
     })
   })
 
-  it('points an unreadable Egress at the Operator tab', () => {
+  it('points an unreadable Egress at the Network tab', () => {
     const error = coded('The Egress setting could not be read', 'EGRESS_UNAVAILABLE')
     expect(refusalFor(error, 'Google Chrome', DIRECT)).toEqual({
       title: 'Birdbrain could not read the Egress setting',
-      detail: 'The browser was not started. Choose an Egress in Settings → Operator.'
+      detail: 'Choose an Egress in Settings → Network.'
     })
   })
 
@@ -148,15 +147,16 @@ describe('the refusals shown before a launch', () => {
   it('has state 4 while another launched browser is starting, open or closing', () => {
     expect(busyRefusal({ state: 'open', browser: BROWSER })).toEqual({
       state: 4,
-      title: 'A launched browser is already open',
-      detail: 'Only one can be open at a time.'
+      title: 'A launched browser is already open'
     })
-    expect(busyRefusal({ state: 'starting', browser: BROWSER, step: 'browser' })?.title).toBe(
-      'A launched browser is starting'
-    )
-    expect(busyRefusal({ state: 'closing', browser: BROWSER })?.title).toBe(
-      'A launched browser is closing'
-    )
+    expect(busyRefusal({ state: 'starting', browser: BROWSER, step: 'browser' })).toEqual({
+      state: 4,
+      title: 'A launched browser is starting'
+    })
+    expect(busyRefusal({ state: 'closing', browser: BROWSER })).toEqual({
+      state: 4,
+      title: 'A launched browser is closing'
+    })
   })
 
   // A closed browser leaves its Capture Session running, and launching again joins it.

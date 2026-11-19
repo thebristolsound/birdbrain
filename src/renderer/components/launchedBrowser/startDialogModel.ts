@@ -9,7 +9,7 @@ export interface LaunchRefusal {
   // The canvas's state number, for the four refusals it draws.
   state?: 1 | 2 | 3 | 4
   title: string
-  detail: string
+  detail?: string
 }
 
 const EGRESS_KINDS: Readonly<Record<KnownEgress['kind'], string>> = {
@@ -47,8 +47,6 @@ export const CASES_UNREAD_REFUSAL: LaunchRefusal = {
   detail: 'Close this dialog and open it again.'
 }
 
-const ONE_AT_A_TIME = 'Only one can be open at a time.'
-
 const BUSY_TITLES: Readonly<Record<'starting' | 'open' | 'closing', string>> = {
   starting: 'A launched browser is starting',
   open: 'A launched browser is already open',
@@ -59,7 +57,7 @@ const BUSY_TITLES: Readonly<Record<'starting' | 'open' | 'closing', string>> = {
 // launch joins it.
 export function busyRefusal(status: LaunchedBrowserStatus | undefined): LaunchRefusal | null {
   if (!status || status.state === 'none' || status.state === 'closed') return null
-  return { state: 4, title: BUSY_TITLES[status.state], detail: ONE_AT_A_TIME }
+  return { state: 4, title: BUSY_TITLES[status.state] }
 }
 
 // Before a launch, on a platform where main offers none. Main's message says why.
@@ -72,7 +70,7 @@ export function unavailableRefusal(
 
 export const UNREADABLE_EGRESS_REFUSAL: LaunchRefusal = {
   title: 'Birdbrain could not read the Egress setting',
-  detail: 'The browser was not started. Choose an Egress in Settings → Operator.'
+  detail: 'Choose an Egress in Settings → Network.'
 }
 
 function messageOf(error: unknown): string {
@@ -103,7 +101,7 @@ export function refusalFor(error: unknown, label: string, egress: KnownEgress): 
         detail: `${message} Check the proxy in Settings → Operator.`
       }
     case 'BROWSER_ALREADY_RUNNING':
-      return { state: 4, title: BUSY_TITLES.open, detail: ONE_AT_A_TIME }
+      return { state: 4, title: BUSY_TITLES.open }
     case 'EGRESS_WEBRTC_CANDIDATE':
     case 'EGRESS_WEBRTC_UNCHECKED':
     case 'EGRESS_BYPASS':

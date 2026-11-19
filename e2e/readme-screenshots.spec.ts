@@ -506,7 +506,7 @@ test.describe('README screenshots', () => {
     box = await stage.boundingBox()
     if (!box) throw new Error('no stage box')
     await page.mouse.click(box.x + box.width / 2 - 185, box.y + 352)
-    const pinTextarea = page.getByPlaceholder('What does this pin mark?')
+    const pinTextarea = page.getByTestId('pin-popover').getByRole('textbox')
     await pinTextarea.waitFor({ timeout: 5000 })
     await pinTextarea.fill(
       'Crypto/gift-card-only payment and countdown pressure - classic storefront scam pattern.'

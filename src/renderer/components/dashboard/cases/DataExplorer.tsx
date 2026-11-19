@@ -599,14 +599,15 @@ export function DataExplorer() {
   const anchoredExhibitIds = rows
     .filter((row) => row.entity === 'exhibit' && row.rowType === 'anchored')
     .map((row) => row.id)
-  // The Exhibits under the current node, for the pane header's Verify — the
-  // inline route for the node menu's Verify (#1151). Same context as the
-  // table and the menu, so a Selector's hits are the rows it verifies.
-  const nodeExhibitIds = rowsForNode(rows, node, captureFacts, { verifications, keywordMatches })
-    .filter((row) => row.entity === 'exhibit')
+  // The Exhibits the table lists for the current node, for "Verify listed" above it: the rows
+  // of the node that a typed search has left. Same context as the table, so a Selector's hits
+  // are the rows it verifies, and a row the search hid is not verified unseen.
+  const listedIds = new Set(tableRows.map((row) => row.id))
+  const listedExhibitIds = rowsForNode(rows, node, captureFacts, { verifications, keywordMatches })
+    .filter((row) => row.entity === 'exhibit' && listedIds.has(row.id))
     .map((row) => row.id)
   const showNodeVerify =
-    nodeExhibitIds.length > 0 && node !== 'integrity-exceptions' && node !== 'manifest-ledger'
+    listedExhibitIds.length > 0 && node !== 'integrity-exceptions' && node !== 'manifest-ledger'
   const selectedExhibitId =
     selectedRow && selectedRow.rowType === 'anchored'
       ? selectedRow.entity === 'derived-file'
@@ -694,8 +695,8 @@ export function DataExplorer() {
                     size="sm"
                     className="gap-1.5"
                     disabled={progress !== null}
-                    title="Verify every exhibit under this node"
-                    onClick={() => verifyIds(nodeExhibitIds)}
+                    title="Verify every Exhibit the table lists"
+                    onClick={() => verifyIds(listedExhibitIds)}
                     data-testid="node-verify"
                   >
                     <ShieldCheck size={12} strokeWidth={1.8} />

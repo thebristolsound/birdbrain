@@ -889,14 +889,24 @@ describe('DataExplorer Verify buttons: the Exhibits each one verifies', () => {
     expect(await press('node-verify')).toEqual(['cap-a'])
   })
 
-  it('node-verify passes every Exhibit under the node, one a search has hidden included', async () => {
+  it('node-verify passes only the Exhibits a search has left in the table', async () => {
     renderExplorer()
     await screen.findByTestId('artifact-row-cap-a')
     fireEvent.change(screen.getByTestId('data-search'), { target: { value: 'Exhibit 2' } })
     await waitFor(() => expect(screen.queryByTestId('artifact-row-cap-a')).toBeNull())
     expect(screen.getByTestId('artifact-row-cap-legacy')).toBeTruthy()
 
-    expect(await press('node-verify')).toEqual(['cap-a', 'cap-legacy'])
+    expect(await press('node-verify')).toEqual(['cap-legacy'])
+  })
+
+  it('has no node-verify while a search leaves no Exhibit in the table', async () => {
+    renderExplorer()
+    await screen.findByTestId('artifact-row-cap-a')
+    expect(screen.getByTestId('node-verify')).toBeTruthy()
+    fireEvent.change(screen.getByTestId('data-search'), { target: { value: 'no-such-row' } })
+    await waitFor(() => expect(screen.queryByTestId('artifact-row-cap-a')).toBeNull())
+
+    expect(screen.queryByTestId('node-verify')).toBeNull()
   })
 
   it('row-verify passes the selected Exhibit alone', async () => {
@@ -944,7 +954,7 @@ describe('DataExplorer Verify buttons: the Exhibits each one verifies', () => {
     renderExplorer()
     const button = (await screen.findByTestId('node-verify')) as HTMLButtonElement
     expect(button.textContent).toBe('Verify listed')
-    expect(button.getAttribute('title')).toBe('Verify every exhibit under this node')
+    expect(button.getAttribute('title')).toBe('Verify every Exhibit the table lists')
     expect(button.getAttribute('aria-label')).toBeNull()
     expect(button.disabled).toBe(false)
 

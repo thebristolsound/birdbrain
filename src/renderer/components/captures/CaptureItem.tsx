@@ -143,6 +143,7 @@ export function CaptureItem({
       }`}
     >
       <span
+        data-testid="capture-select-glyph"
         className={`flex h-3.5 w-3.5 items-center justify-center rounded-[2px] border ${
           isMultiSelected ? 'border-accent bg-accent' : 'border-border-strong'
         }`}
@@ -283,6 +284,7 @@ export function CaptureItem({
               className={`${HIT_AREA_CLASS} -m-[4.5px] self-center rounded transition-colors hover:bg-elevated/50`}
             >
               <Star
+                data-testid="capture-favorite-glyph"
                 className={`h-[11px] w-[11px] ${
                   isFavorite ? 'fill-amber-400 text-amber-600' : 'text-text-faint'
                 }`}

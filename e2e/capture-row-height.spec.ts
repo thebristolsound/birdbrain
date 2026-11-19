@@ -209,8 +209,8 @@ test.describe('Capture list row height', () => {
     expect(apart).toBe(true)
     // The glyphs keep their sizes inside the larger targets.
     const glyphs = await item.evaluate((el) => {
-      const box = el.querySelector('[data-testid="capture-select-checkbox"] > span') as HTMLElement
-      const star = el.querySelector('button[aria-label="Favorite capture"] svg') as SVGElement
+      const box = el.querySelector('[data-testid="capture-select-glyph"]') as HTMLElement
+      const star = el.querySelector('[data-testid="capture-favorite-glyph"]') as SVGElement
       return {
         box: [box.offsetWidth, box.offsetHeight],
         star: [star.getBoundingClientRect().width, star.getBoundingClientRect().height]
@@ -233,10 +233,10 @@ test.describe('Capture list row height', () => {
     // the target's size. Five pixels up and left of the star is past the two pixels of padding
     // the button had before, and three pixels up and left of the box is past the checkbox it
     // was before, so only a 24 pixel target takes either click.
-    const star = await item.locator('button[aria-label="Favorite capture"] svg').boundingBox()
+    const star = await item.getByTestId('capture-favorite-glyph').boundingBox()
     await page.mouse.click(star!.x - 5, star!.y - 5)
     await expect(item.getByRole('button', { name: 'Unfavorite capture' })).toBeVisible()
-    const box = await item.locator('[data-testid="capture-select-checkbox"] > span').boundingBox()
+    const box = await item.getByTestId('capture-select-glyph').boundingBox()
     await page.mouse.click(box!.x - 3, box!.y - 3)
     await expect(item.getByTestId('capture-select-checkbox')).toHaveAttribute(
       'aria-checked',

@@ -849,7 +849,7 @@ describe('ExportDialog', () => {
       expect(title).toBe('Case Archive saved')
       expect(opts.description).toBe(ARCHIVE_PATH)
       await waitFor(() => expect(onClose).toHaveBeenCalledOnce())
-      // Held on the progress view while the dialog animates out, never the form.
+      // The progress view is what shows once the dialog has been told to close.
       expect(screen.getByText('Exporting Case One')).toBeDefined()
       expect(screen.queryByTestId('export-submit')).toBeNull()
       expect(archiveListeners.size).toBe(0)

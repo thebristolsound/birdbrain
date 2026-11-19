@@ -117,9 +117,15 @@ describe('CapturePreferences Auto-capture switch', () => {
     expect(screen.getByTestId('auto-capture-locked').textContent).toContain('capture every page')
   })
 
-  it('says it is locked only in the auto mode', () => {
-    renderPanel({ autoCaptureMode: 'per-case' })
-    expect(screen.queryByTestId('auto-capture-locked')).toBeNull()
+  it('says it is locked in the auto mode, and in no other', () => {
+    renderPanel({ autoCaptureMode: 'auto' })
+    expect(screen.getByTestId('auto-capture-locked')).toBeDefined()
+    cleanup()
+    for (const autoCaptureMode of ['per-case', 'notify'] as const) {
+      renderPanel({ autoCaptureMode })
+      expect(screen.queryByTestId('auto-capture-locked')).toBeNull()
+      cleanup()
+    }
   })
 
   it('says passive capture is off in this build', () => {

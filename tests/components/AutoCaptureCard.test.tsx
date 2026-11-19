@@ -191,7 +191,7 @@ describe('AutoCaptureCard and the app-wide setting', () => {
     expect(screen.queryByTestId('auto-capture-suspended')).toBeNull()
   })
 
-  it('links to Settings, which opens on the Capture tab', async () => {
+  it('links to Settings', async () => {
     const { update } = renderCard()
 
     fireEvent.click(await screen.findByRole('button', { name: 'Capture settings' }))

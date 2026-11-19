@@ -645,7 +645,7 @@ describe('StartDialog (S2)', () => {
 
     it('closes, and launches nothing, when cancelled while a save that fails is in flight', async () => {
       let failSave: () => void = () => {}
-      const { activateCase, launch, cancelLaunch } = mount({
+      const { activateCase, launch, cancelLaunch, saveSettings } = mount({
         operatorName: '',
         saveSettings: () =>
           new Promise((_, reject) => {
@@ -657,6 +657,8 @@ describe('StartDialog (S2)', () => {
       const body = await ready()
       fireEvent.change(field, { target: { value: 'A. Marsh' } })
       fireEvent.click(launchButton('Launch'))
+      // The save has to be in flight, or the cancel would close the dialog before it started.
+      await waitFor(() => expect(saveSettings).toHaveBeenCalledOnce())
       fireEvent.click(await within(body).findByRole('button', { name: 'Cancel' }))
       await waitFor(() => expect(cancelLaunch).toHaveBeenCalledOnce())
       act(() => failSave())

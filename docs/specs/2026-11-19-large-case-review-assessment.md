@@ -5,8 +5,9 @@
 **Status:** Open. This is the assessment that pass 3 of
 [the review passes plan](../plans/2026-11-15-unreviewed-surfaces-review-passes.md) asks for. It
 is a review and fixes nothing. Slice 7.2 of
-[consolidation phase 7](../plans/2026-11-15-consolidation-phase-7-summary-first.md) waits for
-the verdict in the section "Verdict on slice 7.2" below.
+[consolidation phase 7](../plans/2026-11-15-consolidation-phase-7-summary-first.md) waited for
+the verdict in the section "Verdict on slice 7.2" below, and #2240 builds the slice as that
+section advises.
 
 The pass seeded one Case at each of three sizes (50, 500, and 2,000 Captures), each with 20
 Selectors, 30 Tags, and 100 Notes with Mentions, and timed and looked at every screen the plan
@@ -16,9 +17,10 @@ says so and gives no estimate.
 
 In short:
 
-- At 50 Captures every screen is comfortable. At 500 the Captures list is strained and nothing
-  else is. At 2,000 the Captures list is not comfortable: starting the app into it took from
-  4 to 186 seconds, and each click on a row took from 0.5 to 2.4 seconds.
+- At 50 Captures every screen is comfortable. At 500 the Captures list is strained, with the
+  Signals action that opens it filtered, and nothing else is. At 2,000 the Captures list is not
+  comfortable: starting the app into it took from 4 to 186 seconds, and each click on a row took
+  from 0.5 to 2.4 seconds.
 - The Selector chips do tell rows apart when rows differ, so slice 7.2 should not go ahead as
   written. It should go ahead with the changes named in the next section.
 - The Link Map does not stay readable. Past 20 Notes it draws Notes only, and from 60 Notes
@@ -295,8 +297,10 @@ horizontal overflow was seen in the list, the details panel, the Overview, or th
   first is its length, finding 13.
 - **Case search results.** Comfortable in time at every size. What breaks first is the length
   of the list, finding 12, already at 500 Captures with 621 results.
-- **Signals.** Comfortable at every size. Its two lists grow with Selectors and Tags, not with
-  Captures, and 20 and 30 of them were no strain. Each list shows about six rows at a time.
+- **Signals.** Its own screen is comfortable at every size. Its two lists grow with Selectors
+  and Tags, not with Captures, and 20 and 30 of them were no strain. Each list shows about six
+  rows at a time. **Filter in Captures** ends in the Captures list and takes that list's time:
+  strained at 500 and not comfortable at 2,000.
 - **Capture log.** Comfortable at every size. It never holds more than 50 entries.
 
 ### Do the list row's Selector chips help tell rows apart when rows differ?

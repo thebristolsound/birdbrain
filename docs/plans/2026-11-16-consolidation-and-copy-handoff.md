@@ -69,8 +69,8 @@ Apart from those two rows, nothing in the copy cut's first tranche waits for the
 
 #2239 builds consolidation slices 1.1, 1.2, 1.4, 1.6, 2.3, 2.4, 3.1, 3.2, 4.1, 4.2, 5.1b, 7.1, 7.3
 and 7.4, the dashboard's label from 4.3, and the issue comments of 4.4. Its copy cut leaves slice
-3.3 nothing to build. #2240, stacked on it, builds slices 1.5 and 7.2 after the maintainer's
-rulings of 2026-11-19 (decisions 8 to 10 of the parent plan) and answers the review of #2239.
+3.3 nothing to build. #2240, which follows it, builds slices 1.5 and 7.2 after the maintainer's
+rulings of 2026-11-19 (decisions 8 to 10 of the parent plan) and fixes parts of what #2239 built.
 Slice 1.3 needs no work: the capture control from slice 5.4 already gives its held button a
 reason a keyboard can reach. What is left of the consolidation:
 
@@ -307,9 +307,12 @@ What the slices found that the plans did not say:
 
 ## The follow-up to the remaining slices
 
-#2240 is stacked on #2239. It holds the fixes for the review of #2239, the assessment from
-review pass 3, and slices 7.2 and 1.5. It edits one `blocking` file, `DataExplorer.tsx`, for
-labels only.
+#2240 was cut from the head of #2239 and has `main` as its base since #2239 merged. It holds
+fixes to the dialogs and the right panel that #2239 built, the assessment from review pass 3,
+and slices 7.2 and 1.5. It edits two `blocking` files. In `DataExplorer.tsx` it changes both
+Verify labels and narrows "Verify listed" to the Exhibits the table lists (decision 10). In
+`ExportDialog.tsx` it keeps the Evidence Package's notes choice while another choice is
+selected.
 
 What it found:
 
@@ -318,7 +321,14 @@ What it found:
   launch dialog mutes only when both checks give the same one.
 - A panel that is two different trees, with and without some state, remounts its children when
   the state changes. The inline note editor drops unsaved text when it unmounts, so the right
-  panel on Captures is one tree now.
+  panel on Captures is one tree now. The route can still unmount it: with the saved preference
+  set to a folded panel, the panel folds to its strip when a Capture Session ends, and text
+  typed in the note editor is lost. #2240 leaves that as it was.
+- The Data screen's tree menu still verifies every Exhibit under a node. With a search typed,
+  "Verify listed" and the menu's "Verify" on the selected node hand over different sets.
+- Main holds one network for each Case and occasion, and two surfaces check the session
+  occasion. The launch dialog's mute answer now names the network it showed, and main mutes
+  only when that is the network it holds.
 - A sub-option under a radio is lost when the radio's handler resets the whole selection. The
   Export dialog keeps the notes choice of the Evidence Package while another choice is
   selected.

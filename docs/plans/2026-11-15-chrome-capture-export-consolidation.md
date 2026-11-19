@@ -307,8 +307,9 @@ These are independent of each other and of the bundle. They can start at once, e
   with the labels decision 10 gives. `DataExplorer.tsx`:
   `node-verify`, in the header above the table, and `row-verify`, on the selected row's pane,
   each get a label that says what the button verifies. It waited for open question 2. `blocking`
-  file: labels only, and the Evidence impact section shows that each label matches the
-  Exhibits its button passes to `verifyIds`.
+  file: as built, the labels change and `node-verify` passes only the Exhibits the table lists
+  (decision 10), and the Evidence impact section shows that each label matches the Exhibits
+  its button passes to `verifyIds`.
 - [x] **1.6 Show a single browser as text in the launch dialog (U15).** Shipped in #2239.
   `StartDialog.tsx`: the select renders only when more than one browser was found.
 

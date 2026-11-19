@@ -506,14 +506,14 @@ test.describe('README screenshots', () => {
     box = await stage.boundingBox()
     if (!box) throw new Error('no stage box')
     await page.mouse.click(box.x + box.width / 2 - 185, box.y + 352)
-    const pinTextarea = page.getByPlaceholder('What did you find?')
+    const pinTextarea = page.getByTestId('pin-popover').getByRole('textbox')
     await pinTextarea.waitFor({ timeout: 5000 })
     await pinTextarea.fill(
       'Crypto/gift-card-only payment and countdown pressure - classic storefront scam pattern.'
     )
     await page.waitForTimeout(400)
     await shootBothThemes(page, 'screenshot-annotate')
-    await page.getByRole('button', { name: /^save$/i }).click()
+    await page.getByRole('button', { name: 'Add pin' }).click()
     await page.waitForTimeout(1200)
 
     // --- 3. Verify: chain of custody (clean capture, no annotations) -------
@@ -594,10 +594,7 @@ test.describe('README screenshots', () => {
     await page.waitForTimeout(300)
 
     // --- 4f. Export dialog ---------------------------------------------------
-    await page
-      .getByRole('button', { name: /export/i })
-      .first()
-      .click()
+    await page.getByTestId('topbar-case-name').click()
     await page.getByRole('menuitem', { name: /export evidence report/i }).click()
     await page.waitForTimeout(800)
     const purposeInput = page.getByPlaceholder(/Disclosure under/i)

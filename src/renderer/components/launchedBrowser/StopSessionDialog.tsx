@@ -17,9 +17,9 @@ import {
 import { useAppStore } from '@renderer/stores/appStore'
 import { InfoTip } from '@renderer/components/launchedBrowser/InfoTip'
 
-// The stop confirmation (`1i`), mounted once at the root of each window: the panel's Stop… and
-// the Capture Session switch open it while a launched browser is open. It asks only then, because
-// only then does stopping close a browser.
+// The stop confirmation (`1i`), mounted once at the root of each window: the panel's Stop…
+// opens it while a launched browser is open. It asks only then, because only then does stopping
+// close a browser.
 export function StopSessionDialog() {
   const requested = useAppStore((s) => s.stopConfirmOpen)
   const setOpen = useAppStore((s) => s.setStopConfirmOpen)

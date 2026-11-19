@@ -81,24 +81,29 @@ test.describe('Shared Case members screens', () => {
     await expect(ordinary.getByTestId('case-role-line')).toHaveText('On this machine only')
     await ordinary.hover()
     await ordinary.getByTestId('case-card-menu-btn').click()
-    await expect(ordinary.getByRole('menuitem', { name: 'Share this Case…' })).toBeVisible()
+    // The open menu is drawn outside its card.
+    await expect(page.getByRole('menuitem', { name: 'Share this Case…' })).toBeVisible()
     await page.keyboard.press('Escape')
 
     const card = page.getByTestId('case-card').filter({ hasText: SHARED_CASE_NAME })
     await expect(card.getByTestId('case-shared-badge')).toHaveText(/^Shared · \d+$/)
     await card.hover()
     await card.getByTestId('case-card-menu-btn').click()
-    await card.getByRole('menuitem', { name: 'Members' }).click()
+    await page.getByRole('menuitem', { name: 'Members' }).click()
     await expect(page.getByTestId('identity-card')).toBeVisible()
 
     await page.evaluate((id) => {
       window.location.hash = `/cases/${id}/captures`
     }, caseId)
-    await page.getByTestId('share-pill').click()
+    // The Case menu on the Case name holds the same item.
+    await page.getByTestId('topbar-case-name').click()
+    await page.getByRole('menuitem', { name: 'Members' }).click()
     await expect(page.getByTestId('identity-card')).toBeVisible()
     expect(await page.evaluate(() => window.location.hash)).toBe(`#/cases/${caseId}/settings`)
 
+    // The command palette, where Join is, opens from the Case menu's first item.
     await page.getByTestId('topbar-case-name').click()
+    await page.getByRole('menuitem', { name: /Switch Case/ }).click()
     await page.getByRole('button', { name: 'Join a shared Case…' }).click()
     await expect(page.getByTestId('join-case-card')).toBeVisible()
 

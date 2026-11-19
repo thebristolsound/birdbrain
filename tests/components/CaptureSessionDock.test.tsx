@@ -16,6 +16,7 @@ import {
   CaptureSessionDock,
   useCaptureSessionRailDocked
 } from '@renderer/components/launchedBrowser/CaptureSessionDock'
+import { SIDE_RAIL_PX } from '@renderer/components/captures/captureColumns'
 
 const FERRY: Case = {
   id: 'case-1',
@@ -196,13 +197,51 @@ describe('CaptureSessionDock', () => {
     expect(within(strip).queryByTitle(/tabs?$/)).toBeNull()
   })
 
+  // The top bar's recording mark hides and shows a launched browser's panel.
+  it('shows no rail and no strip while the panel is hidden, and takes neither width', async () => {
+    try {
+      const { client } = mount()
+      await act(() => client.refetchQueries({ queryKey: queryKeys.launchedBrowserStatus }))
+      report(FITS)
+      // The browser is open and the rail is docked, so hiding has something to hide.
+      await screen.findByTestId('capture-session-rail')
+      expect(screen.getByTestId('screen').textContent).toBe('docked')
+
+      act(() => useAppStore.setState({ captureSessionPanelHidden: true }))
+      expect(screen.queryByTestId('capture-session-rail')).toBeNull()
+      expect(screen.queryByTestId('capture-session-strip')).toBeNull()
+      expect(screen.getByTestId('screen').textContent).toBe('free')
+      report(FITS - 1)
+      expect(screen.queryByTestId('capture-session-strip')).toBeNull()
+
+      act(() => useAppStore.setState({ captureSessionPanelHidden: false }))
+      expect(screen.getByTestId('capture-session-strip')).toBeTruthy()
+    } finally {
+      useAppStore.setState({ captureSessionPanelHidden: false })
+    }
+  })
+
+  // A notice is not a launched browser's panel, so the mark's hiding does not reach it.
+  it('still shows a notice while the panel is hidden', async () => {
+    useAppStore.setState({ captureSessionPanelHidden: true, dismissedLaunchNotice: null })
+    try {
+      mount({
+        status: { state: 'none', notice: { code: 'EGRESS_CHANGED', message: 'It changed.' } }
+      })
+      report(FITS)
+      expect(await screen.findByTestId('capture-session-rail')).toBeTruthy()
+    } finally {
+      useAppStore.setState({ captureSessionPanelHidden: false })
+    }
+  })
+
   it('reads the window, less the side rail, until the first measurement', async () => {
     stubResizeObserver()
-    window.innerWidth = 48 + FITS
+    window.innerWidth = SIDE_RAIL_PX + FITS
     mount()
     expect(await screen.findByTestId('capture-session-rail')).toBeTruthy()
     cleanup()
-    window.innerWidth = 48 + FITS - 1
+    window.innerWidth = SIDE_RAIL_PX + FITS - 1
     mount()
     expect(await screen.findByTestId('capture-session-strip')).toBeTruthy()
   })

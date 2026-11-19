@@ -1,5 +1,15 @@
+import type { ReactNode } from 'react'
 import { useNavigate, useMatchRoute, useParams } from '@tanstack/react-router'
-import { Home, LayoutDashboard, Layers, Crosshair, StickyNote, Database } from 'lucide-react'
+import {
+  Home,
+  LayoutDashboard,
+  Layers,
+  Crosshair,
+  StickyNote,
+  Database,
+  Settings
+} from 'lucide-react'
+import { useUpdateStatus } from '@renderer/hooks/useUpdateStatus'
 
 type SidebarSection = 'overview' | 'captures' | 'notes' | 'signals' | 'data'
 
@@ -19,9 +29,15 @@ const SECTION_PATHS = {
   data: '/cases/$caseId/data'
 } as const satisfies Record<SidebarSection, string>
 
+// The rail on Case screens: each section's label under its icon, so the rail names where the
+// Operator is, and Settings at the foot. Its width is SIDE_RAIL_PX in captureColumns.ts, which
+// the Captures screen and the Capture Session dock measure against.
 export function Sidebar() {
   const navigate = useNavigate()
   const matchRoute = useMatchRoute()
+  const { status: updateStatus } = useUpdateStatus()
+  const updateAvailable =
+    updateStatus?.state === 'available' || updateStatus?.state === 'downloaded'
 
   // useParams with strict: false returns partial params — caseId may be undefined outside case routes
   const params = useParams({ strict: false }) as Record<string, string | undefined>
@@ -40,79 +56,93 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="flex w-12 flex-col border-r border-border bg-surface">
-      {/* Main nav icons */}
-      <div className="flex flex-1 flex-col items-center gap-1 py-2">
-        {/* Home */}
-        <div className="group relative">
-          <button
-            onClick={() => navigate({ to: '/' })}
-            className={[
-              'rail-button relative flex h-10 w-10 items-center justify-center rounded transition-colors',
-              isOnHome
-                ? 'bg-accent-subtle text-accent'
-                : 'text-text-muted hover:bg-elevated hover:text-text-secondary'
-            ].join(' ')}
-            aria-label="Home"
-            data-tour="nav-dashboard"
-          >
-            {isOnHome && (
-              <span className="absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-r bg-accent" />
-            )}
-            <Home size={18} strokeWidth={1.8} />
-          </button>
+    <nav
+      aria-label="Sections"
+      className="flex w-[72px] shrink-0 flex-col items-center gap-0.5 border-r border-border bg-surface py-2"
+    >
+      <RailButton
+        icon={Home}
+        label="Home"
+        active={isOnHome}
+        tour="nav-dashboard"
+        onClick={() => navigate({ to: '/' })}
+      />
+      {NAV_ITEMS.map(({ id, icon, label }) => (
+        <RailButton
+          key={id}
+          icon={icon}
+          label={label}
+          active={isActive(id)}
+          disabled={!caseId}
+          tour={`nav-${id}`}
+          onClick={() => handleNavClick(id)}
+        />
+      ))}
+      <div className="flex-1" />
+      <RailButton
+        icon={Settings}
+        label="Settings"
+        active={false}
+        title={updateAvailable ? 'Settings — update available' : undefined}
+        onClick={() => navigate({ to: '/settings' })}
+      >
+        {updateAvailable && (
+          <span
+            data-testid="rail-update-dot"
+            className="absolute right-4 top-2 h-1.5 w-1.5 rounded-full bg-accent"
+          />
+        )}
+      </RailButton>
+    </nav>
+  )
+}
 
-          {/* Tooltip */}
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
-          >
-            <div className="whitespace-nowrap rounded bg-surface px-2 py-1 text-xs text-text-primary shadow-md ring-1 ring-border">
-              Home
-            </div>
-          </div>
-        </div>
+interface RailButtonProps {
+  icon: typeof Layers
+  label: string
+  active: boolean
+  disabled?: boolean
+  tour?: string
+  title?: string
+  onClick: () => void
+  children?: ReactNode
+}
 
-        {NAV_ITEMS.map(({ id, icon: Icon, label }) => {
-          const active = isActive(id)
-          const disabled = !caseId
-
-          return (
-            <div key={id} className="group relative">
-              <button
-                onClick={() => handleNavClick(id)}
-                disabled={disabled}
-                className={[
-                  'rail-button relative flex h-10 w-10 items-center justify-center rounded transition-colors',
-                  active
-                    ? 'bg-accent-subtle text-accent'
-                    : disabled
-                      ? 'cursor-not-allowed text-text-faint'
-                      : 'text-text-muted hover:bg-elevated hover:text-text-secondary'
-                ].join(' ')}
-                aria-label={label}
-                data-tour={`nav-${id}`}
-              >
-                {/* Active left-edge bar */}
-                {active && (
-                  <span className="absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-r bg-accent" />
-                )}
-                <Icon size={18} strokeWidth={1.8} />
-              </button>
-
-              {/* Tooltip */}
-              <div
-                aria-hidden="true"
-                className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
-              >
-                <div className="whitespace-nowrap rounded bg-surface px-2 py-1 text-xs text-text-primary shadow-md ring-1 ring-border">
-                  {label}
-                </div>
-              </div>
-            </div>
-          )
-        })}
-      </div>
-    </aside>
+function RailButton({
+  icon: Icon,
+  label,
+  active,
+  disabled = false,
+  tour,
+  title,
+  onClick,
+  children
+}: RailButtonProps) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      // The same words as the visible label: end-to-end specs find the items by this attribute.
+      aria-label={label}
+      aria-current={active ? 'page' : undefined}
+      title={title}
+      data-tour={tour}
+      className={[
+        'rail-button relative flex h-12 w-[60px] flex-col items-center justify-center gap-1 rounded text-[10px] font-medium leading-none transition-colors',
+        active
+          ? 'bg-accent-subtle text-accent'
+          : disabled
+            ? 'cursor-not-allowed text-text-faint'
+            : 'text-text-muted hover:bg-elevated hover:text-text-secondary'
+      ].join(' ')}
+    >
+      {active && (
+        <span className="absolute -left-1.5 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-r bg-accent" />
+      )}
+      <Icon size={18} strokeWidth={1.8} aria-hidden="true" />
+      {label}
+      {children}
+    </button>
   )
 }

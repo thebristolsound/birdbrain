@@ -59,10 +59,16 @@ interface AppState {
     lastError?: { message: string; timestamp: string }
   }
   commandPaletteOpen: boolean
-  // The Case the launched browser's start dialog is open for, or null while it is closed.
+  // The Case the launched browser's start dialog is open for, or null while it is closed or
+  // open with no Case named.
   startDialogCaseId: string | null
+  // The start dialog is open with no Case named, where no Case is on screen: it asks which Case.
+  startDialogPicking: boolean
+  // The Operator hid the Capture Session panel on Case screens from the top bar's recording
+  // mark. It shows again with the mark, and with the next launched browser.
+  captureSessionPanelHidden: boolean
   // The confirmation before a Capture Session with a launched browser open stops (`1i`), opened
-  // from the panel's Stop… and from the Capture Session switch.
+  // from the panel's Stop….
   stopConfirmOpen: boolean
   // Clicked Captures (#1832): the tab the Operator picked as the capture target, whether the next
   // Capture runs Scroll-to-load (off by default, per Capture), and the tab picker the shortcut
@@ -114,7 +120,9 @@ interface AppState {
   setCommandPaletteOpen: (open: boolean) => void
   toggleCommandPalette: () => void
   openStartDialog: (caseId: string) => void
+  openStartDialogPicker: () => void
   closeStartDialog: () => void
+  setCaptureSessionPanelHidden: (hidden: boolean) => void
   setStopConfirmOpen: (open: boolean) => void
   setCaptureTargetId: (targetId: string | null) => void
   setScrollToLoadNext: (on: boolean) => void
@@ -212,6 +220,8 @@ export const useAppStore = create<AppState>((set) => ({
   captureStats: { successCount: 0, failCount: 0, skipCount: 0 },
   commandPaletteOpen: false,
   startDialogCaseId: null,
+  startDialogPicking: false,
+  captureSessionPanelHidden: false,
   stopConfirmOpen: false,
   captureTargetId: null,
   scrollToLoadNext: false,
@@ -233,8 +243,10 @@ export const useAppStore = create<AppState>((set) => ({
   setConnectedToExtension: (connected) => set({ connectedToExtension: connected }),
   setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
   toggleCommandPalette: () => set((s) => ({ commandPaletteOpen: !s.commandPaletteOpen })),
-  openStartDialog: (caseId) => set({ startDialogCaseId: caseId }),
-  closeStartDialog: () => set({ startDialogCaseId: null }),
+  openStartDialog: (caseId) => set({ startDialogCaseId: caseId, startDialogPicking: false }),
+  openStartDialogPicker: () => set({ startDialogCaseId: null, startDialogPicking: true }),
+  closeStartDialog: () => set({ startDialogCaseId: null, startDialogPicking: false }),
+  setCaptureSessionPanelHidden: (hidden) => set({ captureSessionPanelHidden: hidden }),
   setStopConfirmOpen: (open) => set({ stopConfirmOpen: open }),
   setCaptureTargetId: (targetId) => set({ captureTargetId: targetId }),
   setScrollToLoadNext: (on) => set({ scrollToLoadNext: on }),

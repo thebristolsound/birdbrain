@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Plus, ClipboardList, RefreshCcw } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
-import { Button, Dialog, DialogContent, DialogHeader, DialogTitle } from '@renderer/components/ui'
-import { AddUrlsBox } from '@renderer/components/captures/AddUrlsBox'
+import { Button, Menu, MenuContent, MenuItem, MenuTrigger } from '@renderer/components/ui'
+import { PasteUrlsDialog } from '@renderer/components/captures/PasteUrlsDialog'
 import { capturesQueryOptions, useRecaptureMutations } from '@renderer/lib/queries'
 import { useAppStore } from '@renderer/stores/appStore'
 import { ContactStoppedError } from '@renderer/lib/vpnWarning'
@@ -15,7 +15,6 @@ interface CaptureMenuProps {
 // paste-URLs bulk capture (the old AddUrlsBox) and recapture of the
 // currently selected capture (the old viewer breadcrumb button).
 export function CaptureMenu({ caseId }: CaptureMenuProps) {
-  const [open, setOpen] = useState(false)
   const [showPasteUrls, setShowPasteUrls] = useState(false)
   const [recaptureError, setRecaptureError] = useState<string | null>(null)
 
@@ -45,33 +44,8 @@ export function CaptureMenu({ caseId }: CaptureMenuProps) {
   // A recapture failure is only meaningful for the capture it was fired from.
   useEffect(() => setRecaptureError(null), [selectedCaptureId])
 
-  const menuRef = useRef<HTMLDivElement>(null)
-  const anchorRef = useRef<HTMLButtonElement>(null)
-
-  useEffect(() => {
-    if (!open) return
-    function onDocClick(e: MouseEvent) {
-      const target = e.target as Node
-      if (menuRef.current?.contains(target)) return
-      if (anchorRef.current?.contains(target)) return
-      setOpen(false)
-    }
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') {
-        setOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', onDocClick)
-    document.addEventListener('keydown', onKeyDown)
-    return () => {
-      document.removeEventListener('mousedown', onDocClick)
-      document.removeEventListener('keydown', onKeyDown)
-    }
-  }, [open])
-
   function handleRecapture() {
     if (!selectedCapture) return
-    setOpen(false)
     setRecaptureError(null)
     enqueue.mutate(
       { urls: [selectedCapture.url], supersedesCaptureId: selectedCapture.id },
@@ -105,39 +79,26 @@ export function CaptureMenu({ caseId }: CaptureMenuProps) {
       {/* Icon-only, per the design: the rebuilt list header is a single row and
           a labelled split button does not fit beside sort, filter and the view
           toggle at the list column's 316px default. */}
-      <Button
-        ref={anchorRef}
-        size="icon"
-        onClick={() => setOpen((v) => !v)}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-label="New capture"
-        title="New capture"
-        data-testid="capture-menu-btn"
-      >
-        <Plus className="h-3.5 w-3.5" strokeWidth={2} />
-      </Button>
-
-      {open && (
-        <div
-          ref={menuRef}
-          role="menu"
-          className="absolute right-0 top-full z-50 mt-1 w-56 rounded-lg border border-border-strong bg-card py-1 shadow-xl"
-        >
-          <button
-            role="menuitem"
-            data-testid="capture-menu-paste-urls"
-            onClick={() => {
-              setOpen(false)
-              setShowPasteUrls(true)
-            }}
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-text-secondary hover:bg-elevated"
+      <Menu>
+        <MenuTrigger asChild>
+          <Button
+            size="icon"
+            // No tap gesture on a menu trigger: for Enter, Motion sends a pointerdown of its own,
+            // which stops the menu opening on its first item.
+            whileTap={undefined}
+            aria-label="New capture"
+            title="New capture"
+            data-testid="capture-menu-btn"
           >
+            <Plus className="h-3.5 w-3.5" strokeWidth={2} />
+          </Button>
+        </MenuTrigger>
+        <MenuContent>
+          <MenuItem data-testid="capture-menu-paste-urls" onSelect={() => setShowPasteUrls(true)}>
             <ClipboardList className="h-3.5 w-3.5 shrink-0 text-text-muted" strokeWidth={1.8} />
             Paste URLs to capture…
-          </button>
-          <button
-            role="menuitem"
+          </MenuItem>
+          <MenuItem
             data-testid="recapture-btn"
             disabled={!selectedCapture || enqueue.isPending || isRecapturing}
             title={
@@ -147,26 +108,18 @@ export function CaptureMenu({ caseId }: CaptureMenuProps) {
                   ? 'Recapture in progress…'
                   : 'Recapture this page in the background'
             }
-            onClick={handleRecapture}
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-text-secondary hover:bg-elevated disabled:opacity-50"
+            onSelect={handleRecapture}
           >
             <RefreshCcw
               className={`h-3.5 w-3.5 shrink-0 text-text-muted ${isRecapturing ? 'animate-spin' : ''}`}
               strokeWidth={1.8}
             />
             {isRecapturing ? 'Recapturing…' : 'Recapture current page'}
-          </button>
-        </div>
-      )}
+          </MenuItem>
+        </MenuContent>
+      </Menu>
 
-      <Dialog open={showPasteUrls} onOpenChange={setShowPasteUrls}>
-        <DialogContent onClose={() => setShowPasteUrls(false)} className="w-[440px] max-w-[440px]">
-          <DialogHeader className="mb-2">
-            <DialogTitle className="text-sm">Paste URLs to capture</DialogTitle>
-          </DialogHeader>
-          <AddUrlsBox caseId={caseId} onQueued={() => setShowPasteUrls(false)} />
-        </DialogContent>
-      </Dialog>
+      <PasteUrlsDialog caseId={caseId} open={showPasteUrls} onOpenChange={setShowPasteUrls} />
     </div>
   )
 }

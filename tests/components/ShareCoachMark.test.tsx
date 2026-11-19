@@ -59,10 +59,10 @@ function install({ settings, cases = [LOCAL_CASE], available = true }: Install =
   })
 }
 
-/** A stand-in for the pill, with a rect the mark can measure; move `box` to move it. */
+/** A stand-in for the Case name, with a rect the mark can measure; move `box` to move it. */
 function anchor(box = { top: 10, left: 800, width: 70, height: 28 }) {
   const el = document.createElement('button')
-  el.setAttribute('data-tour', 'share')
+  el.setAttribute('data-tour', 'caseswitcher')
   el.setAttribute('data-testid', 'anchor-share')
   el.getBoundingClientRect = () =>
     ({
@@ -111,14 +111,14 @@ afterEach(() => {
   cleanup()
   window.innerWidth = 1024
   window.innerHeight = 768
-  document.querySelectorAll('[data-tour="share"]').forEach((el) => el.remove())
+  document.querySelectorAll('[data-tour="caseswitcher"]').forEach((el) => el.remove())
   useAppStore.setState({ shareMarkOpen: false })
 })
 
 // Frame A of docs/design-handoff/2026-10-28-share-a-case/: one card, once,
-// under the pill, and the exception to the tour's upgrade rule.
+// under the Case name, and the exception to the tour's upgrade rule.
 describe('ShareCoachMark', () => {
-  it('shows under the pill the first time an existing install opens a Case, and rings it', async () => {
+  it('shows under the Case name the first time an existing install opens a Case, and rings it', async () => {
     anchor()
     install()
     renderMark()
@@ -128,6 +128,8 @@ describe('ShareCoachMark', () => {
       'Other people who run Birdbrain, each with a full copy that stays in sync. ' +
         'You approve every join.'
     )
+    // Share left the top bar, so the card says where it went.
+    expect(mark.textContent).toContain('Share this Case… is in the menu on the Case name.')
     // Nothing in the app caps a Case's roster, so the card states no number.
     expect(mark.textContent).not.toMatch(/up to four/i)
     expect(useAppStore.getState().shareMarkOpen).toBe(true)
@@ -158,14 +160,39 @@ describe('ShareCoachMark', () => {
     expect(updated).toEqual([{ onboardingChapters: { share: true } }])
   })
 
-  it('treats a click on the pill as a dismissal', async () => {
-    const pill = anchor()
+  it('treats a click on the Case name as a dismissal', async () => {
+    const name = anchor()
     install()
     renderMark()
     await screen.findByTestId('share-mark')
-    fireEvent.click(pill)
+    fireEvent.click(name)
     await waitFor(() => expect(screen.queryByTestId('share-mark')).toBeNull())
     expect(updated).toEqual([{ onboardingChapters: { share: true } }])
+  })
+
+  // The menu's trigger opens on these keys and lets no click through, so the mark reads the
+  // keys themselves.
+  it.each(['Enter', ' ', 'ArrowDown'])(
+    'treats the key %j on the Case name as a dismissal',
+    async (key) => {
+      const name = anchor()
+      install()
+      renderMark()
+      await screen.findByTestId('share-mark')
+      fireEvent.keyDown(name, { key })
+      await waitFor(() => expect(screen.queryByTestId('share-mark')).toBeNull())
+      expect(updated).toEqual([{ onboardingChapters: { share: true } }])
+    }
+  )
+
+  it('leaves the mark up for a key that does not open the menu', async () => {
+    const name = anchor()
+    install()
+    renderMark()
+    await screen.findByTestId('share-mark')
+    fireEvent.keyDown(name, { key: 'Tab' })
+    expect(screen.getByTestId('share-mark')).toBeTruthy()
+    expect(updated).toEqual([])
   })
 
   it('keeps the chapters already recorded when it writes its own key', async () => {
@@ -250,7 +277,7 @@ describe('ShareCoachMark', () => {
     expect(screen.queryByTestId('share-mark')).toBeNull()
   })
 
-  it('finds the pill when it mounts after the mark does', async () => {
+  it('finds the Case name when it mounts after the mark does', async () => {
     install()
     const { client } = renderMark()
     await settled(client)
@@ -259,7 +286,7 @@ describe('ShareCoachMark', () => {
     expect(await screen.findByTestId('share-mark')).toBeTruthy()
   })
 
-  it('stops looking once the pill has been missing for over a second', async () => {
+  it('stops looking once the Case name has been missing for over a second', async () => {
     install()
     const { client } = renderMark()
     await settled(client)
@@ -269,7 +296,7 @@ describe('ShareCoachMark', () => {
     expect(screen.queryByTestId('share-mark')).toBeNull()
   })
 
-  it('waits for a pill scrolled out of view', async () => {
+  it('waits for a Case name scrolled out of view', async () => {
     const box = { top: -200, left: 800, width: 70, height: 28 }
     anchor(box)
     install()
@@ -280,7 +307,7 @@ describe('ShareCoachMark', () => {
     expect(await screen.findByTestId('share-mark')).toBeTruthy()
   })
 
-  it('follows the pill and the window when the window is resized', async () => {
+  it('follows the Case name and the window when the window is resized', async () => {
     const box = { top: 10, left: 800, width: 70, height: 28 }
     anchor(box)
     install()
@@ -290,7 +317,7 @@ describe('ShareCoachMark', () => {
     const wide = leftAt()
     const top = mark.style.top
 
-    // A pill scrolled out of view keeps the card where it last was.
+    // A Case name scrolled out of view keeps the card where it last was.
     box.top = -200
     act(() => {
       window.dispatchEvent(new Event('resize'))
@@ -302,7 +329,7 @@ describe('ShareCoachMark', () => {
     act(() => {
       window.dispatchEvent(new Event('resize'))
     })
-    // The pill is now off screen, so only the narrower window moves the card.
+    // The Case name is now off screen, so only the narrower window moves the card.
     expect(leftAt()).toBeLessThan(wide)
     const narrow = leftAt()
 
@@ -314,7 +341,7 @@ describe('ShareCoachMark', () => {
     expect(leftAt()).toBeLessThan(narrow)
   })
 
-  it('takes the ring off the pill when it unmounts', async () => {
+  it('takes the ring off the Case name when it unmounts', async () => {
     anchor()
     install()
     const { unmount } = renderMark()
@@ -324,7 +351,7 @@ describe('ShareCoachMark', () => {
     expect(useAppStore.getState().shareMarkOpen).toBe(false)
   })
 
-  it('renders nothing while the pill has not mounted', async () => {
+  it('renders nothing while the Case name has not mounted', async () => {
     install()
     const { client } = renderMark()
     await settled(client)

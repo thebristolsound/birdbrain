@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { fakeBridge } from '../renderer/fakeBridge'
@@ -28,7 +28,6 @@ vi.mock('@renderer/hooks/useSearch', () => ({
     clear: vi.fn()
   })
 }))
-vi.mock('@renderer/components/status/SessionControls', () => ({ SessionControls: () => null }))
 vi.mock('@renderer/components/status/StatusGroup', () => ({ StatusGroup: () => null }))
 
 import { TopBar } from '@renderer/components/layout/TopBar'
@@ -72,18 +71,19 @@ afterEach(() => {
   restorePlatform()
 })
 
+// The Case name opens the Case menu, whose Switch Case item carries the shortcut.
 describe('the top bar case switcher', () => {
   it('names Ctrl off macOS', async () => {
     renderTopBar()
-    const button = await screen.findByTestId('topbar-case-name')
-    expect(button.title).toBe('Switch case (Ctrl+K)')
+    fireEvent.click(await screen.findByTestId('topbar-case-name'))
+    expect(screen.getByTestId('case-menu-switch').textContent).toBe('Switch Case…Ctrl+K')
   })
 
   it('names the Command glyph on macOS', async () => {
     stubPlatform(MAC_PLATFORM)
     renderTopBar()
-    const button = await screen.findByTestId('topbar-case-name')
-    expect(button.title).toBe('Switch case (⌘K)')
+    fireEvent.click(await screen.findByTestId('topbar-case-name'))
+    expect(screen.getByTestId('case-menu-switch').textContent).toBe('Switch Case…⌘K')
   })
 })
 

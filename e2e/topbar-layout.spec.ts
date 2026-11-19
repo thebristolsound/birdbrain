@@ -7,8 +7,9 @@ type Page = import('@playwright/test').Page
 // The top-bar search used to sit at the window's centre on its own layer, so on
 // a window about 1400px wide it covered the Capture Session switch and the REC
 // indicator. It now takes its place between the two side groups. On a Case the top bar's right
-// side carries Share, Export and Launch browser before the status group and Settings; the
-// recording mark and the switch live in the Case action bar under it.
+// side carries the status group, then the capture control: Launch browser at rest, the recording
+// mark while a Capture Session records. Share and Export are items of the Case menu on the Case
+// name, Settings is in the rail, and no row sits under the bar.
 
 const NAMES = ['Kestrel', 'Operation Kestrel Harbour Review of subject accounts and linked domains']
 
@@ -27,10 +28,26 @@ async function createCase(page: Page, name: string): Promise<string> {
   return page.url().match(/cases\/([^/]+)/)![1]
 }
 
+// One row of chrome: the Case screen starts where the top bar ends and runs to the window's
+// foot, so no row sits between the two.
+async function expectOneRowOfChrome(page: Page): Promise<void> {
+  const bar = page.getByTestId('topbar-controls').locator('xpath=ancestor::header')
+  const screen = page.getByTestId('case-workspace').locator(':scope > *').first()
+  const barBox = (await bar.boundingBox())!
+  const screenBox = (await screen.boundingBox())!
+  const windowHeight = await page.evaluate(() => window.innerHeight)
+  expect(Math.abs(screenBox.y - (barBox.y + barBox.height))).toBeLessThanOrEqual(1)
+  expect(Math.abs(screenBox.y + screenBox.height - windowHeight)).toBeLessThanOrEqual(1)
+}
+
 test.describe('Top bar layout', () => {
-  // The status group grows when it names an issue, as "VPN not seen" does, so the layout is
-  // measured in that state rather than with the fixture's default VPN. The words show from 1,280
-  // pixels (`xl`); below that the icon and the dots carry the state.
+  // The status group is wide when it names a problem, which shows an icon and a word at every
+  // width, so the layout is measured with a failed Capture logged. The longest problem word is
+  // "Egress unknown", and no switch makes the Egress unreadable, so the test writes that word
+  // into the control in place of the failure count before it measures. A session's Capture count
+  // beside the word, and the queued and held marks, are not in this measure. The VPN is left not
+  // seen: that is an advisory, a ring with no word, and it sits behind the problem once one is
+  // logged.
   test.beforeAll(() => {
     process.env.BIRDBRAIN_E2E_VPN = 'not-seen'
   })
@@ -45,13 +62,39 @@ test.describe('Top bar layout', () => {
     const input = page.getByTestId('global-search-input')
     const caseName = page.getByTestId('topbar-case-name')
     const controls = page.getByTestId('topbar-controls')
-    const actionBar = page.getByTestId('case-action-bar')
+    const mark = controls.getByTestId('topbar-capture-session')
+
+    // Before a failure is logged the advisory is the worst signal, so the Egress dot is the ring.
+    // Only a real window computes its CSS: an inset shadow with no fill. Forced colours drop
+    // shadows, so the ring has a border there, and the built stylesheet has to hold that rule.
+    const ring = controls.getByTestId('status-dot').nth(1)
+    await expect(ring).toHaveAttribute('data-severity', 'warning')
+    const drawn = await ring.evaluate((el) => {
+      const { boxShadow, backgroundColor } = getComputedStyle(el)
+      return { boxShadow, backgroundColor }
+    })
+    expect(drawn.boxShadow).toMatch(/0px 0px 0px 1\.5px inset$/)
+    expect(drawn.backgroundColor).toBe('rgba(0, 0, 0, 0)')
+    const forcedColoursRule = await page.evaluate(() =>
+      Array.from(document.styleSheets).some((sheet) =>
+        Array.from(sheet.cssRules).some((rule) =>
+          /@media \(forced-colors: active\)\s*\{\s*\.forced-colors\\:border-2\s*\{[^}]*border-width: 2px/.test(
+            rule.cssText
+          )
+        )
+      )
+    )
+    expect(forcedColoursRule).toBe(true)
 
     for (const name of NAMES) {
       const caseId = await createCase(page, name)
 
-      // Stand in for a connected extension and a running session: the switch only
-      // renders with an extension attached, and the recording mark only while recording.
+      // At rest the capture control is Launch browser and its menu.
+      await expect(controls.getByRole('button', { name: 'Launch browser' })).toBeVisible()
+      await expect(controls.getByRole('button', { name: 'More ways to capture' })).toBeVisible()
+      await expect(mark).toHaveCount(0)
+
+      // Stand in for a connected extension and a running session, which the mark needs.
       // The app's own session update can land after the stand-in one, so send it until it holds.
       await expect(async () => {
         await electronApp.evaluate(({ BrowserWindow }, id) => {
@@ -59,23 +102,38 @@ test.describe('Top bar layout', () => {
           webContents.send('event:extensionConnection', { connected: true })
           webContents.send('event:sessionStateChanged', { sessionActive: true, activeCaseId: id })
         }, caseId)
-        // The switch and the recording mark sit in the case action bar, so the top bar's right
-        // side does not grow toward the native window controls while recording.
-        await expect(actionBar.getByTestId('topbar-rec')).toBeVisible({ timeout: 1000 })
+        await expect(mark.getByTestId('topbar-rec')).toBeVisible({ timeout: 1000 })
       }).toPass({ timeout: 10000 })
-      await expect(actionBar.getByRole('switch', { name: 'Capture Session' })).toBeVisible()
-      await expect(controls.getByRole('button', { name: /Export/ })).toBeVisible()
-      await expect(controls.getByRole('button', { name: 'Launch browser' })).toBeVisible()
-      await expect(actionBar.getByTestId('case-action-bar-section')).toHaveText('Overview')
-      await expect(controls.getByRole('switch', { name: 'Capture Session' })).toHaveCount(0)
-      await expect(actionBar.getByRole('button', { name: /Export/ })).toHaveCount(0)
-      await expect(actionBar.getByRole('button', { name: 'Launch browser' })).toHaveCount(0)
-      await expect(actionBar.getByTestId('share-pill')).toHaveCount(0)
-      await expect(controls.getByTestId('topbar-rec')).toHaveCount(0)
+      // The mark is the whole capture control while the extension records: it opens the menu
+      // that holds Stop, and there is no switch and no row under the bar to hold one.
+      await expect(mark.getByTestId('topbar-rec')).toContainText('extension')
+      await expect(controls.getByRole('button', { name: 'Launch browser' })).toHaveCount(0)
+      await expect(page.getByRole('switch')).toHaveCount(0)
+      await expectOneRowOfChrome(page)
+      await expect(controls.getByRole('button', { name: /Export/ })).toHaveCount(0)
+      await expect(page.getByTestId('share-pill')).toHaveCount(0)
       await expect(controls.getByTestId('status-group')).toBeVisible()
-      // The state the widths below are measured in.
+      await mark.click()
+      await expect(page.getByTestId('launch-control-stop')).toBeVisible()
+      await expect(page.getByTestId('launch-control-start-session')).toHaveCount(0)
+      await page.keyboard.press('Escape')
+      await expect(page.getByRole('menu')).toHaveCount(0)
+      // The state the widths below are measured in: one failed Capture per Case created so far.
+      await electronApp.evaluate(({ BrowserWindow }) => {
+        BrowserWindow.getAllWindows()[0].webContents.send('event:captureActivity', {
+          type: 'failed',
+          source: 'extension',
+          url: 'https://ferry.test/notices',
+          timestamp: new Date().toISOString(),
+          error: 'stand-in failure'
+        })
+      })
       const statusWord = controls.getByTestId('status-word')
-      await expect(statusWord).toHaveText('VPN not seen')
+      await expect(statusWord).toHaveText(/^\d failed$/)
+      // A stand-in for the widest state: the same control and icon, with the longest word.
+      await statusWord.evaluate((el) => {
+        ;(el.firstChild as Text).data = 'Egress unknown'
+      })
 
       // The viewport emulation below leaves the native window controls' room at what the window
       // opened with, so the room Linux's three buttons take is pinned here.
@@ -127,10 +185,13 @@ test.describe('Top bar layout', () => {
           .poll(async () => (await caseName.getAttribute('title'))?.startsWith(`${name} · `))
           .toBe(true)
 
-        // The status words take room from 1,280 pixels and none below it.
+        // A problem's word takes room at every width, and the stand-in word is still the one
+        // measured.
+        await expect(statusWord).toHaveText('Egress unknown')
         const { width: wordWidth } = (await statusWord.boundingBox())!
-        if (width >= 1280) expect(wordWidth).toBeGreaterThan(40)
-        else expect(wordWidth).toBeLessThanOrEqual(1)
+        expect(wordWidth).toBeGreaterThan(30)
+        // The recording mark is still the control that was measured, not Launch browser.
+        await expect(mark.getByTestId('topbar-rec')).toBeVisible()
 
         // Every control on the right stays inside the window, and nothing scrolls sideways.
         for (const button of await controls.getByRole('button').all()) {
@@ -139,14 +200,6 @@ test.describe('Top bar layout', () => {
         }
         const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth)
         expect(scrollWidth).toBeLessThanOrEqual(width)
-
-        // The Share pill keeps its label from 1,024px up and folds to the icon below that
-        // (docs/design-handoff/2026-10-28-share-a-case/, frame G).
-        const pill = controls.getByTestId('share-pill')
-        await expect(pill).toHaveAttribute('data-state', 'share')
-        const { width: pillWidth } = (await pill.boundingBox())!
-        if (width >= 1024) expect(pillWidth).toBeGreaterThan(40)
-        else expect(pillWidth).toBeLessThanOrEqual(30)
 
         // The text field keeps room to type, and the hint drops out below 16rem.
         const { width: inputWidth } = (await input.boundingBox())!
@@ -168,10 +221,44 @@ test.describe('Top bar layout', () => {
         await page.getByLabel('Clear search').click()
         await expect(results).toHaveCount(0)
       }
+
+      // Back at rest for the next Case. The bar then holds the Launch browser button and its
+      // menu button, which the widths above did not measure, since the mark replaces them while
+      // a session records.
+      await electronApp.evaluate(({ BrowserWindow }) => {
+        BrowserWindow.getAllWindows()[0].webContents.send('event:sessionStateChanged', {
+          sessionActive: false,
+          activeCaseId: null
+        })
+      })
+      const launch = controls.getByRole('button', { name: 'Launch browser' })
+      await expect(launch).toBeVisible()
+      const labelLines = await launch.evaluate((el) => {
+        const range = document.createRange()
+        range.selectNodeContents(el)
+        return new Set(Array.from(range.getClientRects(), (rect) => Math.round(rect.top))).size
+      })
+      expect(labelLines).toBe(1)
+      // At rest the bar fits at the two narrowest widths: 900 pixels, and 1,000, where the
+      // Case name shows again and takes its room.
+      for (const width of [900, 1000]) {
+        await electronApp.windows()[0].setViewportSize({ width, height: 800 })
+        await expect(async () => {
+          for (const button of await controls.getByRole('button').all()) {
+            const { x, width: w } = (await button.boundingBox())!
+            expect(x + w).toBeLessThanOrEqual(width)
+          }
+          const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth)
+          expect(scrollWidth).toBeLessThanOrEqual(width)
+          const launchBox = (await launch.boundingBox())!
+          expect(overlapWidth((await search.boundingBox())!, launchBox)).toBeLessThanOrEqual(0)
+        }).toPass({ timeout: 5000 })
+      }
+      await electronApp.windows()[0].setViewportSize({ width: 1400, height: 800 })
     }
 
-    // With the extension gone, and a window wide enough that Share, Export and Launch browser fit
-    // in the right half, the search sits at the window's centre again.
+    // With the extension gone, and a window wide enough that both side groups fit in their
+    // halves, the search sits at the window's centre again.
     await electronApp.evaluate(({ BrowserWindow }) => {
       const { webContents } = BrowserWindow.getAllWindows()[0]
       webContents.send('event:sessionStateChanged', { sessionActive: false, activeCaseId: null })
@@ -185,18 +272,23 @@ test.describe('Top bar layout', () => {
       expect(Math.abs(x + width / 2 - 850)).toBeLessThanOrEqual(1)
     }).toPass({ timeout: 5000 })
 
-    // Every state of the pill opens Members; a Case nobody shared lands on the not-shared card.
-    await page.getByTestId('share-pill').click()
+    // The Case menu's sharing item opens Members; a Case nobody shared lands on the not-shared
+    // card.
+    await caseName.click()
+    await page.getByRole('menuitem', { name: 'Share this Case…' }).click()
     await expect(page.getByTestId('not-shared-card')).toBeVisible()
     expect(await page.evaluate(() => window.location.hash)).toMatch(/#\/cases\/[^/]+\/settings$/)
   })
 
-  // With a launched browser and the extension both recording, the top bar carries Share, Export
-  // and Launch browser, and the action bar the recording mark against the switch.
+  // With a launched browser and the extension both recording, the capture control in the top bar
+  // is the recording mark, which says the extension records too. Launch browser leaves while the
+  // browser is open: the Capture Session panel names the browser and holds the one stop control.
+  // The mark's third part, the Case that Captures go into when it is not the one on screen, needs
+  // a launched browser's pin: opening a Case activates it, which replaces a stand-in session.
   test('fits the Case controls while a launched browser records', async ({ electronApp, page }) => {
     const caseId = await createCase(page, NAMES[1])
-    const actionBar = page.getByTestId('case-action-bar')
     const controls = page.getByTestId('topbar-controls')
+    const rail = page.getByTestId('capture-session-rail')
     // The app's own session update can land after the stand-in one, so each check sends the
     // stand-in again and confirms it holds; a bar with no session would fit trivially.
     const holdRecording = async () => {
@@ -217,35 +309,38 @@ test.describe('Top bar layout', () => {
           }
         })
       }, caseId)
-      await expect(actionBar.getByTestId('topbar-rec')).toContainText('Launched Google Chrome', {
+      // The mark is the dot and the elapsed time. The browser's name is the panel's to give,
+      // where the rail is docked; a narrower window folds the panel to a strip.
+      await expect(controls.getByTestId('topbar-rec').getByRole('timer')).toBeVisible({
         timeout: 1000
       })
-      // The mark names only the launched browser, so the label after the switch names both
-      // sources, and the row is measured with it.
-      await expect(actionBar.getByTestId('session-source-line')).toHaveText(
-        'Launched Google Chrome, and the extension',
-        { timeout: 1000 }
-      )
+      await expect(controls.getByTestId('topbar-rec')).not.toContainText('Google Chrome')
+      await expect(rail.or(page.getByTestId('capture-session-strip'))).toBeVisible({
+        timeout: 1000
+      })
+      // The panel can fold to its strip between the two lines below, so the check is short and
+      // the caller's retry reads the folded state.
+      if (await rail.isVisible()) {
+        await expect(rail).toContainText('Launched Google Chrome', { timeout: 1000 })
+      }
+      // The mark says the extension records too, and the bar is measured with it.
+      await expect(controls.getByTestId('rec-plus-extension')).toHaveText('+ extension', {
+        timeout: 1000
+      })
+      await expect(controls.getByRole('button', { name: 'Launch browser' })).toHaveCount(0)
+      await expect(page.getByRole('switch')).toHaveCount(0)
+      await expectOneRowOfChrome(page)
     }
-    const launch = controls.getByRole('button', { name: 'Launch browser' })
-    const rows = [
-      [
-        controls.getByTestId('share-pill'),
-        controls.getByRole('button', { name: /Export/ }),
-        launch
-      ],
-      [
-        actionBar.getByTestId('topbar-rec'),
-        actionBar.getByRole('switch', { name: 'Capture Session' })
-      ]
+    const row = [
+      page.getByTestId('global-search'),
+      controls.getByTestId('status-group'),
+      controls.getByTestId('topbar-capture-session')
     ]
 
     for (const width of [1440, 1280, 1100, 1024]) {
       await electronApp.windows()[0].setViewportSize({ width, height: 800 })
       await expect(async () => {
         await holdRecording()
-        const overflow = await actionBar.evaluate((el) => el.scrollWidth - el.clientWidth)
-        expect(overflow).toBeLessThanOrEqual(0)
         // The top bar's right group is never narrower than its content, so it cannot scroll;
         // each of its controls is held to the window's edge instead.
         for (const control of await controls.locator(':scope > *').all()) {
@@ -256,26 +351,14 @@ test.describe('Top bar layout', () => {
           () => document.documentElement.scrollWidth - window.innerWidth
         )
         expect(pageOverflow).toBeLessThanOrEqual(0)
-        // Left to right with no overlap: Share, Export, Launch browser in the top bar; the mark
-        // and the switch in the action bar.
-        for (const row of rows) {
-          let edge = 0
-          for (const item of row) {
-            const { x, width: itemWidth } = (await item.boundingBox())!
-            expect(x).toBeGreaterThanOrEqual(edge)
-            edge = x + itemWidth
-          }
+        // Left to right with no overlap: the search, the status group and the mark.
+        let edge = 0
+        for (const item of row) {
+          const { x, width: itemWidth } = (await item.boundingBox())!
+          expect(x).toBeGreaterThanOrEqual(edge)
+          edge = x + itemWidth
         }
-        // One line. The button's height is fixed, so count the lines its label is laid out on.
-        const labelLines = await launch.evaluate((el) => {
-          const range = document.createRange()
-          range.selectNodeContents(el)
-          return new Set(Array.from(range.getClientRects(), (rect) => Math.round(rect.top))).size
-        })
-        expect(labelLines).toBe(1)
-        await expect(actionBar.getByRole('switch', { name: 'Capture Session' })).toBeInViewport({
-          ratio: 1
-        })
+        await expect(controls.getByTestId('rec-plus-extension')).toBeInViewport({ ratio: 1 })
       }).toPass({ timeout: 5000 })
     }
   })
@@ -332,10 +415,7 @@ test.describe('Top bar layout', () => {
     const overlay = page.getByTestId('capture-details-overlay')
     await expect(overlay).toBeVisible()
 
-    await page
-      .getByTestId('topbar-controls')
-      .getByRole('button', { name: /Export/ })
-      .click()
+    await page.getByTestId('topbar-case-name').click()
     await page.getByRole('menuitem', { name: 'Export evidence report' }).click()
     await expect(page.getByRole('dialog', { name: 'Export case' })).toBeVisible()
 
@@ -350,5 +430,18 @@ test.describe('Top bar layout', () => {
       { px: x + width / 2, py: y + height - 20 }
     )
     expect(covered).toBe(true)
+
+    // The dialog opens from the Case name, which comes before the search in the bar, and the
+    // search keeps a layer of its own for its results. The dialog's backdrop still covers it.
+    const searchBox = (await page.getByTestId('global-search').boundingBox())!
+    const searchCovered = await page.evaluate(
+      ({ px, py }) => {
+        const top = document.elementFromPoint(px, py)
+        const search = document.querySelector('[data-testid="global-search"]')
+        return !!top && !search?.contains(top)
+      },
+      { px: searchBox.x + searchBox.width / 2, py: searchBox.y + searchBox.height / 2 }
+    )
+    expect(searchCovered).toBe(true)
   })
 })

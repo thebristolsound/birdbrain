@@ -140,6 +140,7 @@ export const CaseCard = memo(function CaseCard({
       </div>
 
       <CaseMenu
+        place="card"
         caseData={caseData}
         className="absolute right-2 top-2"
         onRenameStart={() => setEditingName(caseData.name)}

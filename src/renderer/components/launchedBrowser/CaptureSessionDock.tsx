@@ -30,10 +30,13 @@ export function useCaptureSessionRailDocked(): boolean {
 }
 
 // Where the Capture Session panel sits on a Case screen (`1f`, `2a`): a 320-pixel rail at the right
-// edge under the Case action bar where the screen keeps its minimums beside it, else a 40-pixel
+// edge under the top bar where the screen keeps its minimums beside it, else a 40-pixel
 // strip whose expand control opens the panel as an overlay over the screen, with no reflow. The
 // row is measured as a whole, so docking the rail does not change the width that decides it.
-// While the panel is popped out the strip stands in at any width (`1g`).
+// While the panel is popped out the strip stands in at any width (`1g`). The top bar's recording
+// mark hides and shows a launched browser's panel. A notice is not a browser's panel, so it is
+// not hidden: the rail shows it in full and the strip marks it, and the capture control marks it
+// too and shows it in full in its menu.
 export function CaptureSessionDock({
   waybackTab,
   children
@@ -44,6 +47,7 @@ export function CaptureSessionDock({
   const rowRef = useRef<HTMLDivElement>(null)
   const room = useViewWidth(rowRef, window.innerWidth - SIDE_RAIL_PX)
   const view = useCaptureSessionView()
+  const hidden = useAppStore((s) => s.captureSessionPanelHidden) && 'browser' in view
   const { data: poppedOut = false } = useQuery(launchedBrowserPopOutQueryOptions)
   const fits = captureSessionRailFits(room, waybackTab)
   const [overlayOpen, setOverlayOpen] = useState(false)
@@ -57,7 +61,7 @@ export function CaptureSessionDock({
   const away = poppedOut && view.kind !== 'closed'
 
   let side: ReactNode = null
-  if (view.kind !== 'none') {
+  if (view.kind !== 'none' && !hidden) {
     if (away) side = <PoppedOutStrip view={view} />
     else if (fits) {
       side = (
@@ -73,7 +77,7 @@ export function CaptureSessionDock({
   }
 
   return (
-    <RailDockedContext.Provider value={view.kind !== 'none' && fits && !away}>
+    <RailDockedContext.Provider value={view.kind !== 'none' && !hidden && fits && !away}>
       <div ref={rowRef} className="flex min-h-0 flex-1">
         {children}
         {side}

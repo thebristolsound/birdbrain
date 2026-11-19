@@ -125,4 +125,10 @@ The series comes from a Playwright script against the seeded demo case. Rebuild 
 README_SHOTS=1 npx playwright test e2e/readme-screenshots.spec.ts
 ```
 
-Output lands in `test-results/readme/` with light and dark variants of every shot. The light variants are referenced directly; manually copy the dark variants (e.g., `screenshot-case-dark.png`) into `website/content/images/` to update the dark-mode versions on the site.
+Output lands in `test-results/readme/`, with a light and a dark variant of every shot except `screenshot-export.png`, which has one. The site shows the dark variants: copy each `screenshot-<name>-dark.png` to `website/content/images/screenshot-<name>.png`, and copy `screenshot-export.png` as it is.
+
+On Linux under `xvfb-run`, the default virtual screen cuts the seeded page screenshots short. Give it a taller one:
+
+```bash
+README_SHOTS=1 xvfb-run -a -s "-screen 0 1920x2000x24" npx playwright test e2e/readme-screenshots.spec.ts
+```

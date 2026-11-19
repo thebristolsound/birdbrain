@@ -12,14 +12,16 @@ export const PANEL_GROUP_ID = 'captures-columns'
 
 export const RAIL_WIDTH_PX = 40
 
-// The app's side rail on Case screens (Sidebar's `w-12`).
-export const SIDE_RAIL_PX = 48
+// The app's side rail on Case screens (Sidebar's `w-[72px]`): 72 pixels since its items carry
+// their labels.
+export const SIDE_RAIL_PX = 72
 
-// The details panel folds when the screen's own width is under this: the window rule it replaces
-// folded below a 1,100-pixel window, which leaves 118 pixels above the docked minimums
-// (240 + 7 + 360 + 7 + 320 = 934) beside the side rail. Reading the screen's width instead of the
-// window's lets the panel give way to the Capture Session rail (#1831).
-export const DETAILS_FOLD_ROOM_PX = 1_100 - SIDE_RAIL_PX
+// The details panel folds when the screen's own width is under this, which leaves 118 pixels
+// above the docked minimums (240 + 7 + 360 + 7 + 320 = 934). It is the room a 1,100-pixel window
+// left beside the 48-pixel rail this replaced, kept as it was, so beside the 72-pixel rail the
+// panel folds below a 1,124-pixel window. Reading the screen's width instead of the window's lets
+// the panel give way to the Capture Session rail (#1831).
+export const DETAILS_FOLD_ROOM_PX = 1_052
 
 export const LIST_PANEL = { id: 'capture-list', ...LIST_COLUMN_SIZE } as const
 

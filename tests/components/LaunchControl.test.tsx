@@ -700,11 +700,14 @@ describe("starting the extension's session from the menu", () => {
     await waitFor(() => expect(session.start).toHaveBeenCalledTimes(1))
     const elsewhere = document.createElement('input')
     document.body.append(elsewhere)
-    elsewhere.focus()
-    await act(async () => finish())
-    await screen.findByTestId('topbar-capture-session')
-    expect(document.activeElement).toBe(elsewhere)
-    elsewhere.remove()
+    try {
+      elsewhere.focus()
+      await act(async () => finish())
+      await screen.findByTestId('topbar-capture-session')
+      expect(document.activeElement).toBe(elsewhere)
+    } finally {
+      elsewhere.remove()
+    }
   })
 
   it('moves focus to the recording mark once the session starts', async () => {

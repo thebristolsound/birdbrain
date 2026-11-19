@@ -6,9 +6,15 @@
 graded by two model judges, over four rounds for both themes and then three rounds for light alone;
 awaiting the maintainer's ruling. Nothing in the app or the Birdbrain design system has changed.
 
-**Frame of reference:** `origin/main` at `1047d3c`. Token values are cited from
+**Frame of reference:** `origin/main` at `54709f3`. Token values are cited from
 `src/renderer/styles/globals.css` at that commit. The canvas draws from the Birdbrain design system
 artifact, whose dark faint text is `#82838c`; the app ships `#71717a`.
+
+**Creative:** the
+[2026-11-17 one-row chrome bundle](../design-handoff/2026-11-17-one-row-chrome/) carries the final
+palette in both themes. It ships packed as one HTML file. Every board inlines `palette.css` (the
+token overrides, with each ratio in a comment) and `bb.css` (the shell classes that use them), and
+board P shows each token before and after.
 
 **Related:** the [consolidation plan](../plans/2026-11-15-chrome-capture-export-consolidation.md)
 (decision 2 on status tiers, and slice 1.1, which proposed faint text at `#85858e`); this proposal
@@ -67,9 +73,9 @@ omitted.
 | `--color-hue-violet-fg` (new) | Selectors in the link map | | `#c084fc` | | `#7e22ce` |
 | `--color-scrim` (new) | Behind a dialog | | `rgba(0,0,0,0.55)` | | `rgba(24,24,32,0.28)` |
 | `--shadow-card` | Cards, cells, frames | `none` | `none` | `0 1px 2px rgba(0,0,0,0.04)` | `0 1px 2px rgba(24,24,40,0.06)` |
-| `--shadow-overlay`, `--shadow-menu` (new) | Dialogs, popovers, menus | | unchanged | | cool two-layer shadows; values in `palette.css` |
+| `--shadow-overlay`, `--shadow-menu` (new) | Dialogs, popovers, menus | | unchanged | | cool two-layer shadows; values in the bundle's `palette.css` |
 
-The canvas file `palette.css` holds the full set, with the ratio of each in a comment.
+The bundle's `palette.css` holds the full set, with the ratio of each in a comment.
 
 ### Rules
 

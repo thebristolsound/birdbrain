@@ -33,6 +33,8 @@ export function OverviewSelectorsBlock({ selectors, matchCounts }: OverviewSelec
                 >
                   {selector.label || selector.pattern}
                 </span>
+                {/* The dimmed name is the only sign for the eye; this says it to a screen reader. */}
+                {!selector.enabled && <span className="sr-only">Switched off</span>}
                 <span className="shrink-0 font-body text-[11px] text-text-muted">
                   {count} {count === 1 ? 'Capture' : 'Captures'}
                 </span>

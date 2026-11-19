@@ -90,8 +90,8 @@ not because the stack leaves it out: "Progress on the chrome slices" has both. S
 for review pass 3 of `2026-11-15-unreviewed-surfaces-review-passes.md`, whose assessment says
 whether the slice goes ahead as written.
 
-Since decision 7, slices 2.3, 4.2 to 4.4 and 7.3 can start too. Slices 5.2 to 5.6 are built,
-as #2231 to #2235, and merge in the order written.
+Since decision 7, slices 2.3, 4.2 to 4.4 and 7.3 can start too. Slices 5.2 to 5.5 have
+merged, as #2231 to #2234, and slice 5.6 is #2235.
 
 Copy cut slices:
 

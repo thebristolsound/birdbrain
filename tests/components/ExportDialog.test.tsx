@@ -693,6 +693,69 @@ describe('ExportDialog', () => {
     expect(notifySuccess).not.toHaveBeenCalled()
   })
 
+  // jsdom lays nothing out, so these read the structure: which element scrolls, and what
+  // sits outside it. `e2e/export.spec.ts` checks the rendered result at 1440 by 900.
+  describe('layout', () => {
+    function scrollingAncestor(el: HTMLElement): HTMLElement | null {
+      const dialog = screen.getByRole('dialog')
+      for (let node = el.parentElement; node && dialog.contains(node); node = node.parentElement) {
+        if (/(^|\s)overflow-(y-)?(auto|scroll)(\s|$)/.test(node.getAttribute('class') ?? '')) {
+          return node
+        }
+      }
+      return null
+    }
+
+    it('scrolls the form and keeps the heading and the footer outside it', () => {
+      renderDialog()
+
+      expect(scrollingAncestor(screen.getByRole('radiogroup'))).not.toBeNull()
+      expect(scrollingAncestor(screen.getByPlaceholderText(/Disclosure under/))).not.toBeNull()
+      expect(scrollingAncestor(screen.getByRole('heading', { name: 'Export case' }))).toBeNull()
+      expect(scrollingAncestor(screen.getByRole('button', { name: 'Cancel' }))).toBeNull()
+      expect(scrollingAncestor(screen.getByTestId('export-submit'))).toBeNull()
+    })
+
+    it('shows a failure beside the retry button, outside the form that scrolls', async () => {
+      generateReport.mockRejectedValueOnce(new Error('disk full'))
+      renderDialog()
+
+      fireEvent.click(screen.getByTestId('export-submit'))
+
+      const failure = await screen.findByTestId('export-error')
+      expect(failure.textContent).toBe('Error: disk full')
+      expect(scrollingAncestor(failure)).toBeNull()
+    })
+
+    it('draws each notice as an icon and text in its tier colour, with no filled box', async () => {
+      getCase.mockResolvedValue({ ...CASE, isDemo: true })
+      generateReport.mockRejectedValueOnce(new Error('disk full'))
+      renderDialog()
+      await screen.findByTestId('export-demo-notice')
+      await screen.findByTestId('export-trusted-time-notice')
+      fireEvent.click(screen.getByLabelText(/Working copy/))
+      fireEvent.click(screen.getByTestId('export-submit'))
+      await screen.findByTestId('export-error')
+
+      const tiers = {
+        'export-demo-notice': 'text-danger-fg',
+        'export-error': 'text-danger-fg',
+        'export-working-copy-notice': 'text-warning-fg',
+        'export-trusted-time-notice': 'text-warning-fg'
+      }
+      for (const [testId, colour] of Object.entries(tiers)) {
+        const notice = screen.getByTestId(testId)
+        const classes = (notice.getAttribute('class') ?? '').split(/\s+/)
+        expect(classes, testId).toContain(colour)
+        expect(
+          classes.filter((name) => /^(bg-|border)|-surface$/.test(name)),
+          testId
+        ).toEqual([])
+        expect(notice.querySelector('svg'), testId).not.toBeNull()
+      }
+    })
+  })
+
   // Focus, Tab and Escape only (#1536). The known answers are the export
   // options: walking the dialog by keyboard must leave them what the preset
   // table says.

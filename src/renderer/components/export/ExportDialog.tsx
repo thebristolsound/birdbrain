@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence, useIsPresent } from 'motion/react'
 import { useQuery } from '@tanstack/react-query'
-import { Archive, ChevronDown, ShieldCheck, TriangleAlert } from 'lucide-react'
+import { Archive, ChevronDown, CircleAlert, Clock, ShieldCheck, TriangleAlert } from 'lucide-react'
 import type { CaseWaybackRef, ExportClass, ExportOptions } from '@shared/types'
 import { safeFilename } from '@shared/safeFilename'
 import { presets } from '@renderer/lib/motion'
@@ -243,14 +243,14 @@ export function ExportDialog({ caseId, caseName, selectedCaptureIds, onClose }: 
         // One name for both phases: each phase swaps its own heading in.
         aria-label="Export case"
         tabIndex={-1}
-        className="neu-overlay max-h-[85vh] w-[30rem] overflow-y-auto rounded-2xl p-6"
+        className="neu-overlay flex max-h-[85vh] w-[30rem] flex-col overflow-hidden rounded-2xl"
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => trapTab(e, panelRef.current)}
         {...presets.modal}
       >
         <AnimatePresence mode="wait">
           {phase === 'exporting' ? (
-            <motion.div key="exporting" {...presets.fadeIn}>
+            <motion.div key="exporting" className="p-6" {...presets.fadeIn}>
               <h2 className="mb-4 text-lg font-semibold text-text-primary">Exporting case</h2>
               <ExportProgress step={progress.step} percent={progress.percent} />
               <p className="mb-4 text-xs text-text-muted" data-testid="export-close-note">
@@ -264,265 +264,285 @@ export function ExportDialog({ caseId, caseName, selectedCaptureIds, onClose }: 
               </div>
             </motion.div>
           ) : (
-            <motion.div key="form" {...presets.fadeIn}>
-              <h2 className="mb-4 text-lg font-semibold text-text-primary">Export case</h2>
+            // The heading and the actions stay in view; only the form between them scrolls.
+            <motion.div key="form" className="flex min-h-0 flex-col" {...presets.fadeIn}>
+              <h2 className="shrink-0 px-6 pb-4 pt-6 text-lg font-semibold text-text-primary">
+                Export case
+              </h2>
 
-              {isDemo && (
-                <div
-                  data-testid="export-demo-notice"
-                  className="mb-4 rounded border border-danger-line bg-danger-surface px-3 py-2 text-sm text-danger-fg"
-                >
-                  Demonstration case — its captures are fixture data seeded by Birdbrain, not
-                  collected evidence. The exported package states this.
-                </div>
-              )}
-
-              {/* Scope row (#398/#399): what this export covers. A Working Copy ships
-                  no Manifest, so the chain note is for evidence packages only. */}
-              <div className="mb-4">
-                <Label className="mb-1">Scope</Label>
-                <div className="text-sm text-text-secondary" data-testid="export-scope-row">
-                  {scopedCount !== undefined
-                    ? `${scopedCount} selected capture${scopedCount === 1 ? '' : 's'}`
-                    : `Whole case${preflight ? ` — ${preflight.captureCount} capture${preflight.captureCount === 1 ? '' : 's'}` : ''}`}
-                </div>
-                {scopedCount !== undefined && !workingCopy && (
-                  <div
-                    className="mt-1 text-[11px] text-text-muted"
-                    data-testid="export-scope-manifest-note"
+              <div data-testid="export-form-scroll" className="min-h-0 flex-1 overflow-y-auto px-6">
+                {isDemo && (
+                  <p
+                    data-testid="export-demo-notice"
+                    className="mb-4 flex gap-2 text-sm text-danger-fg"
                   >
-                    The full Manifest chain is included.
-                  </div>
+                    <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={1.8} />
+                    <span>
+                      Demonstration case — its captures are fixture data seeded by Birdbrain, not
+                      collected evidence. The exported package states this.
+                    </span>
+                  </p>
                 )}
-              </div>
 
-              {/* Presets */}
-              <div className="mb-4">
-                <Label className="mb-2">Preset</Label>
-                <div className="space-y-1.5" role="radiogroup" aria-label="Export preset">
-                  {PRESET_IDS.map((id) => (
-                    <label
-                      key={id}
-                      className={`flex cursor-pointer items-start gap-2 rounded-lg border px-3 py-2 ${
-                        activePreset === id
-                          ? 'border-accent bg-accent-subtle'
-                          : 'border-border hover:bg-elevated'
-                      }`}
+                {/* Scope row (#398/#399): what this export covers. A Working Copy ships
+                  no Manifest, so the chain note is for evidence packages only. */}
+                <div className="mb-4">
+                  <Label className="mb-1">Scope</Label>
+                  <div className="text-sm text-text-secondary" data-testid="export-scope-row">
+                    {scopedCount !== undefined
+                      ? `${scopedCount} selected capture${scopedCount === 1 ? '' : 's'}`
+                      : `Whole case${preflight ? ` — ${preflight.captureCount} capture${preflight.captureCount === 1 ? '' : 's'}` : ''}`}
+                  </div>
+                  {scopedCount !== undefined && !workingCopy && (
+                    <div
+                      className="mt-1 text-[11px] text-text-muted"
+                      data-testid="export-scope-manifest-note"
                     >
-                      <input
-                        type="radio"
-                        name="export-preset"
-                        checked={activePreset === id}
-                        onChange={() => applyPreset(id)}
-                        className="mt-0.5"
-                      />
-                      <span className="min-w-0">
-                        <span className="block text-sm font-medium text-text-primary">
-                          {EXPORT_PRESETS[id].label}
-                        </span>
-                        <span className="block text-[11px] leading-snug text-text-muted">
-                          {EXPORT_PRESETS[id].description}
-                        </span>
-                      </span>
-                    </label>
-                  ))}
+                      The full Manifest chain is included.
+                    </div>
+                  )}
                 </div>
-              </div>
 
-              {/* Item checklist, collapsed until customised */}
-              <div className="mb-4">
-                <button
-                  type="button"
-                  onClick={() => setShowChecklist((v) => !v)}
-                  aria-expanded={showChecklist || activePreset === 'custom'}
-                  className="flex items-center gap-1.5 text-xs font-medium text-text-secondary hover:text-text-primary"
-                >
-                  <ChevronDown
-                    className={`h-3 w-3 transition-transform ${
-                      showChecklist || activePreset === 'custom' ? '' : '-rotate-90'
-                    }`}
-                    strokeWidth={2}
-                  />
-                  {activePreset === 'custom' ? 'Custom selection' : 'Customise contents'}
-                </button>
-                {(showChecklist || activePreset === 'custom') && (
-                  <div className="mt-2 space-y-2 pl-1">
-                    {!workingCopy && (
-                      // Evidence Package invariants: always on, never
-                      // deselectable — a package without them is not an
-                      // Evidence Package but a Working Copy (#399). Page
-                      // archives join them: the evidence zip ships every one
-                      // whatever the toggle says (#844), and the pinned
-                      // snapshot promise below needs the report's capture
-                      // modules the toggle would drop (#887).
-                      <>
-                        {(
-                          [
-                            ['manifest', 'Manifest — full case chain, never a slice'],
-                            ['certification', 'Certification'],
-                            ['captures', 'Captures (page archives)']
-                          ] as const
-                        ).map(([key, label]) => (
-                          <label key={key} className="flex items-center gap-2 opacity-80">
-                            <input
-                              type="checkbox"
-                              checked
-                              disabled
-                              aria-label={label}
-                              className="rounded"
-                            />
-                            <span className="text-sm text-text-secondary">
-                              {label}
-                              <span className="ml-1.5 text-[10px] uppercase tracking-wide text-text-faint">
-                                always included
-                              </span>
-                            </span>
-                          </label>
-                        ))}
-                        <p
-                          className="text-[11px] text-text-muted"
-                          data-testid="export-captures-invariant-note"
-                        >
-                          Page archives cannot be left out of a certified package.
-                        </p>
-                      </>
-                    )}
-                    {(
-                      [
-                        // The Working Copy zip honours this toggle; the
-                        // evidence class renders it always-on above.
-                        ...(workingCopy ? [['captures', 'Captures (page archives)'] as const] : []),
-                        ['screenshots', 'Screenshots'],
-                        ['notes', 'Operator notes'],
-                        // No verification materials exist in a Working Copy,
-                        // so the row only renders for evidence exports.
-                        ...(workingCopy ? [] : [['auditTrail', 'Integrity verification'] as const])
-                      ] as ReadonlyArray<
-                        readonly ['captures' | 'screenshots' | 'notes' | 'auditTrail', string]
+                {/* Presets */}
+                <div className="mb-4">
+                  <Label className="mb-2">Preset</Label>
+                  <div className="space-y-1.5" role="radiogroup" aria-label="Export preset">
+                    {PRESET_IDS.map((id) => (
+                      <label
+                        key={id}
+                        className={`flex cursor-pointer items-start gap-2 rounded-lg border px-3 py-2 ${
+                          activePreset === id
+                            ? 'border-accent bg-accent-subtle'
+                            : 'border-border hover:bg-elevated'
+                        }`}
                       >
-                    ).map(([key, label]) => (
-                      <label key={key} className="flex cursor-pointer items-center gap-2">
                         <input
-                          type="checkbox"
-                          checked={selection.include[key]}
-                          onChange={() => toggleInclude(key)}
-                          className="rounded"
+                          type="radio"
+                          name="export-preset"
+                          checked={activePreset === id}
+                          onChange={() => applyPreset(id)}
+                          className="mt-0.5"
                         />
-                        <span className="text-sm text-text-secondary">{label}</span>
+                        <span className="min-w-0">
+                          <span className="block text-sm font-medium text-text-primary">
+                            {EXPORT_PRESETS[id].label}
+                          </span>
+                          <span className="block text-[11px] leading-snug text-text-muted">
+                            {EXPORT_PRESETS[id].description}
+                          </span>
+                        </span>
                       </label>
                     ))}
-                    <label className="flex cursor-pointer items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={selection.include.annotations === 'burned'}
-                        onChange={(e) =>
-                          setSelection((prev) => ({
-                            ...prev,
-                            include: {
-                              ...prev.include,
-                              annotations: e.target.checked ? 'burned' : 'none'
-                            }
-                          }))
-                        }
-                        className="rounded"
-                      />
-                      <span className="text-sm text-text-secondary">
-                        Burn annotations into screenshots
-                      </span>
-                    </label>
                   </div>
-                )}
-              </div>
+                </div>
 
-              {/* Class statement: custody summary for an Evidence Package, a
+                {/* Item checklist, collapsed until customised */}
+                <div className="mb-4">
+                  <button
+                    type="button"
+                    onClick={() => setShowChecklist((v) => !v)}
+                    aria-expanded={showChecklist || activePreset === 'custom'}
+                    className="flex items-center gap-1.5 text-xs font-medium text-text-secondary hover:text-text-primary"
+                  >
+                    <ChevronDown
+                      className={`h-3 w-3 transition-transform ${
+                        showChecklist || activePreset === 'custom' ? '' : '-rotate-90'
+                      }`}
+                      strokeWidth={2}
+                    />
+                    {activePreset === 'custom' ? 'Custom selection' : 'Customise contents'}
+                  </button>
+                  {(showChecklist || activePreset === 'custom') && (
+                    <div className="mt-2 space-y-2 pl-1">
+                      {!workingCopy && (
+                        // Evidence Package invariants: always on, never
+                        // deselectable — a package without them is not an
+                        // Evidence Package but a Working Copy (#399). Page
+                        // archives join them: the evidence zip ships every one
+                        // whatever the toggle says (#844), and the pinned
+                        // snapshot promise below needs the report's capture
+                        // modules the toggle would drop (#887).
+                        <>
+                          {(
+                            [
+                              ['manifest', 'Manifest — full case chain, never a slice'],
+                              ['certification', 'Certification'],
+                              ['captures', 'Captures (page archives)']
+                            ] as const
+                          ).map(([key, label]) => (
+                            <label key={key} className="flex items-center gap-2 opacity-80">
+                              <input
+                                type="checkbox"
+                                checked
+                                disabled
+                                aria-label={label}
+                                className="rounded"
+                              />
+                              <span className="text-sm text-text-secondary">
+                                {label}
+                                <span className="ml-1.5 text-[10px] uppercase tracking-wide text-text-faint">
+                                  always included
+                                </span>
+                              </span>
+                            </label>
+                          ))}
+                          <p
+                            className="text-[11px] text-text-muted"
+                            data-testid="export-captures-invariant-note"
+                          >
+                            Page archives cannot be left out of a certified package.
+                          </p>
+                        </>
+                      )}
+                      {(
+                        [
+                          // The Working Copy zip honours this toggle; the
+                          // evidence class renders it always-on above.
+                          ...(workingCopy
+                            ? [['captures', 'Captures (page archives)'] as const]
+                            : []),
+                          ['screenshots', 'Screenshots'],
+                          ['notes', 'Operator notes'],
+                          // No verification materials exist in a Working Copy,
+                          // so the row only renders for evidence exports.
+                          ...(workingCopy
+                            ? []
+                            : [['auditTrail', 'Integrity verification'] as const])
+                        ] as ReadonlyArray<
+                          readonly ['captures' | 'screenshots' | 'notes' | 'auditTrail', string]
+                        >
+                      ).map(([key, label]) => (
+                        <label key={key} className="flex cursor-pointer items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={selection.include[key]}
+                            onChange={() => toggleInclude(key)}
+                            className="rounded"
+                          />
+                          <span className="text-sm text-text-secondary">{label}</span>
+                        </label>
+                      ))}
+                      <label className="flex cursor-pointer items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={selection.include.annotations === 'burned'}
+                          onChange={(e) =>
+                            setSelection((prev) => ({
+                              ...prev,
+                              include: {
+                                ...prev.include,
+                                annotations: e.target.checked ? 'burned' : 'none'
+                              }
+                            }))
+                          }
+                          className="rounded"
+                        />
+                        <span className="text-sm text-text-secondary">
+                          Burn annotations into screenshots
+                        </span>
+                      </label>
+                    </div>
+                  )}
+                </div>
+
+                {/* Class statement: custody summary for an Evidence Package, a
                   non-evidentiary notice for a Working Copy (ruled divergence
                   from the mock's unconditional custody card, recorded on #708). */}
-              {workingCopy ? (
-                <div
-                  data-testid="export-working-copy-notice"
-                  className="mb-4 flex gap-2 rounded border border-warning-line bg-warning-surface px-3 py-2 text-sm text-text-secondary"
-                >
-                  <TriangleAlert
-                    className="mt-0.5 h-4 w-4 shrink-0 text-warning-fg"
-                    strokeWidth={1.8}
-                  />
-                  <span>
-                    Non-evidentiary working copy: no Certification, no signed Manifest, no
-                    verification materials. The export is recorded on the case audit trail and
-                    marked as a working copy; the standalone verifier reports it as not a verifiable
-                    object.
-                  </span>
-                </div>
-              ) : (
-                <div
-                  data-testid="export-custody-card"
-                  className="mb-4 flex gap-2 rounded border border-border bg-elevated px-3 py-2 text-sm text-text-secondary"
-                >
-                  <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-accent" strokeWidth={1.8} />
-                  <span>
-                    Evidence package: ships the full signed Manifest chain and the Certification,
-                    and appends a signed export entry to the case audit trail. The Certification
-                    names the Operator.
-                  </span>
-                </div>
-              )}
+                {workingCopy ? (
+                  <p
+                    data-testid="export-working-copy-notice"
+                    className="mb-4 flex gap-2 text-sm text-warning-fg"
+                  >
+                    <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={1.8} />
+                    <span>
+                      Non-evidentiary working copy: no Certification, no signed Manifest, no
+                      verification materials. The export is recorded on the case audit trail and
+                      marked as a working copy; the standalone verifier reports it as not a
+                      verifiable object.
+                    </span>
+                  </p>
+                ) : (
+                  <div
+                    data-testid="export-custody-card"
+                    className="mb-4 flex gap-2 rounded border border-border bg-elevated px-3 py-2 text-sm text-text-secondary"
+                  >
+                    <ShieldCheck
+                      className="mt-0.5 h-4 w-4 shrink-0 text-accent"
+                      strokeWidth={1.8}
+                    />
+                    <span>
+                      Evidence package: ships the full signed Manifest chain and the Certification,
+                      and appends a signed export entry to the case audit trail. The Certification
+                      names the Operator.
+                    </span>
+                  </div>
+                )}
 
-              {/* Pinned Wayback snapshots: what the report will carry as
+                {/* Pinned Wayback snapshots: what the report will carry as
                   corroboration references, stated before the operator exports
                   rather than discovered in the document afterwards. Evidence
                   Package only — a Working Copy is built by buildWorkingCopyZip
                   and has no report to carry them, so promising one here would
                   describe a document the operator is not about to get (#399). */}
-              {!workingCopy && pinnedRefs.length > 0 && (
-                <div className="mb-4" data-testid="export-pinned-wayback">
-                  <Label className="mb-2">Pinned Wayback snapshots</Label>
-                  <div className="flex flex-col overflow-hidden rounded-md border border-border [&>div:last-child>div]:border-b-0">
-                    {pinnedRefs.map((ref) => (
-                      <PinnedSnapshot key={ref.id} snapshot={ref} />
-                    ))}
+                {!workingCopy && pinnedRefs.length > 0 && (
+                  <div className="mb-4" data-testid="export-pinned-wayback">
+                    <Label className="mb-2">Pinned Wayback snapshots</Label>
+                    <div className="flex flex-col overflow-hidden rounded-md border border-border [&>div:last-child>div]:border-b-0">
+                      {pinnedRefs.map((ref) => (
+                        <PinnedSnapshot key={ref.id} snapshot={ref} />
+                      ))}
+                    </div>
+                    <p className="mt-1.5 text-[11px] text-text-muted">
+                      Included in the report as archive.org references, labelled corroboration only.
+                      The snapshots themselves are not downloaded or packaged.
+                    </p>
                   </div>
-                  <p className="mt-1.5 text-[11px] text-text-muted">
-                    Included in the report as archive.org references, labelled corroboration only.
-                    The snapshots themselves are not downloaded or packaged.
-                  </p>
-                </div>
-              )}
+                )}
 
-              {/* Purpose or authority — rendered on the Certification for an
+                {/* Purpose or authority — rendered on the Certification for an
                   Evidence Package and recorded in the Working Copy marker. */}
-              <div className="mb-4">
-                <Label>Purpose or authority</Label>
-                <Input
-                  type="text"
-                  value={purposeOrAuthority}
-                  onChange={(e) => setPurposeOrAuthority(e.target.value)}
-                  placeholder="e.g. Disclosure under CPS request 2026/114"
-                />
+                <div className="mb-4">
+                  <Label>Purpose or authority</Label>
+                  <Input
+                    type="text"
+                    value={purposeOrAuthority}
+                    onChange={(e) => setPurposeOrAuthority(e.target.value)}
+                    placeholder="e.g. Disclosure under CPS request 2026/114"
+                  />
+                </div>
+
+                {preflight && preflight.unstampedCaptureCount > 0 && (
+                  <p
+                    data-testid="export-trusted-time-notice"
+                    className="mb-4 flex gap-2 text-sm text-warning-fg"
+                  >
+                    <Clock className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={1.8} />
+                    <span>
+                      {preflight.unstampedCaptureCount} capture
+                      {preflight.unstampedCaptureCount === 1 ? '' : 's'} will export without RFC
+                      3161 trusted time ({preflight.pendingCaptureCount} pending,{' '}
+                      {preflight.noneCaptureCount} none). Export will continue.
+                    </span>
+                  </p>
+                )}
               </div>
 
-              {preflight && preflight.unstampedCaptureCount > 0 && (
-                <div className="mb-4 rounded border border-warning-line bg-warning-surface px-3 py-2 text-sm text-warning-fg">
-                  {preflight.unstampedCaptureCount} capture
-                  {preflight.unstampedCaptureCount === 1 ? '' : 's'} will export without RFC 3161
-                  trusted time ({preflight.pendingCaptureCount} pending,{' '}
-                  {preflight.noneCaptureCount} none). Export will continue.
+              <div className="shrink-0 border-t border-border px-6 py-4">
+                {/* Beside the button that retries it, so a failure is never scrolled out of view. */}
+                {exportError && (
+                  <p data-testid="export-error" className="mb-3 flex gap-2 text-sm text-danger-fg">
+                    <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={1.8} />
+                    <span className="min-w-0 break-words">{exportError}</span>
+                  </p>
+                )}
+                <div className="flex justify-end gap-2">
+                  <Button variant="ghost" size="sm" onClick={onClose}>
+                    Cancel
+                  </Button>
+                  <Button size="sm" data-testid="export-submit" onClick={handleExport}>
+                    {exportError ? 'Try again' : 'Export'}
+                  </Button>
                 </div>
-              )}
-
-              {exportError && (
-                <div className="mb-4 rounded border border-danger-line bg-danger-surface px-3 py-2 text-sm text-danger-fg">
-                  {exportError}
-                </div>
-              )}
-
-              {/* Actions */}
-              <div className="flex justify-end gap-2">
-                <Button variant="ghost" size="sm" onClick={onClose}>
-                  Cancel
-                </Button>
-                <Button size="sm" data-testid="export-submit" onClick={handleExport}>
-                  {exportError ? 'Try again' : 'Export'}
-                </Button>
               </div>
             </motion.div>
           )}

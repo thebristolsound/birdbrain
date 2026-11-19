@@ -181,6 +181,38 @@ test.describe('Export dialog: presets and the two export classes', () => {
     }
   })
 
+  // The form scrolls between a fixed heading and a fixed footer, so the primary action needs
+  // no scroll, whatever the form holds.
+  test('Export is in view at 1440 by 900 when the dialog opens', async ({ electronApp, page }) => {
+    // The window's own size: `page.setViewportSize` emulates one instead.
+    const resize = async (width: number, height: number): Promise<void> => {
+      await electronApp.evaluate(
+        ({ BrowserWindow }, [w, h]) => BrowserWindow.getAllWindows()[0].setContentSize(w, h),
+        [width, height]
+      )
+      await expect
+        .poll(() => page.evaluate(() => [innerWidth, innerHeight]))
+        .toEqual([width, height])
+    }
+    await resize(1440, 900)
+    const caseId = await createCase(page, 'Footer In View Case')
+    await seedCapture(page, caseId, 'https://example.com/footer', 'Footer Capture')
+
+    await openExportDialog(page)
+
+    const submit = page.getByTestId('export-submit')
+    const form = page.getByTestId('export-form-scroll')
+    await expect(submit).toBeInViewport({ ratio: 1 })
+    expect(await form.evaluate((el) => el.scrollTop)).toBe(0)
+
+    // A short window with the checklist open makes the form taller than the dialog: the form
+    // takes the overflow and the button keeps its place.
+    await page.getByRole('button', { name: 'Customise contents' }).click()
+    await resize(1440, 640)
+    await expect.poll(() => form.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true)
+    await expect(submit).toBeInViewport({ ratio: 1 })
+  })
+
   // Real key handling, which jsdom does not model: an arrow key on a native
   // radio checks the next one, so focus must not open on the preset group.
   test('an arrow key on open leaves the export on the evidence preset', async ({ page }) => {

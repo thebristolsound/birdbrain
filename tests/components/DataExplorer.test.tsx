@@ -820,3 +820,192 @@ describe('DataExplorer MHTML Parts tab (#991)', () => {
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(HASH_A))
   })
 })
+
+// The fixture's anchored list: two Exhibits (`cap-a`, `cap-legacy`), one
+// Derived File of `cap-a` (`thumb-a`), and a pooled file under Staging.
+describe('DataExplorer Verify buttons: the Exhibits each one verifies', () => {
+  let verify: ReturnType<typeof vi.fn>
+
+  beforeEach(() => {
+    verify = vi.fn(async (_caseId: string, exhibitId: string) => ({
+      exhibitId,
+      caseId: 'case1',
+      kind: 'capture',
+      status: 'verified'
+    }))
+    window.birdbrain.exhibits.verify = verify as typeof window.birdbrain.exhibits.verify
+  })
+
+  const verifiedIds = () => verify.mock.calls.map(([, exhibitId]) => exhibitId)
+
+  async function select(key: string) {
+    fireEvent.click(
+      (await tree()).getByTestId(`data-tree-node-${key}`).querySelector('button:last-of-type')!
+    )
+  }
+
+  // Clicks, then waits for the run to end, so the ids read are the whole run.
+  async function press(testId: string) {
+    const button = (await screen.findByTestId(testId)) as HTMLButtonElement
+    fireEvent.click(button)
+    await waitFor(() => expect(verify).toHaveBeenCalled())
+    await waitFor(() => expect(button.disabled).toBe(false))
+    return verifiedIds()
+  }
+
+  it.each(['data-sources', 'views', 'file-types', 'results'])(
+    'node-verify on the top-level node %s passes every anchored Exhibit and nothing else',
+    async (key) => {
+      renderExplorer()
+      await screen.findByTestId('artifact-row-cap-a')
+      await select(key)
+      // The table lists the Derived File too; it is not passed.
+      expect(screen.getByTestId('artifact-row-thumb-a')).toBeTruthy()
+
+      expect(await press('node-verify')).toEqual(['cap-a', 'cap-legacy'])
+    }
+  )
+
+  it('node-verify on a top-level node passes the Exhibits Verify all passes', async () => {
+    renderExplorer()
+    await screen.findByTestId('artifact-row-cap-a')
+    const fromNode = await press('node-verify')
+    verify.mockClear()
+
+    await select('integrity-exceptions')
+    expect(screen.queryByTestId('node-verify')).toBeNull()
+    expect(await press('verify-all')).toEqual(fromNode)
+  })
+
+  it('node-verify on a narrower node passes only the Exhibits under that node', async () => {
+    renderExplorer()
+    const rail = await tree()
+    await screen.findByTestId('artifact-row-cap-a')
+    fireEvent.click(rail.getByLabelText('Expand Captures'))
+    await select('exhibit:cap-a')
+    expect(screen.queryByTestId('artifact-row-cap-legacy')).toBeNull()
+    expect(screen.getByTestId('artifact-row-thumb-a')).toBeTruthy()
+
+    expect(await press('node-verify')).toEqual(['cap-a'])
+  })
+
+  it('node-verify passes every Exhibit under the node, one a search has hidden included', async () => {
+    renderExplorer()
+    await screen.findByTestId('artifact-row-cap-a')
+    fireEvent.change(screen.getByTestId('data-search'), { target: { value: 'Exhibit 2' } })
+    await waitFor(() => expect(screen.queryByTestId('artifact-row-cap-a')).toBeNull())
+    expect(screen.getByTestId('artifact-row-cap-legacy')).toBeTruthy()
+
+    expect(await press('node-verify')).toEqual(['cap-a', 'cap-legacy'])
+  })
+
+  it('row-verify passes the selected Exhibit alone', async () => {
+    renderExplorer()
+    fireEvent.click(await screen.findByTestId('artifact-row-cap-legacy'))
+
+    expect(await press('row-verify')).toEqual(['cap-legacy'])
+  })
+
+  it('row-verify on a Derived File passes its parent Exhibit, not the file', async () => {
+    renderExplorer()
+    fireEvent.click(await screen.findByTestId('artifact-row-thumb-a'))
+
+    expect(await press('row-verify')).toEqual(['cap-a'])
+  })
+
+  it('a Derived File node has no node-verify, and its row-verify passes the parent', async () => {
+    renderExplorer()
+    const rail = await tree()
+    await screen.findByTestId('artifact-row-cap-a')
+    fireEvent.click(rail.getByLabelText('Expand Captures'))
+    fireEvent.click(rail.getByLabelText('Expand Example page'))
+    await select('derived:thumb-a')
+    expect(screen.getByTestId('artifact-row-thumb-a')).toBeTruthy()
+    expect(screen.queryByTestId('artifact-row-cap-a')).toBeNull()
+    expect(screen.queryByTestId('node-verify')).toBeNull()
+
+    expect(await press('row-verify')).toEqual(['cap-a'])
+  })
+
+  // A verify that does not settle until released, to hold a run in flight.
+  function holdVerify() {
+    let release = () => {}
+    verify.mockImplementation(
+      (_caseId: string, exhibitId: string) =>
+        new Promise((resolve) => {
+          release = () =>
+            resolve({ exhibitId, caseId: 'case1', kind: 'capture', status: 'verified' })
+        })
+    )
+    return () => release()
+  }
+
+  it('labels node-verify "Verify listed", at rest and while a run is in flight', async () => {
+    renderExplorer()
+    const button = (await screen.findByTestId('node-verify')) as HTMLButtonElement
+    expect(button.textContent).toBe('Verify listed')
+    expect(button.getAttribute('title')).toBe('Verify every exhibit under this node')
+    expect(button.getAttribute('aria-label')).toBeNull()
+    expect(button.disabled).toBe(false)
+
+    const release = holdVerify()
+    fireEvent.click(screen.getByTestId('row-verify'))
+    await waitFor(() => expect(button.disabled).toBe(true))
+    expect(button.textContent).toBe('Verify listed')
+    release()
+    await waitFor(() => expect(button.disabled).toBe(false))
+    expect(button.textContent).toBe('Verify listed')
+  })
+
+  it('labels row-verify "Verify Exhibit", at rest and while a run is in flight', async () => {
+    renderExplorer()
+    fireEvent.click(await screen.findByTestId('artifact-row-cap-legacy'))
+    const button = (await screen.findByTestId('row-verify')) as HTMLButtonElement
+    expect(button.textContent).toBe('Verify Exhibit')
+    expect(button.getAttribute('title')).toBeNull()
+    expect(button.getAttribute('aria-label')).toBeNull()
+    expect(button.disabled).toBe(false)
+
+    const release = holdVerify()
+    fireEvent.click(button)
+    await waitFor(() => expect(button.disabled).toBe(true))
+    expect(button.textContent).toBe('Verify Exhibit')
+    release()
+    await waitFor(() => expect(button.disabled).toBe(false))
+    expect(button.textContent).toBe('Verify Exhibit')
+    expect(verifiedIds()).toEqual(['cap-legacy'])
+  })
+
+  it('labels row-verify "Verify Exhibit" on a Derived File, whose parent it verifies', async () => {
+    renderExplorer()
+    fireEvent.click(await screen.findByTestId('artifact-row-thumb-a'))
+    expect((await screen.findByTestId('row-verify')).textContent).toBe('Verify Exhibit')
+  })
+
+  it('leaves no button on the Data screen named "Verify" alone', async () => {
+    renderExplorer()
+    fireEvent.click(await screen.findByTestId('artifact-row-cap-a'))
+    await screen.findByTestId('row-verify')
+    expect(screen.getAllByRole('button', { name: /^Verify/ }).map(text)).toEqual([
+      'Verify listed',
+      'Verify Exhibit'
+    ])
+
+    await select('integrity-exceptions')
+    expect(screen.getAllByRole('button', { name: /^Verify/ }).map(text)).toEqual([
+      'Verify all',
+      'Verify Exhibit'
+    ])
+  })
+
+  it('a pooled file has neither button', async () => {
+    renderExplorer()
+    await screen.findByTestId('artifact-row-cap-a')
+    await select('staging')
+    fireEvent.click(await screen.findByTestId('artifact-row-staged-1'))
+    await screen.findByRole('tab', { name: 'Properties' })
+
+    expect(screen.queryByTestId('node-verify')).toBeNull()
+    expect(screen.queryByTestId('row-verify')).toBeNull()
+  })
+})

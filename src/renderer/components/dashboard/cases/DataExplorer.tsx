@@ -699,7 +699,7 @@ export function DataExplorer() {
                     data-testid="node-verify"
                   >
                     <ShieldCheck size={12} strokeWidth={1.8} />
-                    Verify
+                    Verify listed
                   </Button>
                 )}
                 {node === 'staging' && (
@@ -785,7 +785,7 @@ export function DataExplorer() {
                       data-testid="row-verify"
                     >
                       <ShieldCheck size={12} strokeWidth={1.8} />
-                      Verify
+                      Verify Exhibit
                     </Button>
                   ) : undefined
                 }

@@ -44,6 +44,9 @@ interface PanelProps {
   onDone?: () => void
   // "Open ‹Case›", which the dashboard's popover offers.
   showOpenCase?: boolean
+  // The panel is a tab of the Captures screen's right panel. The tab row names it and holds Pop
+  // out, and the top bar's mark holds the clock, so the header leaves all three out.
+  tabbed?: boolean
 }
 
 export function useCaptureSessionView(): PanelView {
@@ -57,7 +60,12 @@ const EYEBROW = 'font-display text-[10px] font-semibold uppercase tracking-[.06e
 // The Capture Session panel (S3), in the forms this step builds: the rail on Case screens, the
 // overlay its strip opens, the top bar's popover on the dashboard and in Settings, and the
 // pop-out's window, whose title bar names the Case.
-export function CaptureSessionPanel({ form, onDone, showOpenCase = false }: PanelProps) {
+export function CaptureSessionPanel({
+  form,
+  onDone,
+  showOpenCase = false,
+  tabbed = false
+}: PanelProps) {
   const view = useCaptureSessionView()
   const { data: poppedOut = false } = useQuery(launchedBrowserPopOutQueryOptions)
   if (view.kind === 'none') return null
@@ -66,19 +74,29 @@ export function CaptureSessionPanel({ form, onDone, showOpenCase = false }: Pane
   if (poppedOut && form !== 'window' && view.kind !== 'closed') {
     return <PopOutStub onDone={onDone} />
   }
-  return <BrowserBody view={view} form={form} onDone={onDone} showOpenCase={showOpenCase} />
+  return (
+    <BrowserBody
+      view={view}
+      form={form}
+      onDone={onDone}
+      showOpenCase={showOpenCase}
+      tabbed={tabbed}
+    />
+  )
 }
 
 function BrowserBody({
   view: { kind, browser },
   form,
   onDone,
-  showOpenCase
+  showOpenCase,
+  tabbed
 }: {
   view: Extract<PanelView, { browser: LaunchedBrowserSummary }>
   form: PanelForm
   onDone?: () => void
   showOpenCase: boolean
+  tabbed: boolean
 }) {
   const openStartDialog = useAppStore((s) => s.openStartDialog)
   const setStopConfirmOpen = useAppStore((s) => s.setStopConfirmOpen)
@@ -87,7 +105,7 @@ function BrowserBody({
   const [stopping, setStopping] = useState(false)
   const [stopError, setStopError] = useState('')
 
-  const { label, caseId, sessionStartedAt, tabs, extensionWarnings } = browser
+  const { label, caseId, version, sessionStartedAt, tabs, extensionWarnings } = browser
   const name = launchedBrowserName(label)
   const caseName = cases.find(({ id }) => id === caseId)?.name ?? ''
   const egress = settings?.egress
@@ -117,10 +135,12 @@ function BrowserBody({
     }
     return (
       <div className={cn('flex flex-col gap-1.5 text-[11px] leading-[1.45]', pad)}>
-        <div className="flex items-center gap-1.5">
-          <PanelTitle />
-          {sessionStartedAt !== null && <Elapsed since={sessionStartedAt} />}
-        </div>
+        {!tabbed && (
+          <div className="flex items-center gap-1.5">
+            <PanelTitle />
+            {sessionStartedAt !== null && <Elapsed since={sessionStartedAt} />}
+          </div>
+        )}
         <div className="flex items-center gap-1.5">
           <span>
             <span className="font-semibold text-text-primary">{name} closed.</span>{' '}
@@ -157,51 +177,70 @@ function BrowserBody({
     )
   }
 
+  const stopButton = (
+    <Button
+      variant="outline"
+      disabled={kind === 'closing'}
+      onClick={() => {
+        onDone?.()
+        setStopConfirmOpen(true)
+      }}
+    >
+      Stop…
+    </Button>
+  )
+  const closingLine = kind === 'closing' && <div className="text-text-muted">Closing {name}…</div>
+
   return (
     <div className="flex min-h-0 flex-1 flex-col text-[11px] leading-[1.45]">
-      <div className={cn('flex flex-col gap-[3px] border-b border-border', pad)}>
-        <div className="flex items-center gap-1.5">
-          <PanelTitle />
-          {sessionStartedAt !== null && <Elapsed since={sessionStartedAt} />}
-          <span className="flex-1" />
-          {!inPopOut && (
-            <Button
-              variant="link"
-              disabled={kind === 'closing'}
-              className="px-0 text-[11px] text-text-muted underline"
-              onClick={() => {
-                onDone?.()
-                void popOutPanel()
-              }}
-            >
-              Pop out
-            </Button>
-          )}
-          <Button
-            variant="outline"
-            disabled={kind === 'closing'}
-            onClick={() => {
-              onDone?.()
-              setStopConfirmOpen(true)
-            }}
-          >
-            Stop…
-          </Button>
+      {tabbed ? (
+        <div className={cn('flex items-start gap-2 border-b border-border', pad)}>
+          <div className="flex min-w-0 flex-1 flex-col gap-[3px]">
+            <div className="flex flex-wrap items-baseline gap-x-1.5">
+              <span className="font-semibold text-text-primary">{name}</span>
+              {version && <span className="text-text-muted">{version}</span>}
+            </div>
+            <IntoCase form={form} caseId={caseId} caseName={caseName} egress={egressText} />
+            {closingLine}
+          </div>
+          {stopButton}
         </div>
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="font-semibold text-text-primary">{name}</span>
-          {egressText && (
-            <>
-              <span aria-hidden="true" className="text-text-faint">
-                ·
-              </span>
-              <span className="text-text-muted">{egressText}</span>
-            </>
-          )}
+      ) : (
+        <div className={cn('flex flex-col gap-[3px] border-b border-border', pad)}>
+          <div className="flex items-center gap-1.5">
+            <PanelTitle />
+            {sessionStartedAt !== null && <Elapsed since={sessionStartedAt} />}
+            <span className="flex-1" />
+            {!inPopOut && (
+              <Button
+                variant="link"
+                disabled={kind === 'closing'}
+                className="px-0 text-[11px] text-text-muted underline"
+                onClick={() => {
+                  onDone?.()
+                  void popOutPanel()
+                }}
+              >
+                Pop out
+              </Button>
+            )}
+            {stopButton}
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="font-semibold text-text-primary">{name}</span>
+            {egressText && (
+              <>
+                <span aria-hidden="true" className="text-text-faint">
+                  ·
+                </span>
+                <span className="text-text-muted">{egressText}</span>
+              </>
+            )}
+          </div>
+          {!inPopOut && <IntoCase form={form} caseId={caseId} caseName={caseName} />}
+          {closingLine}
         </div>
-        {!inPopOut && <IntoCase form={form} caseId={caseId} caseName={caseName} />}
-        {kind === 'closing' && <div className="text-text-muted">Closing {name}…</div>}
-      </div>
+      )}
       {extensionWarnings.length > 0 && (
         <div className={pad}>
           <ExtensionWarning count={extensionWarnings.length} egress={egressText} />
@@ -226,15 +265,19 @@ function BrowserBody({
 function IntoCase({
   form,
   caseId,
-  caseName
+  caseName,
+  egress = null
 }: {
   form: PanelForm
   caseId: string
   caseName: string
+  // The Egress, where the line leads with it.
+  egress?: string | null
 }) {
   const { caseId: onScreen } = useParams({ strict: false }) as { caseId?: string }
   const here = form !== 'popover' && onScreen === caseId
-  return <div className="text-text-muted">Into {here ? 'this Case' : caseName}</div>
+  const into = `Into ${here ? 'this Case' : caseName}`
+  return <div className="text-text-muted">{egress ? `${egress} · ${into}` : into}</div>
 }
 
 // "Open ‹Case›", which only the dashboard's popover offers.

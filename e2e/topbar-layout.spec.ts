@@ -363,6 +363,126 @@ test.describe('Top bar layout', () => {
     }
   })
 
+  // On Captures the Capture Session panel is a tab of the right panel, beside the details, so
+  // the screen has four columns: the rail, the list, the viewer and the one right panel. The
+  // other Case screens keep the panel as a rail of its own, as the test above measures.
+  test('shows the Capture Session as a tab on Captures, in four columns', async ({
+    electronApp,
+    page
+  }) => {
+    const caseId = await createCase(page, NAMES[0])
+    await seedCapture(page, caseId, await serverToken(page), { slug: 'right-panel' })
+    await electronApp.windows()[0].setViewportSize({ width: 1440, height: 800 })
+    await page.evaluate((id) => {
+      window.location.hash = `/cases/${id}/captures`
+    }, caseId)
+    await expect(page.getByTestId('capture-item')).toHaveCount(1, { timeout: 15000 })
+
+    const sessionTab = page.getByRole('tab', { name: 'Capture Session' })
+    const detailsTab = page.getByRole('tab', { name: 'Details' })
+    // A stand-in for a launched browser recording into this Case. The app's own session update
+    // can land after it, and a stale status is read again from main, which has no browser, so
+    // each step sends it again.
+    const sendSession = () =>
+      electronApp.evaluate(({ BrowserWindow }, id) => {
+        const { webContents } = BrowserWindow.getAllWindows()[0]
+        webContents.send('event:sessionStateChanged', { sessionActive: true, activeCaseId: id })
+        webContents.send('event:launchedBrowserStatus', {
+          state: 'open',
+          browser: {
+            family: 'chrome',
+            label: 'Google Chrome',
+            caseId: id,
+            version: '149.0.7827.55',
+            extensionWarnings: [],
+            sessionStartedAt: Date.now() - 3_754_000,
+            tabs: [{ targetId: 't1', title: 'Harbor notices', url: 'https://ferry.test/' }]
+          }
+        })
+      }, caseId)
+    const holdRecording = async () => {
+      await sendSession()
+      await expect(sessionTab.getByTestId('session-tab-rec')).toBeVisible({ timeout: 1000 })
+    }
+    await expect(holdRecording).toPass({ timeout: 10000 })
+
+    // A starting session shows its tab. The panel names the browser and its version, says where
+    // Captures go without repeating the Case's name, and holds the one stop control.
+    await expect(sessionTab).toHaveAttribute('aria-selected', 'true')
+    const panel = page.getByRole('tabpanel', { name: 'Capture Session' })
+    await expect(panel).toContainText('Launched Google Chrome')
+    await expect(panel).toContainText('149.0.7827.55')
+    await expect(panel).toContainText('Into this Case')
+    await expect(panel.getByRole('button', { name: 'Stop…' })).toBeVisible()
+    await expect(panel.getByRole('list', { name: 'Tabs' })).toContainText('Harbor notices')
+    await expect(page.getByRole('button', { name: 'Pop out' })).toBeVisible()
+
+    // No Capture Session rail, strip or popped-out strip beside the screen: the dock's row holds
+    // the screen alone.
+    for (const id of [
+      'capture-session-rail',
+      'capture-session-strip',
+      'capture-session-popped-out'
+    ]) {
+      await expect(page.getByTestId(id)).toHaveCount(0)
+    }
+    await expect(page.getByTestId('case-workspace').locator(':scope > div > *')).toHaveCount(1)
+
+    // Four columns, left to right with no gap wider than a separator, ending at the window's
+    // edge. The viewer keeps its 480 pixels.
+    const columns = [
+      page.getByRole('navigation', { name: 'Sections' }),
+      page.getByTestId('capture-list'),
+      page.getByTestId('capture-viewer'),
+      page.getByTestId('capture-details')
+    ]
+    await expect(async () => {
+      let edge = 0
+      for (const column of columns) {
+        const { x, width } = (await column.boundingBox())!
+        expect(x).toBeGreaterThanOrEqual(edge - 1)
+        expect(x).toBeLessThanOrEqual(edge + 8)
+        edge = x + width
+      }
+      expect(Math.abs(edge - 1440)).toBeLessThanOrEqual(1)
+      const viewer = (await columns[2].boundingBox())!
+      expect(viewer.width).toBeGreaterThanOrEqual(480)
+    }).toPass({ timeout: 5000 })
+    await expect(page.getByTestId('capture-details-aside')).toHaveCount(1)
+
+    // Selecting a Capture switches to Details, in the same column, and the Capture Session tab
+    // keeps its recording dot.
+    await page.getByTestId('capture-item').first().click()
+    await expect(detailsTab).toHaveAttribute('aria-selected', 'true')
+    await expect(sessionTab).toHaveAttribute('aria-selected', 'false')
+    await expect(holdRecording).toPass({ timeout: 10000 })
+    await expect(page.getByTestId('capture-details-aside')).toHaveCount(1)
+    await expect(page.getByTestId('capture-session-rail')).toHaveCount(0)
+
+    // Both tabs from the keyboard: the arrow keys move between them and select as they go.
+    await sendSession()
+    await detailsTab.focus()
+    await page.keyboard.press('ArrowRight')
+    await expect(sessionTab).toBeFocused()
+    await expect(sessionTab).toHaveAttribute('aria-selected', 'true')
+    await expect(panel.getByRole('button', { name: 'Stop…' })).toBeVisible()
+    await page.keyboard.press('ArrowLeft')
+    await expect(detailsTab).toBeFocused()
+    await expect(detailsTab).toHaveAttribute('aria-selected', 'true')
+
+    // The other Case screens keep the rail.
+    await page.evaluate((id) => {
+      window.location.hash = `/cases/${id}/notes`
+    }, caseId)
+    await expect(async () => {
+      await sendSession()
+      await expect(page.getByTestId('capture-session-rail')).toContainText(
+        'Launched Google Chrome',
+        { timeout: 1000 }
+      )
+    }).toPass({ timeout: 10000 })
+  })
+
   // A long Egress label used to squeeze the row's name to nothing, print over it and run past
   // the popover's edge. The label gives way now, and the value's title holds it whole.
   test('keeps a long Egress label inside its status popover row', async ({ page }) => {

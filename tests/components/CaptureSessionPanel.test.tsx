@@ -58,13 +58,14 @@ interface MountOptions {
   status?: LaunchedBrowserStatus
   form?: PanelForm
   showOpenCase?: boolean
+  tabbed?: boolean
   egress?: EgressSetting
   endSession?: () => Promise<LaunchedBrowserStatus>
   poppedOut?: boolean
 }
 
 function mount(options: MountOptions = {}) {
-  const { status = OPEN, form = 'rail', showOpenCase = false, egress = PROXY } = options
+  const { status = OPEN, form = 'rail', showOpenCase = false, tabbed, egress = PROXY } = options
   const endSession = vi.fn(options.endSession ?? (async () => ({ state: 'none' as const })))
   const popOut = vi.fn(async () => true)
   const showPopOut = vi.fn(async () => {})
@@ -85,7 +86,12 @@ function mount(options: MountOptions = {}) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
     <QueryClientProvider client={client}>
-      <CaptureSessionPanel form={form} showOpenCase={showOpenCase} onDone={onDone} />
+      <CaptureSessionPanel
+        form={form}
+        showOpenCase={showOpenCase}
+        tabbed={tabbed}
+        onDone={onDone}
+      />
     </QueryClientProvider>
   )
   return { client, endSession, onDone, popOut, showPopOut, dock }
@@ -255,6 +261,68 @@ describe('popping the panel out (`1g`)', () => {
     expect(await screen.findByText('Launched Google Chrome')).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Pop out' })).toBeNull()
     expect(screen.queryByText('Panel popped out')).toBeNull()
+  })
+})
+
+// On Captures the panel is a tab of the right panel, whose tab row names it and holds Pop out.
+describe('the panel as a tab of the right panel', () => {
+  it('names the browser with its version, and the Egress with the Case on one line', async () => {
+    mount({ tabbed: true })
+    expect(await screen.findByText('Proxy · Harbor relay · Into this Case')).toBeTruthy()
+    const version = screen.getByText('149.0.7827.55')
+    expect(version.previousElementSibling?.textContent).toBe('Launched Google Chrome')
+    expect(screen.getByRole('list', { name: 'Tabs' })).toBeTruthy()
+  })
+
+  it('leaves the title, the clock and Pop out to the tab row and the top bar', async () => {
+    mount({ tabbed: true })
+    await screen.findByText('Proxy · Harbor relay · Into this Case')
+    expect(screen.queryByText('Capture Session')).toBeNull()
+    expect(screen.queryByRole('timer')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Pop out' })).toBeNull()
+  })
+
+  it("names the Case on another Case's screen", async () => {
+    route.caseId = 'case-2'
+    mount({ tabbed: true })
+    expect(await screen.findByText('Proxy · Harbor relay · Into Ferry Line')).toBeTruthy()
+  })
+
+  it('says where Captures go with no Egress to name', async () => {
+    const { client } = mount({ tabbed: true, egress: { kind: 'unavailable' } })
+    await screen.findByText('Launched Google Chrome')
+    await act(() => client.refetchQueries({ queryKey: queryKeys.settings }))
+    expect(client.getQueryData(queryKeys.settings)).toMatchObject({
+      egress: { kind: 'unavailable' }
+    })
+    expect(screen.getByText('Into this Case')).toBeTruthy()
+  })
+
+  it('shows no version before the browser has given one', async () => {
+    mount({ tabbed: true, status: { state: 'open', browser: { ...SUMMARY, version: null } } })
+    const name = await screen.findByText('Launched Google Chrome')
+    expect(name.parentElement?.textContent).toBe('Launched Google Chrome')
+  })
+
+  it('opens the stop confirmation from Stop…', async () => {
+    const { onDone } = mount({ tabbed: true })
+    fireEvent.click(await screen.findByRole('button', { name: 'Stop…' }))
+    expect(onDone).toHaveBeenCalledTimes(1)
+    expect(useAppStore.getState().stopConfirmOpen).toBe(true)
+  })
+
+  it('holds Stop… while the browser closes, and says so', async () => {
+    mount({ tabbed: true, status: { state: 'closing', browser: SUMMARY } })
+    expect(await screen.findByText('Closing Launched Google Chrome…')).toBeTruthy()
+    expect((screen.getByRole('button', { name: 'Stop…' }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('shows a closed browser with no title and no clock', async () => {
+    mount({ tabbed: true, status: CLOSED })
+    expect(await screen.findByText('Launched Google Chrome closed.')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Stop Capture Session' })).toBeTruthy()
+    expect(screen.queryByText('Capture Session')).toBeNull()
+    expect(screen.queryByRole('timer')).toBeNull()
   })
 })
 

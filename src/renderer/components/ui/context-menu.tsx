@@ -9,8 +9,7 @@ import { cn } from '@renderer/lib/utils'
  * `role="menu"`/`role="menuitem"`, roving focus, typeahead, arrow-key
  * navigation, Escape-to-close and focus return to the trigger are acceptance
  * criteria here. menu.tsx wraps the DropdownMenu the same way, for a menu
- * that opens from a button. `CaptureDownloadMenu`, `dashboard/CaseMenu` and
- * `captures/BatchTagPopover` are still built by hand.
+ * that opens from a button. `captures/BatchTagPopover` is still built by hand.
  */
 
 const ContextMenu = ContextMenuPrimitive.Root

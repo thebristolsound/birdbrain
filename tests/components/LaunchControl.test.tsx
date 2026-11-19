@@ -601,6 +601,29 @@ describe("starting the extension's session from the menu", () => {
     expect(session.start).not.toHaveBeenCalled()
   })
 
+  // While a start is in flight the menu's start is held, so the warning is not asked twice and
+  // the Case is not activated twice.
+  it('holds the start while a start is in flight', async () => {
+    useAppStore.setState({ connectedToExtension: true })
+    const { session, checkVpnWarning } = setup()
+    let finish: () => void = () => {}
+    session.activateCase.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = () => resolve({ sessionActive: false, activeCaseId: 'case-1' })
+        })
+    )
+    fireEvent.click(startItem())
+    await waitFor(() => expect(session.activateCase).toHaveBeenCalledTimes(1))
+    const item = startItem()
+    expect(isDisabledItem(item)).toBe(true)
+    fireEvent.click(item)
+    expect(checkVpnWarning).toHaveBeenCalledTimes(1)
+    expect(session.activateCase).toHaveBeenCalledTimes(1)
+    await act(async () => finish())
+    await waitFor(() => expect(useAppStore.getState().sessionActive).toBe(true))
+  })
+
   it('activates the Case on screen, then starts, and becomes the recording mark', async () => {
     useAppStore.setState({ connectedToExtension: true })
     const { calls } = setup()
@@ -835,6 +858,26 @@ describe("the capture control during the extension's session", () => {
     expect(screen.getByTestId('topbar-rec').textContent).toBe('Recording▾')
     fireEvent.click(within(openMarkMenu()).getByTestId('launch-control-stop'))
     await waitFor(() => expect(session.stop).toHaveBeenCalledTimes(1))
+  })
+
+  // While a stop is in flight the menu's Stop is held, so a second one cannot be sent.
+  it('holds Stop while a stop is in flight', async () => {
+    const { session } = recording()
+    let finish: () => void = () => {}
+    session.stop.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = () => resolve({ sessionActive: false, activeCaseId: 'case-1' })
+        })
+    )
+    fireEvent.click(within(openMarkMenu()).getByTestId('launch-control-stop'))
+    await waitFor(() => expect(session.stop).toHaveBeenCalledTimes(1))
+    const stop = within(openMarkMenu()).getByTestId('launch-control-stop')
+    expect(isDisabledItem(stop)).toBe(true)
+    fireEvent.click(stop)
+    expect(session.stop).toHaveBeenCalledTimes(1)
+    await act(async () => finish())
+    await waitFor(() => expect(useAppStore.getState().sessionActive).toBe(false))
   })
 
   it('keeps the session recording when the stop fails', async () => {

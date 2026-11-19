@@ -314,6 +314,10 @@ describe('StartDialog with no Case named', () => {
     const card = await within(body).findByRole('status')
     expect(card.textContent).toBe('No Case to capture intoCreate a Case first.')
     expect(within(body).queryByRole('combobox', { name: 'Case' })).toBeNull()
+    // A list that was read and holds no Case says so, where an unread one says it is not read.
+    expect(body.textContent).toContain('None yet')
+    expect(body.textContent).not.toContain('Reading…')
+    expect(body.textContent).not.toContain('Not read')
     expect(launchButton('Launch').disabled).toBe(true)
     expect(body.textContent).not.toContain('Starts a Capture Session')
     expect(launch).not.toHaveBeenCalled()

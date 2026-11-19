@@ -47,9 +47,9 @@ const STEP_MARKS: Readonly<Record<StepProgress, { mark: string; className: strin
 
 // The start dialog (S2: `1b` to `1e`), mounted once at the root and opened for a Case from the
 // top bar or the command palette. It launches into the Case it was opened for, which it
-// activates first, as the Capture Session switch does before a start. Opened where no Case is on
-// screen, it asks which Case, preset to the last one opened. The Persona picker is the Persona
-// step's (#1833).
+// activates first, as the capture menu's session start does. Opened where no Case is on screen,
+// it asks which Case, preset to the last one opened. The Persona picker is the Persona step's
+// (#1833).
 export function StartDialog() {
   const namedCaseId = useAppStore((s) => s.startDialogCaseId)
   const picking = useAppStore((s) => s.startDialogPicking)
@@ -153,7 +153,7 @@ export function StartDialog() {
     setLaunching({ browser, egress: knownEgress })
     try {
       // A launch starts or joins a Capture Session, so it passes the VPN warning first
-      // (ADR-0032 rule 3), as the Capture Session switch does.
+      // (ADR-0032 rule 3), as the capture menu's session start does.
       if (!(await confirmContact({ caseId }, 'session'))) {
         setLaunching(null)
         return

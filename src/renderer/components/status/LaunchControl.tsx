@@ -1,7 +1,16 @@
 import { useEffect, useId, useRef, useState, type ComponentProps } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useMatchRoute, useNavigate } from '@tanstack/react-router'
-import { AppWindow, ChevronDown, CircleAlert, ClipboardList, Puzzle, Shield } from 'lucide-react'
+import {
+  AppWindow,
+  ChevronDown,
+  CircleAlert,
+  CircleDot,
+  CircleStop,
+  ClipboardList,
+  Puzzle,
+  Shield
+} from 'lucide-react'
 import {
   Button,
   Menu,
@@ -16,9 +25,12 @@ import {
 } from '@renderer/components/ui'
 import { cn } from '@renderer/lib/utils'
 import { useAppStore } from '@renderer/stores/appStore'
+import { casesQueryOptions } from '@renderer/lib/api/cases'
+import { useSessionMutations } from '@renderer/lib/api/session'
 import { settingsQueryOptions } from '@renderer/lib/api/settings'
 import { vpnStatusQueryOptions } from '@renderer/lib/api/egress'
 import { launchedBrowserStatusQueryOptions } from '@renderer/lib/api/launchedBrowser'
+import { confirmContact } from '@renderer/lib/vpnWarning'
 import { RecordingMark } from '@renderer/components/status/RecordingMark'
 import { statusModel, type Signal } from '@renderer/components/status/statusGroupModel'
 import {
@@ -38,18 +50,27 @@ interface LaunchControlProps {
 }
 
 // The top bar's one capture control, on every screen. At rest it is the bar's one filled button,
-// Launch browser, with a menu beside it for the other way to capture and for the two facts that
-// matter before a contact: the extension and the Egress. While a launched browser is open or
-// closing, or has closed with its Capture Session still running, it is the session's control: the recording
-// mark while the session records, and an outline button naming the Capture Session while a
-// browser is open with none recording yet. On a Case it shows or hides the Capture Session
-// panel, and where there is no panel on screen it opens the panel as a popover.
+// Launch browser, with a menu beside it for the other ways to capture and for the two facts that
+// matter before a contact: the extension and the Egress. While a Capture Session records it is
+// the recording mark. A launched browser's session has a panel: on a Case the mark shows or hides
+// it, and where there is no panel on screen the mark opens it as a popover. The extension's
+// session has none, so its mark opens the capture menu, which then holds Stop. A browser open
+// with nothing recording yet shows an outline button naming the Capture Session.
 export function LaunchControl({ caseId, showOpenCase }: LaunchControlProps) {
   const view = useCaptureSessionView()
   const sessionActive = useAppStore((s) => s.sessionActive)
+  const sessionCaseId = useAppStore((s) => s.activeCaseId)
   const hidden = useAppStore((s) => s.captureSessionPanelHidden)
   const setHidden = useAppStore((s) => s.setCaptureSessionPanelHidden)
+  const { data: cases = [] } = useQuery(casesQueryOptions)
   const browserSession = 'browser' in view
+  // The breadcrumb names the Case on screen, and the Active Case, the one Captures go into, can
+  // be another: a launched browser pins the Case it started in, and the extension can choose one
+  // too. The mark says so on Case screens, where the two can be told apart.
+  const into =
+    sessionActive && caseId && sessionCaseId && sessionCaseId !== caseId
+      ? cases.find((c) => c.id === sessionCaseId)?.name
+      : undefined
 
   // A panel hidden for one launched browser shows again for the next.
   useEffect(() => {
@@ -64,6 +85,7 @@ export function LaunchControl({ caseId, showOpenCase }: LaunchControlProps) {
         // while the panel shows. With the panel hidden, or once the browser closes and the
         // source is the extension, nothing else on the screen names the source.
         showSource={view.kind !== 'open' || hidden}
+        into={into}
         selected={!hidden}
         aria-expanded={!hidden}
         title={hidden ? 'Show the Capture Session panel' : 'Hide the Capture Session panel'}
@@ -74,29 +96,24 @@ export function LaunchControl({ caseId, showOpenCase }: LaunchControlProps) {
     )
   }
 
-  return (
-    <>
-      {/* The extension's session has no panel, so its mark is not a control. It stands beside the
-          Launch browser button, so its source folds away where the bar runs out of room. */}
-      {sessionActive && <RecordingMark foldSource />}
-      <LaunchSplit caseId={caseId} />
-    </>
-  )
+  return <CaptureMenu caseId={caseId} recording={sessionActive} into={into} />
 }
 
 const MARK_BUTTON_CLASS =
-  'shrink-0 rounded-md border border-border-strong px-1.5 transition-colors hover:bg-elevated'
+  'shrink-0 rounded-md border border-border-strong px-1.5 transition-colors hover:bg-elevated aria-expanded:bg-elevated'
 
 interface SessionTriggerProps extends ComponentProps<'button'> {
   recording: boolean
   showSource: boolean
+  into?: string
   selected: boolean
 }
 
-// The session's control in the bar. While it records it is the recording mark itself, so the bar
-// carries one control for the session, not two (docs/design-handoff/2026-11-08-top-bar/).
-// Otherwise it is an outline button whose border takes the accent while its panel shows (C1).
-function SessionTrigger({ recording, showSource, selected, ...props }: SessionTriggerProps) {
+// A launched browser's session in the bar. While it records it is the recording mark itself, so
+// the bar carries one control for the session, not two
+// (docs/design-handoff/2026-11-08-top-bar/). Otherwise it is an outline button whose border
+// takes the accent while its panel shows (C1).
+function SessionTrigger({ recording, showSource, into, selected, ...props }: SessionTriggerProps) {
   return recording ? (
     <button
       type="button"
@@ -107,7 +124,7 @@ function SessionTrigger({ recording, showSource, selected, ...props }: SessionTr
       {/* The mark's elapsed time and source stay in the accessible name: hidden text names the
           control, not an aria-label. */}
       <span className="sr-only">Capture Session, </span>
-      <RecordingMark showSource={showSource} trigger />
+      <RecordingMark showSource={showSource} into={into} trigger />
     </button>
   ) : (
     <Button
@@ -172,15 +189,68 @@ function useContactSignals(): { extension: Signal; egress: Signal } {
   return { extension, egress: egressSignal }
 }
 
-function LaunchSplit({ caseId }: { caseId: string | null }) {
+// The extension's Capture Session, which the row under the top bar used to start and stop. A
+// start passes the VPN warning first, since a session's Captures contact sites (ADR-0032 VPN
+// rule 3), and activates the Case before it starts: main refuses a start with no Active Case.
+function useExtensionSession(caseId: string | null) {
+  const setSessionActive = useAppStore((s) => s.setSessionActive)
+  const { activateCase, start, stop } = useSessionMutations()
+  const [working, setWorking] = useState(false)
+
+  // Resolves to whether the session changed.
+  async function run(action: () => Promise<boolean>): Promise<boolean> {
+    if (working) return false
+    setWorking(true)
+    let changed = false
+    try {
+      changed = await action()
+    } catch (error) {
+      console.error('Failed to change the Capture Session:', error)
+    }
+    setWorking(false)
+    return changed
+  }
+
+  return {
+    working,
+    start: () =>
+      run(async () => {
+        if (!caseId) return false
+        if (!(await confirmContact({ caseId }, 'session'))) return false
+        await activateCase.mutateAsync(caseId)
+        await start.mutateAsync()
+        setSessionActive(true)
+        return true
+      }),
+    stop: () =>
+      run(async () => {
+        await stop.mutateAsync()
+        setSessionActive(false)
+        return true
+      })
+  }
+}
+
+interface CaptureMenuProps {
+  caseId: string | null
+  /** The extension's session records: the mark is the menu's trigger, and the menu holds Stop. */
+  recording: boolean
+  into?: string
+}
+
+function CaptureMenu({ caseId, recording, into }: CaptureMenuProps) {
   const navigate = useNavigate()
   const matchRoute = useMatchRoute()
   const view = useCaptureSessionView()
+  const connectedToExtension = useAppStore((s) => s.connectedToExtension)
   const openStartDialog = useAppStore((s) => s.openStartDialog)
   const openStartDialogPicker = useAppStore((s) => s.openStartDialogPicker)
   const dismissNotice = useAppStore((s) => s.dismissLaunchNotice)
-  const { data: launched } = useQuery(launchedBrowserStatusQueryOptions)
+  const { data: launched, isError: launchedUnreadable } = useQuery(
+    launchedBrowserStatusQueryOptions
+  )
   const { extension, egress } = useContactSignals()
+  const session = useExtensionSession(caseId)
   // The paste dialog keeps the Case it was opened for. The palette can change the Case on screen
   // while the dialog is up, and the pasted addresses must not then go into the other Case. Each
   // opening has a number, so a queue that finishes after its dialog closed cannot close a later
@@ -190,12 +260,45 @@ function LaunchSplit({ caseId }: { caseId: string | null }) {
   )
   const openings = useRef(0)
   const reasonId = useId()
+  const control = useRef<HTMLDivElement>(null)
+  const refocus = useRef(false)
+
+  // A start or a stop swaps the control's buttons, and the one that held focus goes with them.
+  // Focus then lands on the button that took its place, not on the page.
+  useEffect(() => {
+    if (!refocus.current) return
+    refocus.current = false
+    if (document.activeElement === document.body) control.current?.querySelector('button')?.focus()
+  }, [recording])
+
+  function change(action: () => Promise<boolean>) {
+    refocus.current = true
+    void action().then((changed) => {
+      if (!changed) refocus.current = false
+    })
+  }
 
   // One launched browser at a time: while one starts, a launch is held. An open or closing
   // browser never reaches here, since the control is then the session's.
   const busy = busyRefusal(launched)?.title
+  // Stopping the session closes a launched browser, which its own panel asks about first. This
+  // Stop asks nothing, so it waits until the launched browser's state is read and shows none
+  // starting. A read that failed does not hold it, whatever an earlier read left in the cache:
+  // the session must stay stoppable.
+  const stopHeld = launchedUnreadable
+    ? undefined
+    : launched === undefined
+      ? "Reading the launched browser's state"
+      : launched.state === 'starting'
+        ? 'A launched browser is starting'
+        : undefined
   const notice = view.kind === 'notice' ? view.notice : null
   const card = notice ? noticeCard(notice) : null
+  const startHeld = !connectedToExtension
+    ? 'The extension is not connected'
+    : !caseId
+      ? 'Open a Case first'
+      : undefined
 
   function launch() {
     if (busy) return
@@ -204,38 +307,56 @@ function LaunchSplit({ caseId }: { caseId: string | null }) {
   }
 
   return (
-    <div data-testid="launch-control" className="inline-flex shrink-0">
-      <Button
-        // aria-disabled rather than disabled, so the held button keeps focus and its reason is
-        // reachable from the keyboard.
-        aria-disabled={busy !== undefined}
-        aria-describedby={busy ? reasonId : undefined}
-        title={busy}
-        onClick={launch}
-        className="gap-1.5 whitespace-nowrap rounded-r-none aria-disabled:opacity-50"
-      >
-        {card && <CircleAlert aria-hidden="true" className="h-3 w-3" />}
-        {caseId ? 'Launch browser' : 'Launch browser…'}
-        {card && <span className="sr-only">. 1 notice: {card.title}</span>}
-      </Button>
-      {busy && (
-        <span id={reasonId} className="sr-only">
-          {busy}
-        </span>
+    <div ref={control} data-testid="launch-control" className="inline-flex shrink-0">
+      {!recording && (
+        <>
+          <Button
+            // aria-disabled rather than disabled, so the held button keeps focus and its reason
+            // is reachable from the keyboard.
+            aria-disabled={busy !== undefined}
+            aria-describedby={busy ? reasonId : undefined}
+            title={busy}
+            onClick={launch}
+            className="gap-1.5 whitespace-nowrap rounded-r-none aria-disabled:opacity-50"
+          >
+            {card && <CircleAlert aria-hidden="true" className="h-3 w-3" />}
+            {caseId ? 'Launch browser' : 'Launch browser…'}
+            {card && <span className="sr-only">. 1 notice: {card.title}</span>}
+          </Button>
+          {busy && (
+            <span id={reasonId} className="sr-only">
+              {busy}
+            </span>
+          )}
+        </>
       )}
       <Menu>
-        <MenuTrigger asChild>
-          <Button
-            // No tap gesture on a menu trigger: for Enter, Motion sends a pointerdown of its own,
-            // which stops the menu opening on its first item.
-            whileTap={undefined}
-            aria-label="More ways to capture"
-            title="More ways to capture"
-            className="w-6 rounded-l-none border-l border-white/30 px-0"
+        {recording ? (
+          <MenuTrigger
+            data-testid="topbar-capture-session"
+            className={cn(MARK_BUTTON_CLASS, 'inline-flex items-center gap-1')}
           >
-            <ChevronDown aria-hidden="true" className="h-3 w-3" />
-          </Button>
-        </MenuTrigger>
+            {/* The Launch browser button carries a notice's mark at rest. It is not here while
+                a session records, so the mark carries it. */}
+            {card && <CircleAlert aria-hidden="true" className="h-3 w-3 text-text-muted" />}
+            <span className="sr-only">Capture Session, </span>
+            <RecordingMark into={into} trigger />
+            {card && <span className="sr-only">. 1 notice: {card.title}</span>}
+          </MenuTrigger>
+        ) : (
+          <MenuTrigger asChild>
+            <Button
+              // No tap gesture on a menu trigger: for Enter, Motion sends a pointerdown of its
+              // own, which stops the menu opening on its first item.
+              whileTap={undefined}
+              aria-label="More ways to capture"
+              title="More ways to capture"
+              className="w-6 rounded-l-none border-l border-white/30 px-0"
+            >
+              <ChevronDown aria-hidden="true" className="h-3 w-3" />
+            </Button>
+          </MenuTrigger>
+        )}
         <MenuContent
           aria-label={
             card
@@ -244,6 +365,21 @@ function LaunchSplit({ caseId }: { caseId: string | null }) {
           }
           className="w-[300px]"
         >
+          {/* Stop comes first while a session records, ahead of a notice, so the menu opens on it. */}
+          {recording && (
+            <>
+              <MenuItem
+                data-testid="launch-control-stop"
+                disabled={session.working || stopHeld !== undefined}
+                title={stopHeld}
+                onSelect={() => change(session.stop)}
+              >
+                <CircleStop className={ITEM_ICON} strokeWidth={1.8} />
+                Stop Capture Session
+              </MenuItem>
+              <MenuSeparator />
+            </>
+          )}
           {notice && card && (
             <>
               <MenuLabel data-testid="launch-control-notice">
@@ -279,6 +415,21 @@ function LaunchSplit({ caseId }: { caseId: string | null }) {
             <ClipboardList className={ITEM_ICON} strokeWidth={1.8} />
             Paste URLs to capture…
           </MenuItem>
+          {!recording && (
+            <MenuItem
+              data-testid="launch-control-start-session"
+              disabled={startHeld !== undefined || session.working}
+              title={startHeld}
+              className="items-start"
+              onSelect={() => change(session.start)}
+            >
+              <CircleDot className={cn(ITEM_ICON, 'mt-0.5')} strokeWidth={1.8} />
+              <span>
+                Start Capture Session in Chrome
+                <span className="block text-[10px] text-text-faint">Uses the extension.</span>
+              </span>
+            </MenuItem>
+          )}
           <MenuSeparator />
           <SignalRow icon={Puzzle} signal={extension} />
           <SignalRow icon={Shield} signal={egress} />

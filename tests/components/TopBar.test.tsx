@@ -42,9 +42,6 @@ vi.mock('@renderer/hooks/useSearch', () => ({
     clear: vi.fn()
   })
 }))
-vi.mock('@renderer/components/status/SessionControls', () => ({
-  SessionControls: () => <div data-testid="session-controls" />
-}))
 vi.mock('@renderer/components/status/StatusGroup', () => ({
   StatusGroup: () => <div data-testid="status-group" />
 }))
@@ -87,12 +84,13 @@ describe('the case chrome', () => {
     expect(screen.getByTestId('global-search-input')).toBeTruthy()
   })
 
-  // It sits in CaseActionBar, so the bar's right side keeps one width beside the
-  // native window controls.
-  it('leaves the session switch to the case action bar', async () => {
+  // The capture control starts and stops the extension's session from its menu
+  // (LaunchControl.test.tsx), so the top bar holds no switch. That the screen under it holds none
+  // either is e2e/topbar-layout.spec.ts's check.
+  it('holds no session switch in the bar', async () => {
     renderAt('/cases/case1/overview')
     await waitFor(() => expect(screen.getByTestId('topbar-case-name')).toBeTruthy())
-    expect(screen.queryByTestId('session-controls')).toBeNull()
+    expect(screen.queryByRole('switch')).toBeNull()
   })
 
   // The status group, then the capture control (LaunchControl.test.tsx): Launch browser and the
@@ -116,7 +114,7 @@ describe('the case chrome', () => {
     renderAt('/cases/new')
     expect(screen.queryByTestId('topbar-case-name')).toBeNull()
     expect(screen.queryByTestId('global-search-input')).toBeNull()
-    expect(screen.queryByTestId('session-controls')).toBeNull()
+    expect(screen.queryByRole('switch')).toBeNull()
     expect(getCase).not.toHaveBeenCalled()
   })
 
@@ -201,8 +199,8 @@ describe('Launch browser', () => {
   // The Capture Session panel is the open browser's place, and names it.
   it('leaves the bar while a launched browser is open', async () => {
     renderWith({ state: 'open', browser: BROWSER })
-    // The Case name shows once the Case has loaded, as Launch browser would: without this wait
-    // the button is absent whatever the browser's state.
+    // The Case name shows once the Case has loaded. By then the other reads made at mount have
+    // landed too, so the bar is read in the state the test sets up.
     await waitFor(() =>
       expect(screen.getByTestId('topbar-case-name').textContent).toContain('Operation Kestrel')
     )
@@ -325,19 +323,24 @@ describe('the breadcrumb case name', () => {
 })
 
 describe('the settings header', () => {
-  it('keeps the recording mark and the session control while an extension session runs', () => {
+  // The mark is the capture control, whose menu holds Stop, so a session started on a Case can
+  // be stopped from Settings.
+  it('keeps the recording mark as the session control while an extension session runs', () => {
     useAppStore.setState({ sessionActive: true })
     renderAt('/settings')
     expect(screen.getByText('Return to Birdbrain')).toBeTruthy()
-    expect(screen.getByTestId('topbar-rec')).toBeTruthy()
-    expect(screen.getByTestId('session-controls')).toBeTruthy()
+    const control = screen.getByTestId('topbar-capture-session')
+    expect(within(control).getByTestId('topbar-rec')).toBeTruthy()
+    expect(control.getAttribute('aria-haspopup')).toBe('menu')
+    expect(screen.queryByRole('switch')).toBeNull()
     expect(screen.getByTestId('status-group')).toBeTruthy()
   })
 
-  it('shows neither when no session is running', () => {
+  it('shows Launch browser, and no mark, when no session is running', () => {
     renderAt('/settings')
     expect(screen.queryByTestId('topbar-rec')).toBeNull()
-    expect(screen.queryByTestId('session-controls')).toBeNull()
+    expect(screen.queryByTestId('topbar-capture-session')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Launch browser…' })).toBeTruthy()
   })
 
   it('has no theme toggle: Settings → Appearance holds it', () => {
@@ -352,7 +355,7 @@ describe('the recording mark', () => {
     useAppStore.setState({ sessionActive: true, connectedToExtension: true })
     renderAt('/cases/case1/captures')
     const mark = within(screen.getByTestId('topbar-controls')).getByTestId('topbar-rec')
-    expect(mark.textContent).toBe('Recordingextension')
+    expect(mark.textContent).toBe('Recordingextension▾')
   })
 
   it('shows on the dashboard during an extension-only session, as a dot and the word', () => {
@@ -397,8 +400,19 @@ describe('the Capture Session button', () => {
     useAppStore.setState({ sessionActive: true })
   })
 
+  // The browser's status arrives after the first render. Until it does, a recording session
+  // looks like the extension's, whose mark opens the capture menu.
+  async function sessionControl(): Promise<HTMLElement> {
+    await waitFor(() =>
+      expect(screen.getByTestId('topbar-capture-session').getAttribute('aria-haspopup')).not.toBe(
+        'menu'
+      )
+    )
+    return screen.getByTestId('topbar-capture-session')
+  }
+
   async function openPopover() {
-    const button = await screen.findByTestId('topbar-capture-session')
+    const button = await sessionControl()
     fireEvent.click(button)
     return screen.findByRole('dialog', { name: 'Capture Session' })
   }
@@ -419,7 +433,7 @@ describe('the Capture Session button', () => {
   it('is the recording mark while a session records', async () => {
     bridgeWith(OPEN)
     renderAt('/')
-    const button = await screen.findByTestId('topbar-capture-session')
+    const button = await sessionControl()
     expect(button.querySelector('[data-testid="topbar-rec"]')).toBeTruthy()
     expect(button.textContent).toContain('Launched Google Chrome')
     expect(button.textContent).not.toContain('REC')
@@ -430,7 +444,7 @@ describe('the Capture Session button', () => {
   it("keeps the elapsed time and the source in the trigger's accessible name", async () => {
     bridgeWith({ ...OPEN, browser: { ...OPEN.browser, sessionStartedAt: Date.now() - 5_000 } })
     renderAt('/')
-    const button = await screen.findByTestId('topbar-capture-session')
+    const button = await sessionControl()
     await screen.findByRole('timer')
     expect(button.getAttribute('aria-label')).toBeNull()
     expect(
@@ -444,19 +458,18 @@ describe('the Capture Session button', () => {
     useAppStore.setState({ sessionActive: false })
     bridgeWith(OPEN)
     renderAt('/')
-    const button = await screen.findByTestId('topbar-capture-session')
+    const button = await sessionControl()
     expect(button.className).not.toContain('bg-accent-subtle')
     fireEvent.click(button)
     await screen.findByRole('dialog', { name: 'Capture Session' })
     expect(button.className).toContain('bg-accent-subtle')
   })
 
-  it('opens it in Settings beside the switch, as the recording mark, with no Open Case', async () => {
+  it('opens it in Settings as the recording mark, with no Open Case', async () => {
     bridgeWith(OPEN)
     renderAt('/settings')
     const popover = await openPopover()
     expect(popover.textContent).toContain('Launched Google Chrome')
-    expect(screen.getByTestId('session-controls')).toBeTruthy()
     expect(screen.getAllByTestId('topbar-rec')).toHaveLength(1)
     // The Open link names the Case once the Case list has loaded, so wait for the list first.
     await waitFor(() => expect(popover.textContent).toContain('Into Operation Kestrel'))
@@ -477,7 +490,7 @@ describe('the Capture Session button', () => {
     await waitFor(() =>
       expect(screen.getByTestId('topbar-case-name').textContent).toContain('Operation Kestrel')
     )
-    const mark = await screen.findByTestId('topbar-capture-session')
+    const mark = await sessionControl()
     await waitFor(() => expect(mark.getAttribute('aria-expanded')).toBe('true'))
     fireEvent.click(mark)
     expect(useAppStore.getState().captureSessionPanelHidden).toBe(true)
@@ -490,13 +503,15 @@ describe('the Capture Session button', () => {
     const { client } = renderAt('/')
     await openPopover()
     act(() => {
+      // The session ends with its browser. One still running would leave the extension's mark.
+      useAppStore.setState({ sessionActive: false })
       client.setQueryData(['launchedBrowser', 'status'], { state: 'none' })
     })
     await waitFor(() => expect(screen.queryByTestId('topbar-capture-session')).toBeNull())
     act(() => {
       client.setQueryData(['launchedBrowser', 'status'], OPEN)
     })
-    expect(await screen.findByTestId('topbar-capture-session')).toBeTruthy()
+    expect((await sessionControl()).textContent).toBe('Capture Session')
     expect(screen.queryByRole('dialog', { name: 'Capture Session' })).toBeNull()
   })
 
@@ -515,7 +530,7 @@ describe('the Capture Session button', () => {
     cleanup()
     bridgeWith({ state: 'closed', browser: { ...OPEN.browser, tabs: [] } })
     renderAt('/')
-    await screen.findByTestId('topbar-capture-session')
+    await sessionControl()
     expect(screen.getByTestId('topbar-rec').textContent).toBe('Recording▾')
   })
 
@@ -523,7 +538,7 @@ describe('the Capture Session button', () => {
     useAppStore.setState({ connectedToExtension: true })
     bridgeWith({ state: 'closed', browser: { ...OPEN.browser, tabs: [] } })
     renderAt('/')
-    await screen.findByTestId('topbar-capture-session')
+    await sessionControl()
     expect(screen.getByTestId('topbar-rec').textContent).toBe('Recordingextension▾')
   })
 

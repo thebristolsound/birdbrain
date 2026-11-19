@@ -221,7 +221,7 @@ describe('CaptureSessionDock', () => {
     }
   })
 
-  // A notice is not a launched browser's panel, and nothing else on a Case screen shows it.
+  // A notice is not a launched browser's panel, so the mark's hiding does not reach it.
   it('still shows a notice while the panel is hidden', async () => {
     useAppStore.setState({ captureSessionPanelHidden: true, dismissedLaunchNotice: null })
     try {

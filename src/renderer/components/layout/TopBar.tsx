@@ -3,10 +3,8 @@ import logoImg from '@renderer/assets/logo.png'
 import { Button } from '@renderer/components/ui'
 import { useMatchRoute, useNavigate, useRouter } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
-import { useAppStore } from '@renderer/stores/appStore'
 import { caseQueryOptions } from '@renderer/lib/queries'
 import { SearchBar } from '@renderer/components/search/SearchBar'
-import { SessionControls } from '@renderer/components/status/SessionControls'
 import { StatusGroup } from '@renderer/components/status/StatusGroup'
 import { LaunchControl } from '@renderer/components/status/LaunchControl'
 import { CaseMenu } from '@renderer/components/dashboard/CaseMenu'
@@ -34,7 +32,6 @@ export function TopBar() {
   const navigate = useNavigate()
   const router = useRouter()
   const matchRoute = useMatchRoute()
-  const sessionActive = useAppStore((s) => s.sessionActive)
   const { status: updateStatus } = useUpdateStatus()
   const updateAvailable =
     updateStatus?.state === 'available' || updateStatus?.state === 'downloaded'
@@ -77,11 +74,10 @@ export function TopBar() {
 
         <div className="flex-1" />
 
-        {/* A running extension session keeps its stop control here too. The capture control
-            carries the recording mark and opens the panel, since Settings has no rail (`2d`).
-            Open ‹Case› stays on the dashboard's. */}
-        {sessionActive && <SessionControls />}
-        {/* How the app is doing, the same control as on a Case (2026-11-08 top bar). */}
+        {/* How the app is doing, the same control as on a Case (2026-11-08 top bar), then the
+            capture control, which carries the recording mark. A launched browser's mark opens the
+            panel as a popover, since Settings has no rail (`2d`), and the extension's opens the
+            capture menu. Open ‹Case› stays on the dashboard's. */}
         <StatusGroup />
         <div className="flex shrink-0 items-center gap-2" style={END_INSET}>
           <LaunchControl caseId={null} showOpenCase={false} />
@@ -128,10 +124,10 @@ export function TopBar() {
       )}
 
       {/* Right controls, on every screen: how the app is doing, then the capture control, the
-          bar's one filled button at rest and the recording mark while a launched browser's
-          session runs; then Settings, where no rail holds it. The session switch for the
-          extension lives in CaseActionBar, under this bar. The group never narrows below its
-          controls, so the search gives way instead of sitting over them. */}
+          bar's one filled button at rest and the recording mark while a session records; then
+          Settings, where no rail holds it. This bar is the only row of chrome above a Case
+          screen. The group never narrows below its controls, so the search gives way instead
+          of sitting over them. */}
       <div
         data-testid="topbar-controls"
         className="flex min-w-max flex-1 basis-0 items-center justify-end gap-2"

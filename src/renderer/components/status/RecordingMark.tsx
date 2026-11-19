@@ -13,17 +13,18 @@ import { cn } from '@renderer/lib/utils'
 // in secondary text. No pill, no fill, no pulse, no "REC". It is the running state of the top
 // bar's capture control. `showSource` is off on a Case screen while a launched browser is open
 // and its Capture Session panel shows, since the panel names it, and `trigger` adds the chevron
-// of what the mark opens. `foldSource` keeps the source for assistive technology and hides it from view below
-// 1,100 pixels, where the mark stands beside the Launch browser button and the bar has no room.
+// of what the mark opens. Two facts nothing else in the window states follow the source: the
+// Case that Captures go into, when it is not the one on screen, and the extension, while it
+// records beside an open launched browser.
 export function RecordingMark({
   trigger = false,
   showSource = true,
-  foldSource = false,
+  into,
   className
 }: {
   trigger?: boolean
   showSource?: boolean
-  foldSource?: boolean
+  into?: string
   className?: string
 }) {
   const { data: launched } = useQuery(launchedBrowserStatusQueryOptions)
@@ -54,9 +55,19 @@ export function RecordingMark({
       ) : (
         <span className="font-mono text-text-primary">Recording</span>
       )}
-      {showSource && source && (
-        <span className={cn('text-text-muted', foldSource && 'max-[1100px]:sr-only')}>
-          {source}
+      {showSource && source && <span className="text-text-muted">{source}</span>}
+      {open && connectedToExtension && (
+        <span data-testid="rec-plus-extension" className="text-text-muted">
+          + extension
+        </span>
+      )}
+      {into && (
+        <span
+          data-testid="rec-into"
+          title={`into ${into}`}
+          className="max-w-[104px] truncate text-text-muted"
+        >
+          into {into}
         </span>
       )}
       {trigger && (

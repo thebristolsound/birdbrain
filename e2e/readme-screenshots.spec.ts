@@ -601,7 +601,7 @@ test.describe('README screenshots', () => {
 
     // --- 4f. Export dialog ---------------------------------------------------
     await page.getByTestId('topbar-case-name').click()
-    await page.getByRole('menuitem', { name: /export evidence package/i }).click()
+    await page.getByRole('menuitem', { name: 'Export…', exact: true }).click()
     await page.waitForTimeout(800)
     const purposeInput = page.getByPlaceholder(/Disclosure under/i)
     if (await purposeInput.isVisible().catch(() => false)) {

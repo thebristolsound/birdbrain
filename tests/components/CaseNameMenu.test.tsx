@@ -138,7 +138,7 @@ beforeEach(() => {
 afterEach(cleanup)
 
 describe('the Case menu on the Case name', () => {
-  it('holds Switch Case, sharing, the two exports, Import and Case settings, in that order', async () => {
+  it('holds Switch Case, sharing, Export, Import and Case settings, in that order', async () => {
     setup()
     const menu = openMenu()
     expect(
@@ -148,8 +148,7 @@ describe('the Case menu on the Case name', () => {
     ).toEqual([
       'case-menu-switch',
       'case-menu-sharing',
-      'case-menu-export-report',
-      'case-menu-export-archive',
+      'case-menu-export',
       'case-menu-import',
       'case-menu-settings'
     ])
@@ -158,16 +157,13 @@ describe('the Case menu on the Case name', () => {
     expect(trigger().getAttribute('title')).toBe('Harbour ledger review · Case menu')
   })
 
-  it('names each export by what it writes, under the one export icon', () => {
+  it('has one Export item, under the one export icon', () => {
     setup()
-    const menu = openMenu()
-    const evidence = within(menu).getByTestId('case-menu-export-report')
-    const archive = within(menu).getByTestId('case-menu-export-archive')
+    const item = within(openMenu()).getByTestId('case-menu-export')
 
-    expect(evidence.textContent).toBe('Export Evidence Package…')
-    expect(archive.textContent).toBe('Export Case Archive…')
-    expect(evidence.querySelector(exportIconSelector())).not.toBeNull()
-    expect(archive.querySelector(exportIconSelector())).not.toBeNull()
+    expect(item.textContent).toBe('Export…')
+    expect(item.querySelector(exportIconSelector())).not.toBeNull()
+    expect(screen.getAllByRole('menuitem', { name: /export/i })).toEqual([item])
   })
 
   it('labels Import as the dashboard does', () => {
@@ -423,14 +419,27 @@ function expectOutsideTheBar(dialog: HTMLElement) {
   expect(top.contains(trigger())).toBe(false)
 }
 
+// A Case Archive export starts in the dialog the menu's Export item opens.
+function exportArchiveFromMenu() {
+  fireEvent.click(within(theMenu()).getByTestId('case-menu-export'))
+  fireEvent.click(screen.getByRole('radio', { name: /^Case Archive/ }))
+  fireEvent.click(screen.getByTestId('export-submit'))
+}
+
+// Escape closes the dialog in either phase, as Close and Cancel do. The export it started
+// carries on, and the menu is within reach again.
+function closeExportDialog() {
+  fireEvent.keyDown(window, { key: 'Escape' })
+}
+
 describe('exporting from the Case menu', () => {
-  it('opens the export dialog from Export Evidence Package, and hands focus back on close', async () => {
+  it('opens the export dialog from Export, and hands focus back on close', async () => {
     setup()
-    const item = within(openMenu()).getByTestId('case-menu-export-report')
+    const item = within(openMenu()).getByTestId('case-menu-export')
     item.focus()
 
     fireEvent.click(item)
-    const dialog = screen.getByRole('dialog', { name: 'Export case' })
+    const dialog = screen.getByRole('dialog', { name: 'Export Harbour ledger review' })
     expectOutsideTheBar(dialog)
     expect(dialog.contains(document.activeElement)).toBe(true)
     // The closing menu takes no focus back a turn later: the dialog keeps it.
@@ -446,12 +455,14 @@ describe('exporting from the Case menu', () => {
 
   it('reports a saved Case Archive as a toast with the path and a reveal action', async () => {
     setup()
-    fireEvent.click(within(openMenu()).getByTestId('case-menu-export-archive'))
+    exportArchiveFromMenu()
     await waitFor(() => expect(notifySuccess).toHaveBeenCalledOnce())
     const [title, opts] = notifySuccess.mock.calls[0]
     expect(title).toBe('Case Archive saved')
     expect(opts.description).toBe(ARCHIVE_PATH)
     expect(screen.queryByRole('alert')).toBeNull()
+    // The dialog that started it closes once the archive is written.
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
 
     opts.action.onClick()
     await waitFor(() => expect(showItemInFolder).toHaveBeenCalledWith(ARCHIVE_PATH))
@@ -460,17 +471,18 @@ describe('exporting from the Case menu', () => {
   it('raises no toast when the save dialog is cancelled', async () => {
     exportArchive.mockResolvedValue({ canceled: true } satisfies ArchiveExportResult)
     setup()
-    fireEvent.click(within(openMenu()).getByTestId('case-menu-export-archive'))
+    exportArchiveFromMenu()
     await waitFor(() => expect(exportArchive).toHaveBeenCalledWith('case-1'))
     await nextTurn()
     expect(notifySuccess).not.toHaveBeenCalled()
   })
 
-  it('shows the running step beside the name, and holds both exports until it ends', async () => {
+  it('shows the running step beside the name, and holds Export until it ends', async () => {
     let finish!: (result: ArchiveExportResult) => void
     exportArchive.mockReturnValue(new Promise<ArchiveExportResult>((resolve) => (finish = resolve)))
     setup()
-    fireEvent.click(within(openMenu()).getByTestId('case-menu-export-archive'))
+    exportArchiveFromMenu()
+    closeExportDialog()
     const progress = await screen.findByTestId('case-export-progress')
     expect(progress.textContent).toBe('Preparing archive… — 0%')
     expect(trigger().contains(progress)).toBe(true)
@@ -483,15 +495,16 @@ describe('exporting from the Case menu', () => {
     sendProgress({ caseId: 'other-case', step: 'Should not show', percent: 99 })
     expect(screen.queryByText(/Should not show/)).toBeNull()
 
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
     const menu = openMenu()
-    expect(isDisabledItem(within(menu).getByTestId('case-menu-export-report'))).toBe(true)
-    expect(isDisabledItem(within(menu).getByTestId('case-menu-export-archive'))).toBe(true)
-    fireEvent.click(within(menu).getByTestId('case-menu-export-archive'))
+    expect(isDisabledItem(within(menu).getByTestId('case-menu-export'))).toBe(true)
+    fireEvent.click(within(menu).getByTestId('case-menu-export'))
+    expect(screen.queryByRole('dialog')).toBeNull()
     expect(exportArchive).toHaveBeenCalledOnce()
 
     await act(async () => finish({ canceled: false, filePath: ARCHIVE_PATH }))
     await waitFor(() => expect(screen.queryByTestId('case-export-progress')).toBeNull())
-    expect(isDisabledItem(within(menu).getByTestId('case-menu-export-archive'))).toBe(false)
+    expect(isDisabledItem(within(theMenu()).getByTestId('case-menu-export'))).toBe(false)
     // The export stops listening once it has settled.
     expect(progressListeners.size).toBe(0)
   })
@@ -500,8 +513,10 @@ describe('exporting from the Case menu', () => {
   it("leaves another Case's export free when its steps arrive during this export", async () => {
     exportArchive.mockReturnValue(NEVER)
     const { rerender, client } = setup()
-    fireEvent.click(within(openMenu()).getByTestId('case-menu-export-archive'))
+    exportArchiveFromMenu()
+    closeExportDialog()
     await screen.findByTestId('case-export-progress')
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
     sendProgress({ caseId: 'case-2', step: 'Should not show', percent: 99 })
     rerender(
       <QueryClientProvider client={client}>
@@ -509,19 +524,23 @@ describe('exporting from the Case menu', () => {
       </QueryClientProvider>
     )
     expect(screen.queryByTestId('case-export-progress')).toBeNull()
-    const item = within(theMenu()).getByTestId('case-menu-export-archive')
-    expect(isDisabledItem(item)).toBe(false)
-    fireEvent.click(item)
+    expect(isDisabledItem(within(theMenu()).getByTestId('case-menu-export'))).toBe(false)
+    exportArchiveFromMenu()
     await waitFor(() => expect(exportArchive).toHaveBeenLastCalledWith('case-2'))
   })
 
   it('keeps a failed export on screen until the Operator dismisses it', async () => {
     exportArchive.mockRejectedValue(new Error('disk full'))
     setup()
-    fireEvent.click(within(openMenu()).getByTestId('case-menu-export-archive'))
+    exportArchiveFromMenu()
     const alert = await screen.findByRole('alert')
     expect(alert.textContent).toContain('disk full')
     expect(notifySuccess).not.toHaveBeenCalled()
+    // The dialog shows it too, and closing the dialog does not dismiss it.
+    expect(screen.getByTestId('export-error').textContent).toBe('Error: disk full')
+    closeExportDialog()
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(screen.getByRole('alert').textContent).toContain('disk full')
 
     fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }))
     expect(screen.queryByRole('alert')).toBeNull()
@@ -530,8 +549,9 @@ describe('exporting from the Case menu', () => {
   it('shows a failure on its own Case only, until it is dismissed there', async () => {
     exportArchive.mockRejectedValue(new Error('disk full'))
     const { rerender, client } = setup()
-    fireEvent.click(within(openMenu()).getByTestId('case-menu-export-archive'))
+    exportArchiveFromMenu()
     await screen.findByRole('alert')
+    closeExportDialog()
     const show = (id: string) =>
       rerender(
         <QueryClientProvider client={client}>
@@ -544,13 +564,13 @@ describe('exporting from the Case menu', () => {
     expect(screen.getByRole('alert').textContent).toContain('disk full')
   })
 
-  // The menu leaves the screen on the dashboard and in Settings. The export it started does
-  // not: coming back finds it running, with its items held, so a second cannot start beside it.
+  // The menu leaves the screen on the dashboard and in Settings. A running export does not:
+  // coming back finds it running, with Export held, so a second cannot start beside it.
   it('finds a running export again after the menu has left the screen', async () => {
     let finish!: (result: ArchiveExportResult) => void
     exportArchive.mockReturnValue(new Promise<ArchiveExportResult>((resolve) => (finish = resolve)))
     const first = setup()
-    fireEvent.click(within(openMenu()).getByTestId('case-menu-export-archive'))
+    exportArchiveFromMenu()
     await screen.findByTestId('case-export-progress')
     first.unmount()
     // The export keeps listening while the menu is away, so the step shown on return is current.
@@ -563,9 +583,9 @@ describe('exporting from the Case menu', () => {
       'Bundling captures... — 55%'
     )
     const menu = openMenu()
-    expect(isDisabledItem(within(menu).getByTestId('case-menu-export-report'))).toBe(true)
-    expect(isDisabledItem(within(menu).getByTestId('case-menu-export-archive'))).toBe(true)
-    fireEvent.click(within(menu).getByTestId('case-menu-export-archive'))
+    expect(isDisabledItem(within(menu).getByTestId('case-menu-export'))).toBe(true)
+    fireEvent.click(within(menu).getByTestId('case-menu-export'))
+    expect(screen.queryByRole('dialog')).toBeNull()
     expect(exportArchive).toHaveBeenCalledOnce()
 
     await act(async () => finish({ canceled: false, filePath: ARCHIVE_PATH }))
@@ -576,7 +596,7 @@ describe('exporting from the Case menu', () => {
     let fail!: (reason: Error) => void
     exportArchive.mockReturnValue(new Promise<ArchiveExportResult>((_, reject) => (fail = reject)))
     const first = setup()
-    fireEvent.click(within(openMenu()).getByTestId('case-menu-export-archive'))
+    exportArchiveFromMenu()
     await screen.findByTestId('case-export-progress')
     first.unmount()
     await act(async () => fail(new Error('disk full')))
@@ -590,7 +610,8 @@ describe('exporting from the Case menu', () => {
     let finish!: (result: ArchiveExportResult) => void
     exportArchive.mockReturnValue(new Promise<ArchiveExportResult>((resolve) => (finish = resolve)))
     const { rerender, client } = setup()
-    fireEvent.click(within(openMenu()).getByTestId('case-menu-export-archive'))
+    exportArchiveFromMenu()
+    closeExportDialog()
     await screen.findByTestId('case-export-progress')
     const show = (id: string) =>
       rerender(
@@ -605,7 +626,7 @@ describe('exporting from the Case menu', () => {
 
     show('case-1')
     expect(screen.queryByTestId('case-export-progress')).toBeNull()
-    expect(isDisabledItem(within(theMenu()).getByTestId('case-menu-export-archive'))).toBe(false)
+    expect(isDisabledItem(within(theMenu()).getByTestId('case-menu-export'))).toBe(false)
   })
 
   // The button has room for one state. A running sync gives way to the export's step.
@@ -613,7 +634,7 @@ describe('exporting from the Case menu', () => {
     exportArchive.mockReturnValue(NEVER)
     setup({ roster: members(), syncState: sync({ phase: 'syncing' }) })
     await screen.findByTestId('case-sync-state')
-    fireEvent.click(within(openMenu()).getByTestId('case-menu-export-archive'))
+    exportArchiveFromMenu()
     await screen.findByTestId('case-export-progress')
     expect(screen.queryByTestId('case-sync-state')).toBeNull()
   })
@@ -624,8 +645,10 @@ describe('exporting from the Case menu', () => {
     let finish!: (result: ArchiveExportResult) => void
     exportArchive.mockReturnValue(new Promise<ArchiveExportResult>((resolve) => (finish = resolve)))
     const { rerender, client } = setup()
-    fireEvent.click(within(openMenu()).getByTestId('case-menu-export-archive'))
+    exportArchiveFromMenu()
+    closeExportDialog()
     await screen.findByTestId('case-export-progress')
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
     const show = (id: string) =>
       rerender(
         <QueryClientProvider client={client}>
@@ -635,12 +658,13 @@ describe('exporting from the Case menu', () => {
 
     show('case-2')
     expect(screen.queryByTestId('case-export-progress')).toBeNull()
-    expect(isDisabledItem(within(theMenu()).getByTestId('case-menu-export-archive'))).toBe(false)
+    expect(isDisabledItem(within(theMenu()).getByTestId('case-menu-export'))).toBe(false)
 
     show('case-1')
     expect(screen.getByTestId('case-export-progress')).toBeTruthy()
-    expect(isDisabledItem(within(theMenu()).getByTestId('case-menu-export-archive'))).toBe(true)
-    fireEvent.click(within(theMenu()).getByTestId('case-menu-export-archive'))
+    expect(isDisabledItem(within(theMenu()).getByTestId('case-menu-export'))).toBe(true)
+    fireEvent.click(within(theMenu()).getByTestId('case-menu-export'))
+    expect(screen.queryByRole('dialog')).toBeNull()
     expect(exportArchive).toHaveBeenCalledOnce()
 
     await act(async () => finish({ canceled: false, filePath: ARCHIVE_PATH }))
@@ -654,7 +678,7 @@ describe('exporting from the Case menu', () => {
       syncState: sync({ phase: 'error', lastError: { kind: 'relay', at: '2026-01-01T00:00:00Z' } })
     })
     await screen.findByTestId('case-sync-state')
-    fireEvent.click(within(openMenu()).getByTestId('case-menu-export-archive'))
+    exportArchiveFromMenu()
     await screen.findByTestId('case-export-progress')
     expect(screen.getByTestId('case-sync-state').dataset.chrome).toBe('error')
   })
@@ -663,8 +687,10 @@ describe('exporting from the Case menu', () => {
     exportArchive.mockRejectedValue(new Error('disk full'))
     inspectArchive.mockRejectedValue(new Error('not an archive'))
     setup()
-    fireEvent.click(within(openMenu()).getByTestId('case-menu-export-archive'))
+    exportArchiveFromMenu()
     expect((await screen.findByRole('alert')).textContent).toContain('disk full')
+    closeExportDialog()
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
     fireEvent.click(within(theMenu()).getByTestId('case-menu-import'))
     await waitFor(() => expect(inspectArchive).toHaveBeenCalledOnce())
     await nextTurn()
@@ -679,24 +705,23 @@ describe('exporting from the Case menu', () => {
   // it exports, so its reads show which Case that is.
   it('keeps the export dialog on the Case it was opened for', async () => {
     const { rerender, client, getCase } = setup()
-    fireEvent.click(within(openMenu()).getByTestId('case-menu-export-report'))
+    fireEvent.click(within(openMenu()).getByTestId('case-menu-export'))
     await waitFor(() => expect(getCase).toHaveBeenCalledWith('case-1'))
     rerender(
       <QueryClientProvider client={client}>
         <CaseMenu place="name" caseId="case-2" caseData={{ ...CASE, id: 'case-2' }} />
       </QueryClientProvider>
     )
-    expect(screen.getByRole('dialog', { name: 'Export case' })).toBeTruthy()
+    expect(screen.getByRole('dialog', { name: 'Export Harbour ledger review' })).toBeTruthy()
     await nextTurn()
     await nextTurn()
     expect(getCase.mock.calls.map(([id]) => id)).toEqual(['case-1'])
   })
 
-  it('holds both exports while the Case has not loaded', () => {
+  it('holds Export while the Case has not loaded', () => {
     setup({ caseData: undefined })
     const menu = openMenu()
-    expect(isDisabledItem(within(menu).getByTestId('case-menu-export-report'))).toBe(true)
-    expect(isDisabledItem(within(menu).getByTestId('case-menu-export-archive'))).toBe(true)
+    expect(isDisabledItem(within(menu).getByTestId('case-menu-export'))).toBe(true)
     expect(isDisabledItem(within(menu).getByTestId('case-menu-import'))).toBe(false)
   })
 })

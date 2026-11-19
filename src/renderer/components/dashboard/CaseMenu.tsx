@@ -55,7 +55,7 @@ import {
 // Rename, the sharing item, and Delete behind a confirmation. The card reveals the kebab on hover
 // and the Older Cases list keeps it visible (docs/design-handoff/2026-10-28-share-a-case/,
 // frame E). On the Case name in the top bar it holds what acts on the open Case: Switch Case, the
-// sharing item, the two exports, Import and Case settings. The sharing item is the same in both:
+// sharing item, Export, Import and Case settings. The sharing item is the same in both:
 // "Share this Case…" until the Case is shared, then "Members".
 type CaseMenuProps =
   | {
@@ -240,7 +240,7 @@ function NameMenu({ caseId, caseData }: Extract<CaseMenuProps, { place: 'name' }
   const marked = useAppStore((s) => s.shareMarkOpen)
   // The export dialog keeps the Case it was opened for. The palette can change the Case on
   // screen while the dialog is up, and the form must not then export the other Case.
-  const [reportFor, setReportFor] = useState<{ id: string; name: string } | null>(null)
+  const [exportFor, setExportFor] = useState<{ id: string; name: string } | null>(null)
   const noticeTipId = useId()
   const exporting = useCaseExport(caseId)
   const importing = useCaseArchiveImport()
@@ -373,21 +373,14 @@ function NameMenu({ caseId, caseData }: Extract<CaseMenuProps, { place: 'name' }
           >
             <Users className={NAME_ITEM_ICON} strokeWidth={1.8} />
           </SharingItem>
+          {/* Held while a Case Archive export runs, so a second cannot start beside it. */}
           <MenuItem
-            data-testid="case-menu-export-report"
+            data-testid="case-menu-export"
             disabled={!caseData || exporting.isExporting}
-            onSelect={() => caseData && setReportFor({ id: caseData.id, name: caseData.name })}
+            onSelect={() => caseData && setExportFor({ id: caseData.id, name: caseData.name })}
           >
             <ExportIcon className={NAME_ITEM_ICON} strokeWidth={1.8} />
-            Export Evidence Package…
-          </MenuItem>
-          <MenuItem
-            data-testid="case-menu-export-archive"
-            disabled={!caseData || exporting.isExporting}
-            onSelect={() => void exporting.startArchive()}
-          >
-            <ExportIcon className={NAME_ITEM_ICON} strokeWidth={1.8} />
-            Export Case Archive…
+            Export…
           </MenuItem>
           <MenuItem data-testid="case-menu-import" onSelect={() => void importing.start()}>
             <FolderInput className={NAME_ITEM_ICON} strokeWidth={1.8} />
@@ -452,11 +445,11 @@ function NameMenu({ caseId, caseData }: Extract<CaseMenuProps, { place: 'name' }
       {createPortal(
         <>
           <AnimatePresence>
-            {reportFor && (
+            {exportFor && (
               <ExportDialog
-                caseId={reportFor.id}
-                caseName={reportFor.name}
-                onClose={() => setReportFor(null)}
+                caseId={exportFor.id}
+                caseName={exportFor.name}
+                onClose={() => setExportFor(null)}
               />
             )}
           </AnimatePresence>

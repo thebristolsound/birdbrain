@@ -4,7 +4,12 @@ import { useState } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, fireEvent, cleanup, waitFor, act, within } from '@testing-library/react'
 import type { Case, ExportOptions, ExportPreflight } from '@shared/types'
-import type { ExportProgressEvent, ExportResult } from '@shared/ipc'
+import type {
+  ArchiveExportResult,
+  ArchiveProgressEvent,
+  ExportProgressEvent,
+  ExportResult
+} from '@shared/ipc'
 
 const presence = vi.hoisted(() => ({ present: true }))
 
@@ -60,7 +65,48 @@ import {
   EXPORT_PRESETS,
   detectPreset
 } from '@renderer/components/export/ExportDialog'
+import { useCaseExports } from '@renderer/components/export/useCaseExport'
 import { fakeBridge } from '../renderer/fakeBridge'
+
+// Literal copies of the three selections the dialog submitted before it had one choice list,
+// which `tests/main/services/exportKnownAnswer.test.ts` pins the bytes of. They are not read
+// from the dialog's own table, so a change to that table cannot move them with it.
+const FULL_SELECTION = {
+  exportClass: 'evidence',
+  include: {
+    captures: true,
+    screenshots: true,
+    auditTrail: true,
+    notes: true,
+    annotations: 'burned'
+  }
+} as const
+const WITHOUT_NOTES_SELECTION = {
+  exportClass: 'evidence',
+  include: {
+    captures: true,
+    screenshots: true,
+    auditTrail: true,
+    notes: false,
+    annotations: 'burned'
+  }
+} as const
+const WORKING_SELECTION = {
+  exportClass: 'working-copy',
+  include: {
+    captures: true,
+    screenshots: true,
+    auditTrail: false,
+    notes: true,
+    annotations: 'burned'
+  }
+} as const
+
+// The three choices, each found by the name its label starts with.
+const EVIDENCE = /^Evidence Package/
+const WORKING = /^Working Copy/
+const ARCHIVE = /^Case Archive/
+const ARCHIVE_PATH = '/out/Case_One.birdbrain'
 
 const CASE: Case = {
   id: 'case-1',
@@ -105,6 +151,12 @@ function lastOptions(generateReport: ReturnType<typeof vi.fn>): ExportOptions {
   return options
 }
 
+/** The class and the item set of the last export submitted, which decide the package. */
+function lastSelection(generateReport: ReturnType<typeof vi.fn>) {
+  const { exportClass, include } = lastOptions(generateReport)
+  return { exportClass, include }
+}
+
 describe('ExportDialog', () => {
   let preflight: ReturnType<typeof vi.fn>
   let getCase: ReturnType<typeof vi.fn>
@@ -113,7 +165,18 @@ describe('ExportDialog', () => {
   let openPath: ReturnType<typeof vi.fn>
   let onExportProgress: ReturnType<typeof vi.fn>
   let listCasePins: ReturnType<typeof vi.fn>
+  let exportArchive: ReturnType<typeof vi.fn>
   let progressCb: ((event: ExportProgressEvent) => void) | null
+  // Every listener the app has for archive progress, minus those it has stopped, so a step
+  // reaches only these, as it would in the app.
+  const archiveListeners = new Set<(event: ArchiveProgressEvent) => void>()
+  const onArchiveProgress = (cb: (event: ArchiveProgressEvent) => void) => {
+    archiveListeners.add(cb)
+    return () => archiveListeners.delete(cb)
+  }
+  function sendArchiveProgress(event: ArchiveProgressEvent) {
+    act(() => archiveListeners.forEach((listener) => listener(event)))
+  }
 
   beforeEach(() => {
     progressCb = null
@@ -136,12 +199,20 @@ describe('ExportDialog', () => {
       return vi.fn()
     })
     listCasePins = vi.fn().mockResolvedValue([])
+    exportArchive = vi.fn().mockResolvedValue({
+      canceled: false,
+      filePath: ARCHIVE_PATH
+    } satisfies ArchiveExportResult)
+    archiveListeners.clear()
+    // A Case Archive export and its failure outlive the dialog, so each test starts with none.
+    useCaseExports.setState({ pending: {}, failed: {} })
     fakeBridge({
       export: { preflight, generateReport },
-      cases: { get: getCase },
+      cases: { get: getCase, exportArchive },
       shell: { showItemInFolder, openPath },
       wayback: { listForCase: listCasePins },
-      onExportProgress
+      onExportProgress,
+      onArchiveProgress
     })
   })
 
@@ -214,9 +285,10 @@ describe('ExportDialog', () => {
     expect(within(block).getAllByTestId('export-pinned-wayback-row')).toHaveLength(2)
     expect(block.textContent).toContain('2026-07-01 09:30 UTC')
     expect(block.textContent).toContain('2d before capture')
-    expect(block.textContent).toContain('labelled corroboration only')
     // The boundary, stated in the dialog: a pin is a reference, not content.
-    expect(block.textContent).toContain('not downloaded or packaged')
+    expect(block.textContent).toContain(
+      'Listed as archive.org references. Snapshots are not packaged.'
+    )
   })
 
   it('shows only the pins belonging to a scoped selection', async () => {
@@ -234,14 +306,14 @@ describe('ExportDialog', () => {
     renderDialog()
 
     await screen.findByTestId('export-pinned-wayback')
-    fireEvent.click(screen.getByLabelText(/Working Copy/))
+    fireEvent.click(screen.getByLabelText(WORKING))
 
     // The pins are unchanged; what changed is that this class carries no report
     // for them to be "included in", so the promise must not be on screen.
     expect(screen.queryByTestId('export-pinned-wayback')).toBeNull()
-    expect(screen.getByTestId('export-working-copy-notice')).toBeDefined()
+    expect(screen.getByRole<HTMLInputElement>('radio', { name: WORKING }).checked).toBe(true)
 
-    fireEvent.click(screen.getByLabelText(/^Evidence Package \(\.zip\)/))
+    fireEvent.click(screen.getByLabelText(EVIDENCE))
     expect(await screen.findByTestId('export-pinned-wayback')).toBeDefined()
   })
 
@@ -255,9 +327,9 @@ describe('ExportDialog', () => {
   it('shows the un-stamped capture warning before export', async () => {
     renderDialog()
 
-    expect(
-      await screen.findByText(/2 captures will export without RFC 3161 trusted time/)
-    ).toBeDefined()
+    expect((await screen.findByTestId('export-trusted-time-notice')).textContent).toBe(
+      '2 Captures will export without RFC 3161 trusted time (1 pending, 1 none).'
+    )
     expect(preflight).toHaveBeenCalledWith('case-1', undefined)
   })
 
@@ -271,15 +343,8 @@ describe('ExportDialog', () => {
     expect(options.format).toBe('zip')
     expect(options.exportClass).toBe('evidence')
     expect(options.outputPath).toBe('Case One_evidence.zip')
-    // The include toggles decide what lands in the evidence package, so pin
-    // all five rather than only the ones that name the file.
-    expect(options.include).toEqual({
-      captures: true,
-      screenshots: true,
-      auditTrail: true,
-      notes: true,
-      annotations: 'burned'
-    })
+    // The class and all five include toggles decide what lands in the package.
+    expect(lastSelection(generateReport)).toEqual(FULL_SELECTION)
     // Whole-case export: no selection scope key at all, never [].
     expect('captureIds' in options).toBe(false)
   })
@@ -288,27 +353,60 @@ describe('ExportDialog', () => {
   it('maps the Working Copy preset to the working-copy class and a marked filename', async () => {
     renderDialog()
 
-    fireEvent.click(screen.getByLabelText(/Working Copy/))
+    fireEvent.click(screen.getByLabelText(WORKING))
     fireEvent.click(screen.getByText('Export'))
 
     await waitFor(() => expect(generateReport).toHaveBeenCalledTimes(1))
     const options = lastOptions(generateReport)
-    expect(options.exportClass).toBe('working-copy')
+    expect(lastSelection(generateReport)).toEqual(WORKING_SELECTION)
     expect(options.outputPath).toBe('Case One_working_copy.zip')
-    expect(options.include).toEqual(EXPORT_PRESETS.working.selection.include)
   })
 
-  it('maps the preset without Operator notes to an evidence export that leaves them out', async () => {
+  // The checkbox stands where a third preset stood, so it has to submit that preset's
+  // selection and leave the Evidence Package the chosen choice.
+  it('leaves Operator notes out of an Evidence Package from its checkbox', async () => {
     renderDialog()
 
-    fireEvent.click(screen.getByLabelText(/without Operator notes \(\.zip\)/))
+    const leaveOut = screen.getByRole<HTMLInputElement>('checkbox', {
+      name: 'Leave out Operator notes'
+    })
+    expect(leaveOut.checked).toBe(false)
+    fireEvent.click(leaveOut)
+
+    expect(leaveOut.checked).toBe(true)
+    expect(screen.getByRole<HTMLInputElement>('radio', { name: EVIDENCE }).checked).toBe(true)
+    expect(screen.getByText('Customise contents')).toBeDefined()
     fireEvent.click(screen.getByText('Export'))
 
     await waitFor(() => expect(generateReport).toHaveBeenCalledTimes(1))
-    const options = lastOptions(generateReport)
-    expect(options.exportClass).toBe('evidence')
-    expect(options.include.notes).toBe(false)
-    expect(options.include.auditTrail).toBe(true)
+    expect(lastSelection(generateReport)).toEqual(WITHOUT_NOTES_SELECTION)
+    expect(lastOptions(generateReport).outputPath).toBe('Case One_evidence.zip')
+  })
+
+  it('offers the checkbox under the Evidence Package only while it is the chosen choice', () => {
+    renderDialog()
+
+    fireEvent.click(screen.getByLabelText(WORKING))
+    expect(screen.queryByRole('checkbox', { name: 'Leave out Operator notes' })).toBeNull()
+
+    fireEvent.click(screen.getByLabelText(EVIDENCE))
+    expect(
+      screen.getByRole<HTMLInputElement>('checkbox', { name: 'Leave out Operator notes' }).checked
+    ).toBe(false)
+  })
+
+  // The same item from the checklist, so the two controls cannot disagree.
+  it('ticks the checkbox when Operator notes are unticked in the checklist', () => {
+    renderDialog()
+
+    fireEvent.click(screen.getByText('Customise contents'))
+    fireEvent.click(screen.getByLabelText('Operator notes'))
+
+    expect(
+      screen.getByRole<HTMLInputElement>('checkbox', { name: 'Leave out Operator notes' }).checked
+    ).toBe(true)
+    expect(screen.getByRole<HTMLInputElement>('radio', { name: EVIDENCE }).checked).toBe(true)
+    expect(screen.queryByText('Custom selection')).toBeNull()
   })
 
   // AC 1: custom detection works — toggling an item off a preset drops the
@@ -333,9 +431,7 @@ describe('ExportDialog', () => {
     renderDialog()
 
     fireEvent.click(screen.getByText('Customise contents'))
-    const manifest = screen.getByLabelText(
-      'Manifest — full case chain, never a slice'
-    ) as HTMLInputElement
+    const manifest = screen.getByLabelText('Manifest (always the full chain)') as HTMLInputElement
     const certification = screen.getByLabelText('Certification') as HTMLInputElement
     for (const invariant of [manifest, certification]) {
       expect(invariant.checked).toBe(true)
@@ -359,7 +455,7 @@ describe('ExportDialog', () => {
     fireEvent.click(captures)
     expect(captures.checked).toBe(true)
     expect(screen.getByTestId('export-captures-invariant-note').textContent).toBe(
-      'Page archives cannot be left out of a certified package.'
+      'Always in an Evidence Package'
     )
 
     fireEvent.click(screen.getByText('Export'))
@@ -383,7 +479,7 @@ describe('ExportDialog', () => {
     expect(screen.getByText('Custom selection')).toBeDefined()
 
     expect(screen.getByTestId('export-pinned-wayback').textContent).toContain(
-      'Included in the report as archive.org references'
+      'Listed as archive.org references'
     )
     fireEvent.click(screen.getByText('Export'))
     await waitFor(() => expect(generateReport).toHaveBeenCalledTimes(1))
@@ -399,7 +495,7 @@ describe('ExportDialog', () => {
     renderDialog()
 
     await screen.findByTestId('export-pinned-wayback')
-    fireEvent.click(screen.getByLabelText(/Working Copy/))
+    fireEvent.click(screen.getByLabelText(WORKING))
     fireEvent.click(screen.getByText('Customise contents'))
     const wcCaptures = screen.getByLabelText('Captures (page archives)') as HTMLInputElement
     expect(wcCaptures.disabled).toBe(false)
@@ -408,7 +504,7 @@ describe('ExportDialog', () => {
     expect(screen.queryByTestId('export-captures-invariant-note')).toBeNull()
     expect(screen.queryByTestId('export-pinned-wayback')).toBeNull()
 
-    fireEvent.click(screen.getByLabelText(/^Evidence Package \(\.zip\)/))
+    fireEvent.click(screen.getByLabelText(EVIDENCE))
     const captures = screen.getByLabelText('Captures (page archives)') as HTMLInputElement
     expect(captures.checked).toBe(true)
     expect(captures.disabled).toBe(true)
@@ -422,7 +518,7 @@ describe('ExportDialog', () => {
   it('lets a Working Copy export leave its page archives out', async () => {
     renderDialog()
 
-    fireEvent.click(screen.getByLabelText(/Working Copy/))
+    fireEvent.click(screen.getByLabelText(WORKING))
     fireEvent.click(screen.getByText('Customise contents'))
     fireEvent.click(screen.getByLabelText('Captures (page archives)'))
     expect(screen.getByText('Custom selection')).toBeDefined()
@@ -434,18 +530,30 @@ describe('ExportDialog', () => {
     expect(options.include.captures).toBe(false)
   })
 
-  it('replaces the custody card with a non-evidentiary notice under Working Copy', async () => {
+  // Each class is described once, under its name. ADR-0010 has the Working Copy's label carry
+  // the weight, so its line says what a recipient cannot do with one.
+  it('describes each choice once, under its name, with its file type', () => {
     renderDialog()
 
-    expect(screen.getByTestId('export-custody-card')).toBeDefined()
-    expect(screen.queryByTestId('export-working-copy-notice')).toBeNull()
+    const choices = within(screen.getByRole('radiogroup', { name: 'Export as' }))
+      .getAllByRole('radio')
+      .map((radio) => radio.closest('label')?.textContent)
+    expect(choices).toEqual([
+      'Evidence Package.zipFor handing over. A recipient can check its integrity.',
+      'Working Copy.zipFor your own use. No Certification, and a recipient cannot check it.',
+      'Case Archive.birdbrainThe whole Case, to import into another installation.'
+    ])
+    for (const choice of [EVIDENCE, WORKING, ARCHIVE]) {
+      fireEvent.click(screen.getByLabelText(choice))
+      expect(screen.queryByTestId('export-custody-card')).toBeNull()
+      expect(screen.queryByTestId('export-working-copy-notice')).toBeNull()
+    }
+  })
 
-    fireEvent.click(screen.getByLabelText(/Working Copy/))
+  it('offers a Working Copy no Certification and no verification row', () => {
+    renderDialog()
 
-    expect(screen.queryByTestId('export-custody-card')).toBeNull()
-    expect(screen.getByTestId('export-working-copy-notice').textContent).toMatch(
-      /not a\s+verifiable object/
-    )
+    fireEvent.click(screen.getByLabelText(WORKING))
     // The invariant rows do not exist for a Working Copy — there is no
     // Manifest or Certification to render as always-on.
     fireEvent.click(screen.getByText('Customise contents'))
@@ -480,12 +588,14 @@ describe('ExportDialog', () => {
     getCase.mockResolvedValue({ ...CASE, isDemo: true })
     renderDialog()
 
-    expect(await screen.findByTestId('export-demo-notice')).toBeDefined()
+    expect((await screen.findByTestId('export-demo-notice')).textContent).toBe(
+      'Demonstration Case: fixture data, not evidence. The package says so.'
+    )
 
     cleanup()
     getCase.mockResolvedValue(CASE)
     renderDialog()
-    await screen.findByText(/2 captures will export without/)
+    await screen.findByTestId('export-trusted-time-notice')
     expect(screen.queryByTestId('export-demo-notice')).toBeNull()
   })
 
@@ -493,30 +603,34 @@ describe('ExportDialog', () => {
     renderDialog()
 
     await waitFor(() =>
-      expect(screen.getByTestId('export-scope-row').textContent).toBe('Whole case — 3 captures')
+      expect(screen.getByTestId('export-scope-row').textContent).toBe('Whole Case · 3 Captures')
     )
+    expect(screen.getByRole('heading', { name: 'Export Case One' })).toBeDefined()
   })
 
   it('states a selection scope, the manifest note, and passes captureIds through', async () => {
     renderDialog(vi.fn(), ['cap-1', 'cap-2'])
 
-    expect(screen.getByTestId('export-scope-row').textContent).toBe('2 selected captures')
-    expect(screen.getByText('The full Manifest chain is included.')).toBeDefined()
+    expect(screen.getByRole('heading', { name: 'Export 2 Captures' })).toBeDefined()
+    expect(screen.getByTestId('export-scope-row').textContent).toBe('Selection from Case One')
+    expect(screen.getByTestId('export-scope-manifest-note').textContent).toBe(
+      'The full Manifest chain is included.'
+    )
 
     fireEvent.click(screen.getByText('Export'))
     await waitFor(() => expect(generateReport).toHaveBeenCalledTimes(1))
     expect(lastOptions(generateReport).captureIds).toEqual(['cap-1', 'cap-2'])
   })
 
-  // A Working Copy ships no Manifest, so the chain note would contradict the
-  // working-copy notice under it.
+  // A Working Copy ships no Manifest, so the chain note would be untrue of one.
   it('drops the manifest note for a Working Copy selection export', () => {
-    renderDialog(vi.fn(), ['cap-1', 'cap-2'])
-    fireEvent.click(screen.getByLabelText(/Working Copy/))
+    renderDialog(vi.fn(), ['cap-1'])
+    expect(screen.getByTestId('export-scope-manifest-note')).toBeDefined()
+    fireEvent.click(screen.getByLabelText(WORKING))
 
-    expect(screen.getByTestId('export-scope-row').textContent).toBe('2 selected captures')
+    expect(screen.getByRole('heading', { name: 'Export 1 Capture' })).toBeDefined()
+    expect(screen.getByTestId('export-scope-row').textContent).toBe('Selection from Case One')
     expect(screen.queryByTestId('export-scope-manifest-note')).toBeNull()
-    expect(screen.getByTestId('export-working-copy-notice')).toBeDefined()
   })
 
   it('renders the live step and percent from export progress events', async () => {
@@ -568,7 +682,7 @@ describe('ExportDialog', () => {
     expect(opts.action.label).toBe('Show in folder')
     expect(onClose).toHaveBeenCalledOnce()
     // Held on the progress view while the dialog animates out, never the form.
-    expect(screen.getByText('Exporting case')).toBeDefined()
+    expect(screen.getByText('Exporting Case One')).toBeDefined()
     expect(screen.queryByTestId('export-submit')).toBeNull()
 
     opts.action.onClick()
@@ -583,7 +697,7 @@ describe('ExportDialog', () => {
     })
     renderDialog()
 
-    fireEvent.click(screen.getByLabelText(/Working Copy/))
+    fireEvent.click(screen.getByLabelText(WORKING))
     fireEvent.click(screen.getByText('Export'))
 
     await waitFor(() => expect(notifySuccess).toHaveBeenCalledOnce())
@@ -617,8 +731,8 @@ describe('ExportDialog', () => {
     const { unmount } = renderDialog(onClose)
 
     fireEvent.click(screen.getByText('Export'))
-    expect((await screen.findByTestId('export-close-note')).textContent).toMatch(
-      /does not stop the export/
+    expect((await screen.findByTestId('export-close-note')).textContent).toBe(
+      'The export continues if you close this.'
     )
     fireEvent.click(screen.getByRole('button', { name: 'Close' }))
     expect(onClose).toHaveBeenCalledOnce()
@@ -657,16 +771,16 @@ describe('ExportDialog', () => {
     fireEvent.click(screen.getByText('Export'))
     await screen.findByTestId('export-close-note')
     fireEvent.click(screen.getByRole('button', { name: 'Close' }))
-    expect(screen.queryByText('Exporting case')).toBeNull()
+    expect(screen.queryByText('Exporting Case One')).toBeNull()
     fireEvent.click(screen.getByText('Reopen'))
-    expect(await screen.findByText('Export case')).toBeDefined()
+    expect(await screen.findByText('Export Case One')).toBeDefined()
 
     await act(async () => {
       gate.resolve({ canceled: false, filePath: 'Case_One_evidence.zip' })
     })
 
     await waitFor(() => expect(notifySuccess).toHaveBeenCalledOnce())
-    expect(screen.getByText('Export case')).toBeDefined()
+    expect(screen.getByText('Export Case One')).toBeDefined()
   })
 
   it('returns to the form when the save dialog is canceled (no false success)', async () => {
@@ -693,6 +807,197 @@ describe('ExportDialog', () => {
     expect(notifySuccess).not.toHaveBeenCalled()
   })
 
+  describe('Case Archive', () => {
+    function chooseArchive() {
+      fireEvent.click(screen.getByLabelText(ARCHIVE))
+    }
+
+    it('hides the contents, the purpose field and the Trusted Time notice, which do not apply', async () => {
+      listCasePins.mockResolvedValue(PINS)
+      renderDialog()
+      await screen.findByTestId('export-trusted-time-notice')
+      await screen.findByTestId('export-pinned-wayback')
+      expect(screen.getByText('Customise contents')).toBeDefined()
+      expect(screen.getByPlaceholderText(/Disclosure under/)).toBeDefined()
+
+      chooseArchive()
+
+      expect(screen.getByRole<HTMLInputElement>('radio', { name: ARCHIVE }).checked).toBe(true)
+      expect(screen.getByRole<HTMLInputElement>('radio', { name: EVIDENCE }).checked).toBe(false)
+      expect(screen.queryByText('Customise contents')).toBeNull()
+      expect(screen.queryByPlaceholderText(/Disclosure under/)).toBeNull()
+      expect(screen.queryByTestId('export-trusted-time-notice')).toBeNull()
+      expect(screen.queryByTestId('export-pinned-wayback')).toBeNull()
+      expect(screen.queryByRole('checkbox')).toBeNull()
+
+      fireEvent.click(screen.getByLabelText(EVIDENCE))
+      expect(screen.getByText('Customise contents')).toBeDefined()
+      expect(screen.getByTestId('export-trusted-time-notice')).toBeDefined()
+    })
+
+    it('exports the Case Archive, raises its notice and closes', async () => {
+      const onClose = vi.fn()
+      renderDialog(onClose)
+      chooseArchive()
+
+      fireEvent.click(screen.getByTestId('export-submit'))
+
+      await waitFor(() => expect(notifySuccess).toHaveBeenCalledOnce())
+      expect(exportArchive).toHaveBeenCalledWith('case-1')
+      expect(generateReport).not.toHaveBeenCalled()
+      const [title, opts] = notifySuccess.mock.calls[0]
+      expect(title).toBe('Case Archive saved')
+      expect(opts.description).toBe(ARCHIVE_PATH)
+      await waitFor(() => expect(onClose).toHaveBeenCalledOnce())
+      // Held on the progress view while the dialog animates out, never the form.
+      expect(screen.getByText('Exporting Case One')).toBeDefined()
+      expect(screen.queryByTestId('export-submit')).toBeNull()
+      expect(archiveListeners.size).toBe(0)
+    })
+
+    it('shows the archive export step by step, for its own Case only', async () => {
+      const gate = deferred<ArchiveExportResult>()
+      exportArchive.mockReturnValue(gate.promise)
+      renderDialog()
+      chooseArchive()
+
+      fireEvent.click(screen.getByTestId('export-submit'))
+
+      expect(await screen.findByText('Preparing archive…')).toBeDefined()
+      expect(screen.getByTestId('export-close-note').textContent).toBe(
+        'The export continues if you close this.'
+      )
+      sendArchiveProgress({ caseId: 'case-1', step: 'Bundling captures...', percent: 55 })
+      expect(screen.getByText('Bundling captures...')).toBeDefined()
+      expect(screen.getByText('55%')).toBeDefined()
+      sendArchiveProgress({ caseId: 'other-case', step: 'Should not show', percent: 99 })
+      expect(screen.queryByText('Should not show')).toBeNull()
+
+      await act(async () => gate.resolve({ canceled: false, filePath: ARCHIVE_PATH }))
+    })
+
+    it('returns to the form when the save dialog is cancelled', async () => {
+      exportArchive.mockResolvedValue({ canceled: true } satisfies ArchiveExportResult)
+      const onClose = vi.fn()
+      renderDialog(onClose)
+      chooseArchive()
+
+      fireEvent.click(screen.getByTestId('export-submit'))
+
+      await waitFor(() => expect(exportArchive).toHaveBeenCalledOnce())
+      expect((await screen.findByTestId('export-submit')).textContent).toBe('Export')
+      expect(screen.getByRole<HTMLInputElement>('radio', { name: ARCHIVE }).checked).toBe(true)
+      expect(notifySuccess).not.toHaveBeenCalled()
+      expect(onClose).not.toHaveBeenCalled()
+      expect(screen.queryByTestId('export-error')).toBeNull()
+    })
+
+    it('shows a failure in the dialog, keeps it for the Case, and clears it on a retry', async () => {
+      exportArchive.mockRejectedValueOnce(new Error('disk full'))
+      const onClose = vi.fn()
+      renderDialog(onClose)
+      chooseArchive()
+
+      fireEvent.click(screen.getByTestId('export-submit'))
+
+      expect((await screen.findByTestId('export-error')).textContent).toBe('Error: disk full')
+      expect(screen.getByTestId('export-submit').textContent).toBe('Try again')
+      expect(onClose).not.toHaveBeenCalled()
+      expect(notifySuccess).not.toHaveBeenCalled()
+      // Kept outside the dialog, where the Case menu shows it until it is dismissed.
+      expect(useCaseExports.getState().failed).toEqual({ 'case-1': 'disk full' })
+      // It is the archive's failure, so it does not show against another choice.
+      fireEvent.click(screen.getByLabelText(EVIDENCE))
+      expect(screen.queryByTestId('export-error')).toBeNull()
+      expect(screen.getByTestId('export-submit').textContent).toBe('Export')
+
+      chooseArchive()
+      fireEvent.click(screen.getByTestId('export-submit'))
+
+      await waitFor(() => expect(notifySuccess).toHaveBeenCalledOnce())
+      expect(useCaseExports.getState().failed).toEqual({})
+      await waitFor(() => expect(onClose).toHaveBeenCalledOnce())
+    })
+
+    it('keeps exporting, and still raises the notice, after the dialog is closed', async () => {
+      const gate = deferred<ArchiveExportResult>()
+      exportArchive.mockReturnValue(gate.promise)
+      const onClose = vi.fn()
+      const { unmount } = renderDialog(onClose)
+      chooseArchive()
+      fireEvent.click(screen.getByTestId('export-submit'))
+      await screen.findByTestId('export-close-note')
+
+      fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+      expect(onClose).toHaveBeenCalledOnce()
+      unmount()
+      // The run and its listener belong to the Case, so both are still there.
+      expect(useCaseExports.getState().pending['case-1']).toBeDefined()
+      expect(archiveListeners.size).toBe(1)
+      sendArchiveProgress({ caseId: 'case-1', step: 'Bundling captures...', percent: 55 })
+      expect(useCaseExports.getState().pending['case-1']).toEqual({
+        step: 'Bundling captures...',
+        percent: 55
+      })
+
+      await act(async () => gate.resolve({ canceled: false, filePath: ARCHIVE_PATH }))
+
+      await waitFor(() => expect(notifySuccess).toHaveBeenCalledOnce())
+      expect(notifySuccess.mock.calls[0][0]).toBe('Case Archive saved')
+      expect(useCaseExports.getState().pending).toEqual({})
+      expect(archiveListeners.size).toBe(0)
+      expect(onClose).toHaveBeenCalledOnce()
+    })
+
+    it('keeps a failure for the Case when the dialog was closed before it failed', async () => {
+      const gate = deferred<ArchiveExportResult>()
+      exportArchive.mockReturnValue(gate.promise)
+      const { unmount } = renderDialog()
+      chooseArchive()
+      fireEvent.click(screen.getByTestId('export-submit'))
+      await screen.findByTestId('export-close-note')
+      unmount()
+
+      await act(async () => gate.reject(new Error('disk full')))
+
+      await waitFor(() =>
+        expect(useCaseExports.getState().failed).toEqual({ 'case-1': 'disk full' })
+      )
+      expect(useCaseExports.getState().pending).toEqual({})
+    })
+
+    // An export still running for the Case shows when the choice is made again, so a second
+    // cannot start beside it. The other choices are free to export meanwhile.
+    it('shows a Case Archive export already running for the Case in place of a second start', () => {
+      useCaseExports.setState({
+        pending: { 'case-1': { step: 'Bundling captures...', percent: 55 } },
+        failed: {}
+      })
+      renderDialog()
+      expect(screen.getByTestId('export-submit')).toBeDefined()
+
+      chooseArchive()
+
+      expect(screen.getByText('Bundling captures...')).toBeDefined()
+      expect(screen.getByText('55%')).toBeDefined()
+      expect(screen.queryByTestId('export-submit')).toBeNull()
+      expect(exportArchive).not.toHaveBeenCalled()
+    })
+
+    // A Case Archive holds the whole Case, so a selection cannot be exported as one.
+    it('is disabled for a selection, with the reason under its name', () => {
+      renderDialog(vi.fn(), ['cap-1', 'cap-2'])
+
+      const radio = screen.getByRole<HTMLInputElement>('radio', { name: ARCHIVE })
+      expect(radio.disabled).toBe(true)
+      const reason = document.getElementById(radio.getAttribute('aria-describedby') ?? '')
+      expect(reason?.textContent).toBe('For the whole Case only. Not available for a selection.')
+      expect(radio.checked).toBe(false)
+      expect(screen.getByRole<HTMLInputElement>('radio', { name: EVIDENCE }).checked).toBe(true)
+      expect(screen.getByRole<HTMLInputElement>('radio', { name: WORKING }).disabled).toBe(false)
+    })
+  })
+
   // jsdom lays nothing out, so these read the structure: which element scrolls, and what
   // sits outside it. `e2e/export.spec.ts` checks the rendered result at 1440 by 900.
   describe('layout', () => {
@@ -711,7 +1016,11 @@ describe('ExportDialog', () => {
 
       expect(scrollingAncestor(screen.getByRole('radiogroup'))).not.toBeNull()
       expect(scrollingAncestor(screen.getByPlaceholderText(/Disclosure under/))).not.toBeNull()
-      expect(scrollingAncestor(screen.getByRole('heading', { name: 'Export case' }))).toBeNull()
+      expect(scrollingAncestor(screen.getByRole('heading', { name: 'Export Case One' }))).toBeNull()
+      expect(scrollingAncestor(screen.getByTestId('export-scope-row'))).toBeNull()
+      expect(
+        scrollingAncestor(screen.getByText('The export continues if you close this.'))
+      ).toBeNull()
       expect(scrollingAncestor(screen.getByRole('button', { name: 'Cancel' }))).toBeNull()
       expect(scrollingAncestor(screen.getByTestId('export-submit'))).toBeNull()
     })
@@ -733,14 +1042,12 @@ describe('ExportDialog', () => {
       renderDialog()
       await screen.findByTestId('export-demo-notice')
       await screen.findByTestId('export-trusted-time-notice')
-      fireEvent.click(screen.getByLabelText(/Working Copy/))
       fireEvent.click(screen.getByTestId('export-submit'))
       await screen.findByTestId('export-error')
 
       const tiers = {
         'export-demo-notice': 'text-danger-fg',
         'export-error': 'text-danger-fg',
-        'export-working-copy-notice': 'text-warning-fg',
         'export-trusted-time-notice': 'text-warning-fg'
       }
       for (const [testId, colour] of Object.entries(tiers)) {
@@ -776,7 +1083,7 @@ describe('ExportDialog', () => {
     it('is a modal dialog with a name for every phase', () => {
       renderDialog()
 
-      const dialog = screen.getByRole('dialog', { name: 'Export case' })
+      const dialog = screen.getByRole('dialog', { name: 'Export Case One' })
       expect(dialog.getAttribute('aria-modal')).toBe('true')
     })
 
@@ -785,21 +1092,26 @@ describe('ExportDialog', () => {
     it('moves focus onto the panel when it opens, with the preset group one Tab away', () => {
       renderDialog()
 
-      expect(document.activeElement).toBe(screen.getByRole('dialog', { name: 'Export case' }))
+      expect(document.activeElement).toBe(screen.getByRole('dialog', { name: 'Export Case One' }))
       fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'Tab' })
-      expect(document.activeElement).toBe(
-        screen.getByRole('radio', { name: /^Evidence Package \(\.zip\)/ })
-      )
+      expect(document.activeElement).toBe(screen.getByRole('radio', { name: EVIDENCE }))
     })
 
-    it('walks its own five controls and wraps, with the preset group as one stop', () => {
+    it('walks its own six controls and wraps, with the choices as one stop', () => {
       renderDialog()
 
       const stops = tabStops()
 
       const label = (el: HTMLElement) =>
         el.tagName === 'INPUT' ? el.getAttribute('type') : el.textContent
-      expect(stops.map(label)).toEqual(['radio', 'Customise contents', 'text', 'Cancel', 'Export'])
+      expect(stops.map(label)).toEqual([
+        'radio',
+        'checkbox',
+        'Customise contents',
+        'text',
+        'Cancel',
+        'Export'
+      ])
       expect(document.activeElement).toBe(stops[0])
     })
 
@@ -822,8 +1134,7 @@ describe('ExportDialog', () => {
 
       await waitFor(() => expect(generateReport).toHaveBeenCalledTimes(1))
       const options = lastOptions(generateReport)
-      expect(options.exportClass).toBe(EXPORT_PRESETS.full.selection.exportClass)
-      expect(options.include).toEqual(EXPORT_PRESETS.full.selection.include)
+      expect(lastSelection(generateReport)).toEqual(FULL_SELECTION)
       expect(options.purposeOrAuthority).toBeUndefined()
     })
 
@@ -836,7 +1147,7 @@ describe('ExportDialog', () => {
       screen.getByTestId('export-submit').focus()
 
       fireEvent.click(screen.getByTestId('export-submit'))
-      await screen.findByText('Exporting case')
+      await screen.findByText('Exporting Case One')
       expect(document.activeElement).toBe(document.body)
 
       fireEvent.keyDown(document.body, { key: 'Tab' })
@@ -870,7 +1181,7 @@ describe('ExportDialog', () => {
         presence.present = false
         rerender(<Host open />)
 
-        expect(screen.getByRole('dialog', { name: 'Export case' })).toBeTruthy()
+        expect(screen.getByRole('dialog', { name: 'Export Case One' })).toBeTruthy()
         expect(document.activeElement).toBe(opener)
         fireEvent.keyDown(window, { key: 'Escape' })
         expect(onClose).not.toHaveBeenCalled()
@@ -904,66 +1215,44 @@ describe('ExportDialog', () => {
   })
 })
 
-// The preset table and its detection are the dialog's contract with the issue:
-// the mapping is pinned value-by-value so a drive-by edit to a preset shows up
-// as a failed known answer, not a silently different package.
+// The table behind the two zip choices, pinned value by value against the literal copies, so a
+// drive-by edit to it shows up as a failed known answer, not a silently different package.
 describe('EXPORT_PRESETS / detectPreset', () => {
-  it('pins the three preset selections', () => {
-    expect(EXPORT_PRESETS.full.selection).toEqual({
-      exportClass: 'evidence',
-      include: {
-        captures: true,
-        screenshots: true,
-        auditTrail: true,
-        notes: true,
-        annotations: 'burned'
-      }
-    })
-    expect(EXPORT_PRESETS.working.selection).toEqual({
-      exportClass: 'working-copy',
-      include: {
-        captures: true,
-        screenshots: true,
-        auditTrail: false,
-        notes: true,
-        annotations: 'burned'
-      }
-    })
-    expect(EXPORT_PRESETS.court.selection).toEqual({
-      exportClass: 'evidence',
-      include: {
-        captures: true,
-        screenshots: true,
-        auditTrail: true,
-        notes: false,
-        annotations: 'burned'
-      }
-    })
+  it('pins the two zip choices to the selections they have always submitted', () => {
+    expect(Object.keys(EXPORT_PRESETS)).toEqual(['full', 'working'])
+    expect(EXPORT_PRESETS.full.selection).toEqual(FULL_SELECTION)
+    expect(EXPORT_PRESETS.working.selection).toEqual(WORKING_SELECTION)
   })
 
-  it('detects each preset by set equality and anything else as custom', () => {
-    expect(detectPreset(EXPORT_PRESETS.full.selection)).toBe('full')
-    expect(detectPreset(EXPORT_PRESETS.working.selection)).toBe('working')
-    expect(detectPreset(EXPORT_PRESETS.court.selection)).toBe('court')
+  it('reads an Evidence Package with or without Operator notes as the same choice', () => {
+    expect(detectPreset(FULL_SELECTION)).toBe('full')
+    expect(detectPreset(WITHOUT_NOTES_SELECTION)).toBe('full')
+    expect(detectPreset(WORKING_SELECTION)).toBe('working')
+  })
+
+  it('reads any other selection as custom', () => {
     expect(
       detectPreset({
-        exportClass: 'evidence',
-        include: {
-          captures: true,
-          screenshots: false,
-          auditTrail: true,
-          notes: true,
-          annotations: 'burned'
-        }
+        ...FULL_SELECTION,
+        include: { ...FULL_SELECTION.include, screenshots: false }
       })
     ).toBe('custom')
-    // The class participates in detection: the court include-set under the
-    // working-copy class is not the preset without Operator notes.
     expect(
       detectPreset({
-        exportClass: 'working-copy',
-        include: EXPORT_PRESETS.court.selection.include
+        ...WITHOUT_NOTES_SELECTION,
+        include: { ...WITHOUT_NOTES_SELECTION.include, annotations: 'none' }
       })
     ).toBe('custom')
+    // Operator notes are the Evidence Package's own checkbox, not the Working Copy's.
+    expect(
+      detectPreset({
+        ...WORKING_SELECTION,
+        include: { ...WORKING_SELECTION.include, notes: false }
+      })
+    ).toBe('custom')
+    // The class takes part: the Evidence Package's items under the other class match neither.
+    expect(detectPreset({ exportClass: 'working-copy', include: FULL_SELECTION.include })).toBe(
+      'custom'
+    )
   })
 })

@@ -1,6 +1,6 @@
 import { test, expect } from './fixtures/electronApp'
 import { mkdtemp, rm } from 'fs/promises'
-import { readFileSync } from 'fs'
+import { readFileSync, statSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { CAPTURE_SERVER_BASE_URL } from '@shared/constants'
@@ -77,10 +77,14 @@ async function stubSaveDialog(electronApp: ElectronApplication, filePath: string
   }, filePath)
 }
 
-async function openExportDialog(page: Page): Promise<void> {
+// The dialog is named for what it exports, in both of its phases.
+const exportDialog = (page: Page) => page.getByRole('dialog', { name: /^Export / })
+
+// The Case menu has one export item, which opens the dialog for the Case on screen.
+async function openExportDialog(page: Page, caseName: string): Promise<void> {
   await page.getByTestId('topbar-case-name').click()
-  await page.getByRole('menuitem', { name: 'Export Evidence Package…' }).click()
-  await expect(page.getByRole('heading', { name: 'Export case' })).toBeVisible()
+  await page.getByRole('menuitem', { name: 'Export…', exact: true }).click()
+  await expect(page.getByRole('heading', { name: `Export ${caseName}`, exact: true })).toBeVisible()
 }
 
 // A written export closes the dialog and names its path in a toast. The path is
@@ -89,20 +93,20 @@ async function openExportDialog(page: Page): Promise<void> {
 async function runExport(page: Page, filePath: string): Promise<void> {
   await page.getByTestId('export-submit').click()
   await expect(page.getByText(`· ${filePath}`)).toBeVisible({ timeout: 15000 })
-  await expect(page.getByRole('heading', { name: /^Export(ing)? case$/ })).toHaveCount(0)
+  await expect(exportDialog(page)).toHaveCount(0)
 }
 
-// #399 AC 6: preset selection and both export classes' outputs, proven on the
-// actual zips each preset writes.
-test.describe('Export dialog: presets and the two export classes', () => {
-  test('the three presets export the outputs their classes define', async ({
-    electronApp,
-    page
-  }) => {
+// #399 AC 6: every choice's output, read from the file each one writes. This shows the path
+// works for each choice; the bytes are pinned by the known-answer unit test.
+test.describe('Export dialog: the choices and what each one writes', () => {
+  test('each choice exports the output it names', async ({ electronApp, page }) => {
     const tempDir = await mkdtemp(join(tmpdir(), 'birdbrain-export-'))
     const fullPath = join(tempDir, 'full.zip')
-    const courtPath = join(tempDir, 'court.zip')
+    const withoutNotesPath = join(tempDir, 'without-notes.zip')
     const workingPath = join(tempDir, 'working.zip')
+    const archivePath = join(tempDir, 'two-classes.birdbrain')
+    const evidence = page.getByRole('radio', { name: /^Evidence Package/ })
+    const leaveOutNotes = page.getByRole('checkbox', { name: 'Leave out Operator notes' })
 
     try {
       const caseId = await createCase(page, 'Two Classes Case')
@@ -121,10 +125,14 @@ test.describe('Export dialog: presets and the two export classes', () => {
       await page.click('button[aria-label="Overview"]')
       await page.waitForURL(/#\/cases\/.+\/overview/)
 
-      // --- Evidence Package (default preset) ------------------------------
-      await openExportDialog(page)
-      await expect(page.getByRole('radio', { name: /^Evidence Package \(\.zip\)/ })).toBeChecked()
-      await expect(page.getByTestId('export-custody-card')).toBeVisible()
+      // --- Evidence Package, the choice the dialog opens on ----------------
+      await openExportDialog(page, 'Two Classes Case')
+      await expect(evidence).toBeChecked()
+      // Each choice shows its file type before Export is pressed.
+      await expect(page.getByRole('radiogroup', { name: 'Export as' })).toContainText(
+        /Evidence Package\s*\.zip.*Working Copy\s*\.zip.*Case Archive\s*\.birdbrain/s
+      )
+      await expect(leaveOutNotes).not.toBeChecked()
       await stubSaveDialog(electronApp, fullPath)
       await runExport(page, fullPath)
 
@@ -137,29 +145,28 @@ test.describe('Export dialog: presets and the two export classes', () => {
         'signing-public-key.pem',
         'notes.md'
       ]) {
-        expect(fullNames, `full bundle should contain ${name}`).toContain(name)
+        expect(fullNames, `Evidence Package should contain ${name}`).toContain(name)
       }
       expect(fullNames).not.toContain('WORKING-COPY.json')
 
       // --- Evidence Package without Operator notes ------------------------
-      await openExportDialog(page)
-      await page.getByRole('radio', { name: /without Operator notes \(\.zip\)/ }).check()
-      await expect(page.getByTestId('export-custody-card')).toBeVisible()
-      await stubSaveDialog(electronApp, courtPath)
-      await runExport(page, courtPath)
+      await openExportDialog(page, 'Two Classes Case')
+      await leaveOutNotes.check()
+      await expect(evidence).toBeChecked()
+      await stubSaveDialog(electronApp, withoutNotesPath)
+      await runExport(page, withoutNotesPath)
 
-      const courtNames = readStoredZipNames(courtPath)
-      expect(courtNames).toContain('manifest.jsonl')
-      expect(courtNames).toContain('certification.html')
-      expect(courtNames).not.toContain('notes.md')
-      expect(courtNames).not.toContain('WORKING-COPY.json')
+      const withoutNotesNames = readStoredZipNames(withoutNotesPath)
+      expect(withoutNotesNames).toContain('manifest.jsonl')
+      expect(withoutNotesNames).toContain('certification.html')
+      expect(withoutNotesNames).not.toContain('notes.md')
+      expect(withoutNotesNames).not.toContain('WORKING-COPY.json')
 
       // --- Working Copy: non-evidentiary class ----------------------------
-      await openExportDialog(page)
-      await page.getByRole('radio', { name: /Working Copy/ }).check()
-      // The custody card gives way to the non-evidentiary notice.
-      await expect(page.getByTestId('export-working-copy-notice')).toBeVisible()
-      await expect(page.getByTestId('export-custody-card')).not.toBeVisible()
+      await openExportDialog(page, 'Two Classes Case')
+      await page.getByRole('radio', { name: /^Working Copy/ }).check()
+      // The Evidence Package's own checkbox goes with its choice.
+      await expect(leaveOutNotes).toHaveCount(0)
       await stubSaveDialog(electronApp, workingPath)
       await runExport(page, workingPath)
 
@@ -176,6 +183,18 @@ test.describe('Export dialog: presets and the two export classes', () => {
       ]) {
         expect(workingNames, `working copy must not contain ${name}`).not.toContain(name)
       }
+
+      // --- Case Archive: the whole Case, through the same dialog ----------
+      await openExportDialog(page, 'Two Classes Case')
+      await page.getByRole('radio', { name: /^Case Archive/ }).check()
+      // Nothing that shapes a zip applies to an archive.
+      await expect(page.getByRole('button', { name: 'Customise contents' })).toHaveCount(0)
+      await expect(page.getByPlaceholder(/Disclosure under/)).toHaveCount(0)
+      await stubSaveDialog(electronApp, archivePath)
+      await page.getByTestId('export-submit').click()
+      await expect(page.getByText('Case Archive saved')).toBeVisible({ timeout: 15000 })
+      await expect(exportDialog(page)).toHaveCount(0)
+      expect(statSync(archivePath).size).toBeGreaterThan(0)
     } finally {
       await rm(tempDir, { recursive: true, force: true }).catch(() => {})
     }
@@ -198,7 +217,7 @@ test.describe('Export dialog: presets and the two export classes', () => {
     const caseId = await createCase(page, 'Footer In View Case')
     await seedCapture(page, caseId, 'https://example.com/footer', 'Footer Capture')
 
-    await openExportDialog(page)
+    await openExportDialog(page, 'Footer In View Case')
 
     const submit = page.getByTestId('export-submit')
     const form = page.getByTestId('export-form-scroll')
@@ -214,16 +233,16 @@ test.describe('Export dialog: presets and the two export classes', () => {
   })
 
   // Real key handling, which jsdom does not model: an arrow key on a native
-  // radio checks the next one, so focus must not open on the preset group.
-  test('an arrow key on open leaves the export on the evidence preset', async ({ page }) => {
+  // radio checks the next one, so focus must not open on the choices.
+  test('an arrow key on open leaves the export on the Evidence Package', async ({ page }) => {
     const caseId = await createCase(page, 'Arrow Key Case')
     await seedCapture(page, caseId, 'https://example.com/arrow', 'Arrow Capture')
 
-    await openExportDialog(page)
-    await expect(page.getByRole('dialog', { name: 'Export case' })).toBeFocused()
+    await openExportDialog(page, 'Arrow Key Case')
+    await expect(exportDialog(page)).toBeFocused()
     await page.keyboard.press('ArrowDown')
 
-    await expect(page.getByRole('radio', { name: /^Evidence Package \(\.zip\)/ })).toBeChecked()
-    await expect(page.getByTestId('export-custody-card')).toBeVisible()
+    await expect(page.getByRole('radio', { name: /^Evidence Package/ })).toBeChecked()
+    await expect(page.getByRole('radio', { name: /^Working Copy/ })).not.toBeChecked()
   })
 })

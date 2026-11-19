@@ -67,8 +67,17 @@ export function StartDialog() {
   const cases = readCases ?? []
   // The dialog stays mounted while closed, so a failed read of the Cases would stand for good.
   // Opening on the picker reads them again, which is what its refusal tells the Operator to do.
+  // Once per opening: a read that fails again passes through loading and back to failed, and
+  // reading again each time it fails would never stop.
+  const readAgainThisOpening = useRef(false)
   useEffect(() => {
-    if (open && picking && casesFailed) void readCasesAgain()
+    if (!open || !picking) {
+      readAgainThisOpening.current = false
+      return
+    }
+    if (!casesFailed || readAgainThisOpening.current) return
+    readAgainThisOpening.current = true
+    void readCasesAgain()
   }, [open, picking, casesFailed, readCasesAgain])
   const { data: settings } = useQuery(settingsQueryOptions)
   const [pickedCaseId, setPickedCaseId] = useState('')

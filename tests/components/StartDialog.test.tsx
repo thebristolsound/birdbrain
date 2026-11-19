@@ -251,6 +251,26 @@ describe('StartDialog with no Case named', () => {
     expect(launch).not.toHaveBeenCalled()
   })
 
+  // A read that keeps failing is tried again once for each opening, and no more than that.
+  it('reads the Cases again once per opening while the read keeps failing', async () => {
+    const listCases = vi.fn(async (): Promise<Case[]> => {
+      throw new Error('database is locked')
+    })
+    mount({ listCases })
+    await waitFor(() => expect(listCases).toHaveBeenCalledTimes(1))
+    openPicker()
+    await within(await pickerDialog()).findByRole('status')
+    await waitFor(() => expect(listCases).toHaveBeenCalledTimes(2))
+    // Long enough for a third read to have started, were one coming.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    })
+    expect(listCases).toHaveBeenCalledTimes(2)
+    expect((await within(await pickerDialog()).findByRole('status')).textContent).toContain(
+      'The Cases could not be read'
+    )
+  })
+
   // The refusal says to close the dialog and open it again, so opening it reads the Cases again.
   it('reads the Cases again when it is opened after a failed read', async () => {
     let fail = true

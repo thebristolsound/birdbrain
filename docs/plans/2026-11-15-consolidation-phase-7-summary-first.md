@@ -87,10 +87,13 @@ Findings U14 and A4.
   - [ ] A row shows at most one Selector chip.
   - [ ] Every matching Selector's name is reachable by pointer and by screen reader.
   - [ ] The star's and the checkbox's hit areas are at least 24 by 24 pixels.
-- **Open.** The review pass on a large Case, in
-  `docs/plans/2026-11-15-unreviewed-surfaces-review-passes.md`, may show the chips earn their
-  place when rows differ. That plan puts the pass first and has its assessment say whether
-  this slice goes ahead as written, so the slice starts after the assessment.
+- **Settled on 2026-11-19.** The review pass on a large Case, in
+  `docs/plans/2026-11-15-unreviewed-surfaces-review-passes.md`, was to say whether this slice
+  goes ahead as written. Its assessment,
+  `docs/specs/2026-11-19-large-case-review-assessment.md`, says the chips tell rows apart when
+  rows differ, and advises one Selector's name and "+N" for the others in place of a bare
+  count. Decision 9 of the parent plan rules that form, and #2240 builds it. The first
+  "Change" line above and the first acceptance line describe the count as first proposed.
 
 ## Slice 7.3: the Overview points to the sections that own the data
 

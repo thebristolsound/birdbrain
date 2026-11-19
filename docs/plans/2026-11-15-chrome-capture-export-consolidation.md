@@ -7,14 +7,14 @@ reviewed the running app at `origin/main` `03668a1` and found that the clutter i
 the capture controls and the export controls comes from the same fact being stated in several
 places at once. The plan gives each fact one place, then removes the copies.
 
-The maintainer ruled on the plan's six open decisions on 2026-11-15 and on a seventh on
-2026-11-17; "Decisions taken" records them. A review of this plan on 2026-11-16 raised two
-questions the code does not settle; "Open questions" states them, and decision 7 answered the
-first. No issue is filed yet. The chrome slices merged as #2227 to #2235, #2239 builds the
-slices that waited for nothing after them, and
-`docs/plans/2026-11-16-consolidation-and-copy-handoff.md` says what is left. The critique itself
-is a page in the design session and is not in this repository, so its findings are restated
-under "Findings" and each one maps to a slice or to a stated reason for leaving it.
+The maintainer ruled on the plan's six open decisions on 2026-11-15, on a seventh on 2026-11-17 and
+on three more on 2026-11-19; "Decisions taken" records them. A review of this plan on 2026-11-16
+raised two questions the code does not settle; "Open questions" states them, and decision 7 answered
+the first. No issue is filed yet. The chrome slices merged as #2227 to #2235, #2239 builds the
+slices that waited for nothing after them, #2240 builds slices 1.5 and 7.2, and
+`docs/plans/2026-11-16-consolidation-and-copy-handoff.md` says what is left. The critique itself is
+a page in the design session and is not in this repository, so its findings are restated under
+"Findings" and each one maps to a slice or to a stated reason for leaving it.
 
 ## Context
 
@@ -210,12 +210,29 @@ raised, where a critique proposal met ADR-0032, the standalone mock and #830.
       Export, Import and Case settings. Share or Members is in both, with one label.
    10. The two facts the switch's label keeps go on the recording mark: "into ‹Case›" when the
        Active Case is another Case, and "+ extension" when two sources record.
+8. **Does the launch dialog ask about the VPN warning again when Launch is pressed?** The phase
+   3 plan left the point open, and #2239 built the dialog to ask when it opens and again on the
+   press. Ruling, given in a Claude Code session on 2026-11-19: yes, it keeps the second
+   question. A warning that comes due on the press holds the launch. ADR-0032 VPN rule 3
+   already carries this.
+9. **What does a Captures list row show for its matching Selectors?** Slice 7.2 proposed one
+   count, and waited for review pass 3. The assessment,
+   `docs/specs/2026-11-19-large-case-review-assessment.md`, found that the chips tell rows
+   apart on a Case whose rows differ and advised one name and a count of the rest. Ruling,
+   given in a Claude Code session on 2026-11-19: one Selector's name plus "+N" for the others,
+   on one line that never wraps. Under a Selector filter the name is that Selector's, and
+   otherwise it is the matching Selector created most recently. Slice 7.2 builds it.
+10. **What do the Data screen's two Verify buttons say?** This is open question 2. Ruling,
+    given in a Claude Code session on 2026-11-19: "Verify listed" above the table and "Verify
+    Exhibit" on the selected row's pane. Ruled the same day: "Verify listed" verifies only the
+    Exhibits the table lists, so a typed search narrows it. Before, it verified every Exhibit
+    under the node. Slice 1.5 builds both.
 
 ## Open questions
 
 A review of this plan on 2026-11-16 raised two questions that the code does not settle.
-Decision 7 answered question 1 on 2026-11-17. Question 2 waits for the maintainer, and the slice
-it holds up says so.
+Decision 7 answered question 1 on 2026-11-17, and decision 10 answered question 2 on 2026-11-19.
+Both are kept below as they were asked.
 
 1. **How does a Capture Session start when only the extension is connected?** The Capture
    Session switch in `SessionControls.tsx` is the only control that starts one. Its handler,
@@ -232,8 +249,8 @@ it holds up says so.
    already the label of the `IntegrityStrip` button that verifies every anchored row. The
    button on the selected row's pane, `row-verify`, verifies an Exhibit, and for a derived file
    that is the parent Exhibit and not the file. `DataExplorer.tsx` is `blocking` and each label
-   tells the Operator what a verification covered, so the words are the maintainer's. Slice 1.5
-   waits for the answer.
+   tells the Operator what a verification covered, so the words are the maintainer's. Decision
+   10 gives them, so slice 1.5 no longer waits.
 
 ## Slices
 
@@ -269,12 +286,15 @@ These are independent of each other and of the bundle. They can start at once, e
   Shipped in #2239. `ExportDialog.tsx`: the form scrolls and the footer stays fixed. The
   demonstration notice and the Trusted Time preflight notice become text with an icon, readable in
   both themes. #1524 stays open for the maintainer: slice 4.4 of the phase 4 plan says why.
-  `blocking` file: the Evidence impact section says layout and colour only. `e2e/export.spec.ts` reads the names of the package's entries and nothing else,
-  so it does not show the package is unchanged. The slice shows that the dialog submits the same
-  options: the preset tests in `tests/components/ExportDialog.test.tsx` pass unedited, and the slice
-  changes nothing under `src/main/`.
-- [ ] **1.3 Give a disabled Launch browser a reachable reason (A3).** Not built: slice 5.4 (#2233)
-  replaced this button with the capture control, and the stacked chrome slices left this one out.
+  `blocking` file: the Evidence impact section says layout and colour only. `e2e/export.spec.ts`
+  reads the names of the package's entries and nothing else, so it does not show the package is
+  unchanged. The slice shows that the dialog submits the same options: the preset tests in
+  `tests/components/ExportDialog.test.tsx` pass unedited, and the slice changes nothing under
+  `src/main/`.
+- [x] **1.3 Give a disabled Launch browser a reachable reason (A3).** Answered by slice 5.4
+  (#2233), which replaced this button: the capture control in `LaunchControl.tsx` takes
+  `aria-disabled` with `aria-describedby` on its held button. No pull request built this slice
+  as written.
   `CaseActionBar.tsx`: the button takes `aria-disabled` in place of `disabled`, so it keeps focus,
   and `aria-describedby` points at text that carries `busyRefusal`'s title. `ExportMenu.tsx` is the
   model for the first half only, because it gives its own reason in a `title`. `OperatorConfig.tsx`
@@ -283,9 +303,10 @@ These are independent of each other and of the bundle. They can start at once, e
   button opens the paste dialog. `CaptureMenu.tsx` keeps "Paste URLs to capture". Recapture stays on
   the Capture's own menu in `CaptureDetailsPanel.tsx` and on `CaptureSelectionBar.tsx`. If the add
   menu is left with one item, the button opens the paste dialog directly.
-- [ ] **1.5 Name the scope on the Data screen's two Verify buttons (U16).** `DataExplorer.tsx`:
+- [x] **1.5 Name the scope on the Data screen's two Verify buttons (U16).** Shipped in #2240,
+  with the labels decision 10 gives. `DataExplorer.tsx`:
   `node-verify`, in the header above the table, and `row-verify`, on the selected row's pane,
-  each get a label that says what the button verifies. Waits for open question 2. `blocking`
+  each get a label that says what the button verifies. It waited for open question 2. `blocking`
   file: labels only, and the Evidence impact section shows that each label matches the
   Exhibits its button passes to `verifyIds`.
 - [x] **1.6 Show a single browser as text in the launch dialog (U15).** Shipped in #2239.
@@ -327,7 +348,8 @@ pull requests say so.
   it takes the label and an Evidence impact section, and a test shows that the dialog saves the same
   value and refuses the same empty name as the Operator tab.
 - [x] **3.2 One VPN statement per launch (U2, C3).** Shipped in #2239. The dialog asks main when it
-  opens and again when Launch is pressed; the amended VPN rule 3 says so. Decision 3 allows it. The
+  opens and again when Launch is pressed; the amended VPN rule 3 says so, and decision 8 rules it.
+  Decision 3 allows the inline form. The
   no-VPN line under Egress stays, as text without a filled box. The primary button reads "Launch
   without VPN". "Set up a proxy" and "Do not warn on this network" sit beside it, the second shown
   only when the network can be identified. `StartDialog.tsx` stops raising `VpnWarningDialog`; every
@@ -426,9 +448,11 @@ phase waits. Decisions 1 and 4 fix the Case menu's contents and the primary cont
   section does not. `e2e/forensics-tab.spec.ts` reads those headings and the chain status with the
   section open, so it opens the section first. No spec or unit test reads `custody-section-body` or
   checks a remembered state, so the slice adds that test.
-- [ ] **7.2 A count of Selector matches on each list row, and more room for the row's controls
-  (U14, A4).** `CaptureItem.tsx`: the chip line becomes one count that lists the names on
-  hover and focus. The star and the checkbox get 24 pixel targets.
+- [x] **7.2 A count of Selector matches on each list row, and more room for the row's controls
+  (U14, A4).** Shipped in #2240 in the form decision 9 gives: one Selector's name and "+N" for
+  the others, not a bare count. As first written: `CaptureItem.tsx`: the chip line becomes one
+  count that lists the names on hover and focus. The star and the checkbox get 24 pixel
+  targets.
 - [x] **7.3 The Overview points to the sections that own the data (U12).** Shipped in #2239: the
   cards list what exists with its count and link to Signals. Recent changes are not shown. No longer
   waits: decision 7 ruled on the bundle from 0.1. The Selectors and Tags cards show counts and

@@ -111,11 +111,11 @@ Findings U2 and C3. Decision 3 allows it.
   on a muted network. Without `answerVpnWarning`, main never marks the Case warned, so
   `VpnWarningDialog` returns at the next start, and "Do not warn on this network" never
   reaches the muted list.
-- **Open, for the maintainer.** Today `launch()` asks main when Launch is pressed. With the
-  question moved to when the dialog opens and `confirmContact` removed, nothing asks again at
-  launch, so if the network changes while the dialog is open the launch follows the earlier
-  answer. A review comment on #2236 raised this. Whether the dialog asks again on Launch is
-  not ruled.
+- **Ruled on 2026-11-19.** Today `launch()` asks main when Launch is pressed. With the
+  question moved to when the dialog opens and `confirmContact` removed, nothing would ask again
+  at launch, so if the network changed while the dialog was open the launch would follow the
+  earlier answer. A review comment on #2236 raised this. Decision 8 of the parent plan rules
+  it: the dialog asks again when Launch is pressed, as #2239 built it.
 - **What does not change.** `VpnWarningDialog` and every other caller of `confirmContact` and
   `requireContact`: the Capture Session switch, recaptures, pasted URLs and Wayback lookups.
 - **ADR-0032.** The same pull request amends VPN rule 3. Proposed wording to add: "When the

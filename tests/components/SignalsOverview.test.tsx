@@ -147,6 +147,28 @@ describe('SignalsOverview', () => {
     expect(screen.getByTestId('auto-capture-card')).toBeTruthy()
   })
 
+  it('puts the tour anchor on the Selectors card, not on the exclusions row', async () => {
+    renderScreen()
+    await screen.findByTestId('signal-row-s1')
+
+    const anchors = document.querySelectorAll('[data-tour="selectors"]')
+    expect(anchors).toHaveLength(1)
+    expect(anchors[0].contains(screen.getByTestId('add-selector-input'))).toBe(true)
+    expect(anchors[0].contains(screen.getByTestId('signal-row-s1'))).toBe(true)
+    expect(anchors[0].contains(screen.getByTestId('auto-capture-card'))).toBe(false)
+  })
+
+  it('keeps the exclusions row under the Selectors, above the Tags', async () => {
+    renderScreen()
+    await screen.findByTestId('signal-row-s1')
+
+    const row = screen.getByTestId('auto-capture-card')
+    const follows = (earlier: Element) =>
+      Boolean(earlier.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING)
+    expect(follows(screen.getByTestId('signal-row-s2'))).toBe(true)
+    expect(follows(screen.getByTestId('signals-tag-list'))).toBe(false)
+  })
+
   it('selects the first signal by default and follows a click', async () => {
     renderScreen()
     await screen.findByTestId('signal-row-s1')

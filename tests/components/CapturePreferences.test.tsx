@@ -85,6 +85,51 @@ describe('CapturePreferences screenshots toggle', () => {
   })
 })
 
+describe('CapturePreferences Auto-capture switch', () => {
+  afterEach(cleanup)
+
+  function autoCaptureSwitch() {
+    return screen.getByRole('switch', { name: 'Auto-capture' })
+  }
+
+  it('reads off for notify and writes per-case when switched on', () => {
+    const { onUpdate } = renderPanel({ autoCaptureMode: 'notify' })
+    expect(autoCaptureSwitch().getAttribute('aria-checked')).toBe('false')
+    fireEvent.click(autoCaptureSwitch())
+    expect(onUpdate).toHaveBeenCalledWith({ autoCaptureMode: 'per-case' })
+  })
+
+  it('reads on for per-case and writes notify when switched off', () => {
+    const { onUpdate } = renderPanel({ autoCaptureMode: 'per-case' })
+    expect(autoCaptureSwitch().getAttribute('aria-checked')).toBe('true')
+    fireEvent.click(autoCaptureSwitch())
+    expect(onUpdate).toHaveBeenCalledWith({ autoCaptureMode: 'notify' })
+  })
+
+  // A two-state control cannot represent 'auto', and silently rewriting a
+  // capture policy to something narrower is the wrong failure on this tool.
+  it('locks on for the auto mode rather than downgrading it', () => {
+    const { onUpdate } = renderPanel({ autoCaptureMode: 'auto' })
+    expect(autoCaptureSwitch().getAttribute('aria-checked')).toBe('true')
+    expect(autoCaptureSwitch()).toHaveProperty('disabled', true)
+    fireEvent.click(autoCaptureSwitch())
+    expect(onUpdate).not.toHaveBeenCalled()
+    expect(screen.getByTestId('auto-capture-locked').textContent).toContain('capture every page')
+  })
+
+  it('says it is locked only in the auto mode', () => {
+    renderPanel({ autoCaptureMode: 'per-case' })
+    expect(screen.queryByTestId('auto-capture-locked')).toBeNull()
+  })
+
+  it('says passive capture is off in this build', () => {
+    renderPanel({ autoCaptureMode: 'notify' })
+    expect(screen.getByTestId('auto-capture-suspended').textContent).toBe(
+      'Passive capture is off in this build.'
+    )
+  })
+})
+
 describe('CapturePreferences launched browsers', () => {
   afterEach(cleanup)
 

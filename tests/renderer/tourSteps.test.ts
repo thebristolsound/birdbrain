@@ -84,6 +84,16 @@ describe('tourSteps', () => {
     expect(targets).not.toContain('nav-tags')
   })
 
+  // Passive capture is off in this build, so the step may not say a match logs a page.
+  it('describes Selectors without a claim about auto-capture', () => {
+    for (const demoCase of [false, true]) {
+      const step = tourSteps('case', { demoCase }).find((s) => s.target === 'selectors')
+      expect(step?.body).toBe(
+        'Emails, wallets, panel IPs — matches are highlighted across every capture.'
+      )
+    }
+  })
+
   it('walks the case chapter through the four screens in order', () => {
     expect(tourSteps('case').map((s) => s.route)).toEqual([
       'captures',

@@ -7,6 +7,9 @@ import type { BirdbrainSettings, CaseAutoCapturePolicy } from '@shared/types'
 import { AutoCaptureCard } from '@renderer/components/signals/AutoCaptureCard'
 import { fakeBridge } from '../renderer/fakeBridge'
 
+const navigate = vi.hoisted(() => vi.fn())
+vi.mock('@tanstack/react-router', () => ({ useNavigate: () => navigate }))
+
 const SETTINGS = {
   autoCaptureMode: 'notify',
   ignoredUrlPatterns: ['facebook.com', 'x.com']
@@ -39,6 +42,7 @@ async function openDisclosure() {
 afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
+  navigate.mockReset()
 })
 
 describe('AutoCaptureCard summary and disclosure', () => {
@@ -178,69 +182,21 @@ describe('AutoCaptureCard footer copy', () => {
   })
 })
 
-describe('AutoCaptureCard switch', () => {
-  it('reads off for notify and writes per-case when switched on', async () => {
+describe('AutoCaptureCard and the app-wide setting', () => {
+  it('holds no switch, whatever the stored mode', async () => {
+    renderCard({ exclusions: [], mode: 'stack' }, { ...SETTINGS, autoCaptureMode: 'per-case' })
+
+    await screen.findByTestId('exclusions-summary')
+    expect(screen.queryByRole('switch')).toBeNull()
+    expect(screen.queryByTestId('auto-capture-suspended')).toBeNull()
+  })
+
+  it('links to Settings, which opens on the Capture tab', async () => {
     const { update } = renderCard()
 
-    const toggle = await screen.findByTestId('auto-capture-switch')
-    await waitFor(() => expect(toggle.getAttribute('aria-checked')).toBe('false'))
-    fireEvent.click(toggle)
+    fireEvent.click(await screen.findByRole('button', { name: 'Capture settings' }))
 
-    await waitFor(() => expect(update).toHaveBeenCalledWith({ autoCaptureMode: 'per-case' }))
-  })
-
-  it('reads on for per-case and writes notify when switched off', async () => {
-    const { update } = renderCard(
-      { exclusions: [], mode: 'stack' },
-      { ...SETTINGS, autoCaptureMode: 'per-case' }
-    )
-
-    const toggle = await screen.findByTestId('auto-capture-switch')
-    await waitFor(() => expect(toggle.getAttribute('aria-checked')).toBe('true'))
-    fireEvent.click(toggle)
-
-    await waitFor(() => expect(update).toHaveBeenCalledWith({ autoCaptureMode: 'notify' }))
-  })
-
-  // A two-state control cannot represent 'auto', and silently rewriting a
-  // capture policy to something narrower is the wrong failure on this tool.
-  it('locks on for the auto mode rather than downgrading it', async () => {
-    const { update } = renderCard(
-      { exclusions: [], mode: 'stack' },
-      { ...SETTINGS, autoCaptureMode: 'auto' }
-    )
-
-    const toggle = await screen.findByTestId('auto-capture-switch')
-    await waitFor(() => expect(toggle.getAttribute('aria-checked')).toBe('true'))
-    expect(toggle).toHaveProperty('disabled', true)
-    fireEvent.click(toggle)
-
+    expect(navigate).toHaveBeenCalledWith({ to: '/settings' })
     expect(update).not.toHaveBeenCalled()
-    expect(screen.getByTestId('auto-capture-locked').textContent).toContain('capture every page')
-  })
-
-  it('says the setting is app-wide, not case-level', async () => {
-    renderCard()
-
-    expect(await screen.findByText(/Applies to every case/)).toBeTruthy()
-    expect(screen.queryByText(/Case-level/)).toBeNull()
-  })
-
-  // The description and the disclosure are one claim between them: without the
-  // second the first overstates what the build does, so both are pinned here
-  // as well as in signalsModel.test.ts.
-  it('describes the setting without claiming browsing captures pages today', async () => {
-    renderCard()
-
-    const description = (await screen.findByTestId('auto-capture-description')).textContent ?? ''
-    expect(description).not.toMatch(/captured automatically/)
-  })
-
-  it('discloses that passive capture is suspended', async () => {
-    renderCard()
-
-    const suspended = (await screen.findByTestId('auto-capture-suspended')).textContent ?? ''
-    expect(suspended).toContain('Passive capture is suspended')
-    expect(suspended).toContain('without an explicit action')
   })
 })

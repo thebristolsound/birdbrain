@@ -383,9 +383,10 @@ export function SignalsOverview() {
       <div className="flex min-h-0 flex-1">
         <div className="min-w-0 flex-1 overflow-y-auto p-[var(--d-pad)]">
           <div className="flex flex-col gap-[var(--d-gap)]">
-            <AutoCaptureCard caseId={caseId} />
-
-            <section className="flex flex-col rounded-md border border-border bg-card p-[var(--d-card)]">
+            <section
+              data-tour="selectors"
+              className="flex flex-col rounded-md border border-border bg-card p-[var(--d-card)]"
+            >
               <div className="mb-2.5 flex items-center gap-2">
                 <span className={SECTION_HEADING}>Selectors</span>
                 <button
@@ -455,6 +456,8 @@ export function SignalsOverview() {
                 ))}
               </div>
             </section>
+
+            <AutoCaptureCard caseId={caseId} />
 
             <section className="flex flex-col rounded-md border border-border bg-card p-[var(--d-card)]">
               <div className="mb-2.5 flex items-center gap-2">

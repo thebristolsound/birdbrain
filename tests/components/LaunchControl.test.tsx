@@ -685,6 +685,28 @@ describe("starting the extension's session from the menu", () => {
   })
 
   // The buttons the start replaces held focus, so it moves to the mark, not to the page.
+  // Focus that has gone somewhere else while the start was in flight stays there.
+  it('leaves focus where the Operator moved it while the start was in flight', async () => {
+    useAppStore.setState({ connectedToExtension: true })
+    const { session } = setup()
+    let finish: () => void = () => {}
+    session.start.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = () => resolve({ sessionActive: true, activeCaseId: 'case-1' })
+        })
+    )
+    fireEvent.click(startItem())
+    await waitFor(() => expect(session.start).toHaveBeenCalledTimes(1))
+    const elsewhere = document.createElement('input')
+    document.body.append(elsewhere)
+    elsewhere.focus()
+    await act(async () => finish())
+    await screen.findByTestId('topbar-capture-session')
+    expect(document.activeElement).toBe(elsewhere)
+    elsewhere.remove()
+  })
+
   it('moves focus to the recording mark once the session starts', async () => {
     useAppStore.setState({ connectedToExtension: true })
     setup()

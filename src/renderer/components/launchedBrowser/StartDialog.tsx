@@ -2,13 +2,13 @@ import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import type { KnownEgress, LaunchedBrowserOption } from '@shared/types'
-import { refusalCode } from '@shared/ipc'
+import { refusalCode, type VpnWarningCheck } from '@shared/ipc'
 import { Button, Dialog, DialogContent, DialogTitle, Input } from '@renderer/components/ui'
 import { casesQueryOptions } from '@renderer/lib/api/cases'
 import { useSessionMutations } from '@renderer/lib/api/session'
 import { settingsQueryOptions, useSettingsMutations } from '@renderer/lib/api/settings'
 import { vpnStatusQueryOptions } from '@renderer/lib/api/egress'
-import { confirmContact } from '@renderer/lib/vpnWarning'
+import { birdbrain } from '@renderer/lib/birdbrain'
 import { VPN_SESSION_CAVEAT } from '@renderer/components/status/VpnWarningDialog'
 import {
   cancelBrowserLaunch,
@@ -36,6 +36,18 @@ import {
 const TITLE_TIP =
   'The browser runs on a browser profile of its own. Pages in this browser can tell that ' +
   'software drives it.'
+
+// A session warning main says is due for a Case (ADR-0032 VPN rule 3), with the Operator's
+// choice to stop warning on this network. A new answer from main starts with the choice unmade.
+interface SessionWarning {
+  caseId: string
+  canMute: boolean
+  mute: boolean
+}
+
+function sessionWarning(caseId: string, { warn, canMute }: VpnWarningCheck): SessionWarning | null {
+  return warn ? { caseId, canMute, mute: false } : null
+}
 
 const STEP_MARKS: Readonly<Record<StepProgress, { mark: string; className: string }>> = {
   done: { mark: '✓', className: 'text-success-fg' },
@@ -104,6 +116,9 @@ export function StartDialog() {
   const cancelled = useRef(false)
   const [typedName, setTypedName] = useState('')
   const [nameError, setNameError] = useState('')
+  const [warning, setWarning] = useState<SessionWarning | null>(null)
+  // Counts the questions put to main, so an answer that arrives after a later question is dropped.
+  const lastAsk = useRef(0)
 
   // Every way out of the dialog comes here, so the next opening starts clean.
   function dismiss() {
@@ -114,6 +129,8 @@ export function StartDialog() {
     setPickedCaseId('')
     setTypedName('')
     setNameError('')
+    setWarning(null)
+    lastAsk.current += 1
     cancelled.current = false
     close()
   }
@@ -131,6 +148,21 @@ export function StartDialog() {
   const direct = knownEgress?.kind === 'direct'
   const { data: vpn } = useQuery({ ...vpnStatusQueryOptions, enabled: open && direct })
   const noVpnSeen = direct && vpn?.vpnSeen === false
+
+  // Main is asked when the dialog opens for a Case, so the form says a warning is due before
+  // Launch is pressed. A check that fails here shows no warning; Launch asks again.
+  useEffect(() => {
+    if (!open || caseId === null) return
+    lastAsk.current += 1
+    const ask = lastAsk.current
+    birdbrain.egress.checkVpnWarning({ caseId }, 'session').then(
+      (check) => {
+        if (ask === lastAsk.current) setWarning(sessionWarning(caseId, check))
+      },
+      () => undefined
+    )
+  }, [open, caseId])
+  const dueWarning = warning?.caseId === caseId ? warning : null
 
   // A refusal known before the launch starts. A missing operator name is asked for in its row.
   const blocked =
@@ -167,7 +199,8 @@ export function StartDialog() {
   }, [focusLaunch])
 
   // Saved as typed, as the Operator tab saves it: the name is trimmed only to test for a blank.
-  async function saveName(): Promise<boolean> {
+  async function nameSaved(): Promise<boolean> {
+    if (!askName) return true
     try {
       await update.mutateAsync({ operatorName: typedName })
       return true
@@ -177,24 +210,48 @@ export function StartDialog() {
     }
   }
 
+  // Asked again on the press: the network can change while the dialog is open.
+  async function askVpnWarningAgain(forCase: string): Promise<VpnWarningCheck> {
+    lastAsk.current += 1
+    const check = await birdbrain.egress.checkVpnWarning({ caseId: forCase }, 'session')
+    setWarning(sessionWarning(forCase, check))
+    return check
+  }
+
+  const cameDue = ({ warn }: VpnWarningCheck) => warn && dueWarning === null
+
+  // Tells main the Operator went ahead, which is what marks the Case warned and mutes a network.
+  async function answerVpnWarning(forCase: string, canMute: boolean): Promise<void> {
+    const choice = dueWarning?.mute && canMute ? 'mute-network' : 'continue'
+    await birdbrain.egress.answerVpnWarning({ caseId: forCase, occasion: 'session', choice })
+    setWarning(null)
+  }
+
+  // Back to the form with nothing launched. A cancel pressed meanwhile still closes the dialog.
+  function holdLaunch() {
+    if (cancelled.current) dismiss()
+    else setLaunching(null)
+  }
+
   async function launch() {
     if (!caseId || !browser || !knownEgress) return
     cancelled.current = false
     setRefusal(null)
     setLaunching({ browser, egress: knownEgress })
-    if (askName && !(await saveName())) {
-      // A cancel pressed while the name was saving still closes the dialog.
-      if (cancelled.current) dismiss()
-      else setLaunching(null)
-      return
-    }
     try {
       // A launch starts or joins a Capture Session, so it passes the VPN warning first
-      // (ADR-0032 rule 3), as the capture menu's session start does.
-      if (!(await confirmContact({ caseId }, 'session'))) {
-        setLaunching(null)
+      // (ADR-0032 VPN rule 3). A warning the pressed form did not show holds the launch: the
+      // form shows it now, and the Operator presses the button that names it.
+      const check = await askVpnWarningAgain(caseId)
+      if (cameDue(check)) {
+        holdLaunch()
         return
       }
+      if (!(await nameSaved())) {
+        holdLaunch()
+        return
+      }
+      if (check.warn) await answerVpnWarning(caseId, check.canMute)
       await activateCase.mutateAsync(caseId)
       // A cancel while the Case was activating reached main before any launch it could stop.
       if (cancelled.current) {
@@ -227,6 +284,13 @@ export function StartDialog() {
       setCancelling(false)
       setCancelError((error as Error).message)
     }
+  }
+
+  // Opens the Egress setting, as the VPN warning's own "Set up a proxy" does. Nothing is launched
+  // and main is told nothing, so the warning is still due.
+  function setUpProxy() {
+    dismiss()
+    void navigate({ to: '/settings', search: { section: 'egress' } })
   }
 
   // State 4's Show panel: the panel sits on the Case screens of the browser's Case.
@@ -353,10 +417,34 @@ export function StartDialog() {
                   ) : (
                     <span className="text-danger-fg">Not readable</span>
                   )}
-                  {noVpnSeen && (
-                    <p data-testid="launch-no-vpn" className="mt-0.5 text-[11px] text-warning-fg">
-                      VPN not seen. {VPN_SESSION_CAVEAT}
+                  {(noVpnSeen || dueWarning) && (
+                    <p className="mt-0.5 text-[11px]">
+                      <span data-testid="launch-no-vpn" className="text-warning-fg">
+                        VPN not seen. {VPN_SESSION_CAVEAT}
+                      </span>
+                      {dueWarning && (
+                        <>
+                          {' '}
+                          <Button
+                            variant="link"
+                            className="h-auto px-0 text-[11px] underline"
+                            onClick={setUpProxy}
+                          >
+                            Set up a proxy
+                          </Button>
+                        </>
+                      )}
                     </p>
+                  )}
+                  {dueWarning?.canMute && (
+                    <label className="mt-1 flex items-center gap-1.5 text-[11px] text-text-secondary">
+                      <input
+                        type="checkbox"
+                        checked={dueWarning.mute}
+                        onChange={(e) => setWarning({ ...dueWarning, mute: e.target.checked })}
+                      />
+                      Do not warn on this network
+                    </label>
                   )}
                 </dd>
                 <dt className={cn('text-text-muted', askName && 'pt-1.5')}>
@@ -427,7 +515,7 @@ export function StartDialog() {
                   disabled={!canLaunch}
                   onClick={() => void launch()}
                 >
-                  {sessionActive ? 'Launch and join' : 'Launch'}
+                  {dueWarning ? 'Launch without VPN' : sessionActive ? 'Launch and join' : 'Launch'}
                 </Button>
               </div>
             </>

@@ -12,8 +12,9 @@ import type {
 } from '@shared/types'
 import { queryKeys } from '@renderer/lib/api/keys'
 import { useAppStore } from '@renderer/stores/appStore'
-import { settleVpnWarning, useVpnWarningStore } from '@renderer/lib/vpnWarning'
-import { fakeBridge, quietVpnWarning } from '../renderer/fakeBridge'
+import type { VpnWarningAnswer, VpnWarningCheck, VpnWarningTarget } from '@shared/ipc'
+import { useVpnWarningStore } from '@renderer/lib/vpnWarning'
+import { fakeBridge } from '../renderer/fakeBridge'
 
 const navigate = vi.hoisted(() => vi.fn())
 
@@ -80,8 +81,10 @@ interface MountOptions {
   launch?: (executablePath: string) => Promise<LaunchedBrowserStatus>
   cancelLaunch?: () => Promise<LaunchedBrowserStatus>
   vpnSeen?: boolean
-  // Main's answer to the VPN warning check; by default no warning is due.
+  // Whether main has a VPN warning due for a Case not yet warned; by default it has none.
   warn?: boolean
+  // Whether main read the network, so that it can stop warning on it.
+  canMute?: boolean
 }
 
 function mount(options: MountOptions = {}) {
@@ -93,7 +96,8 @@ function mount(options: MountOptions = {}) {
     operatorName = 'A. Marsh',
     egress = PROXY,
     vpnSeen = true,
-    warn = false
+    warn = false,
+    canMute = true
   } = options
   const activateCase = vi.fn(async (caseId: string) => ({
     activeCaseId: caseId,
@@ -114,11 +118,19 @@ function mount(options: MountOptions = {}) {
     options.saveSettings ??
       (async (partial: Partial<BirdbrainSettings>) => ({ ...saved, ...partial }))
   )
-  const checkVpnWarning = warn
-    ? vi.fn(async () => ({ caseId: 'case-1', warn: true, canMute: true }))
-    : quietVpnWarning().checkVpnWarning
+  // Main's side of the warning, as `vpnWarning.ts` keeps it: a Case that was answered for is
+  // warned, and is not warned again. A test changes `due` and `canMute` to move the network.
+  const vpn = { due: warn, canMute, warned: new Set<string>() }
+  const checkVpnWarning = vi.fn(async (target: VpnWarningTarget): Promise<VpnWarningCheck> => {
+    const caseId = 'caseId' in target ? target.caseId : ''
+    const due = vpn.due && !vpn.warned.has(caseId)
+    return { caseId, warn: due, canMute: due && vpn.canMute }
+  })
+  const answerVpnWarning = vi.fn(async ({ caseId }: VpnWarningAnswer) => {
+    vpn.warned.add(caseId)
+  })
   fakeBridge({
-    egress: { vpnStatus, checkVpnWarning, answerVpnWarning: vi.fn(async () => undefined) },
+    egress: { vpnStatus, checkVpnWarning, answerVpnWarning },
     cases: { list: vi.fn(options.listCases ?? (async () => cases)) },
     settings: { get: vi.fn(async () => saved), update: saveSettings },
     session: { activateCase },
@@ -135,7 +147,17 @@ function mount(options: MountOptions = {}) {
       <StartDialog />
     </QueryClientProvider>
   )
-  return { client, activateCase, launch, cancelLaunch, vpnStatus, checkVpnWarning, saveSettings }
+  return {
+    client,
+    activateCase,
+    launch,
+    cancelLaunch,
+    vpnStatus,
+    vpn,
+    checkVpnWarning,
+    answerVpnWarning,
+    saveSettings
+  }
 }
 
 function open(caseId = 'case-1') {
@@ -148,6 +170,10 @@ async function dialog() {
 
 function launchButton(name: RegExp | string = /^Launch/): HTMLButtonElement {
   return screen.getByRole('button', { name }) as HTMLButtonElement
+}
+
+function muteBox(body: HTMLElement): HTMLInputElement | null {
+  return within(body).queryByRole('checkbox', { name: 'Do not warn on this network' })
 }
 
 function resetStore() {
@@ -346,6 +372,30 @@ describe('StartDialog with no Case named', () => {
       name: 'Case'
     })) as HTMLSelectElement
     expect(picker.value).toBe('case-2')
+  })
+
+  it("asks main about the Case that is picked, and shows no other Case's warning", async () => {
+    const { vpn, checkVpnWarning } = mount({
+      cases: [FERRY, HARBOR],
+      lastActiveCaseId: 'case-2',
+      egress: DIRECT,
+      warn: true
+    })
+    vpn.warned.add('case-1')
+    openPicker()
+    const body = await pickerDialog()
+    const picker = await within(body).findByRole('combobox', { name: 'Case' })
+    await within(body).findByRole('button', { name: 'Launch without VPN' })
+    expect(checkVpnWarning).toHaveBeenLastCalledWith({ caseId: 'case-2' }, 'session')
+    // The question for the newly picked Case is still open, so the other Case's answer is all
+    // the dialog holds.
+    checkVpnWarning.mockImplementationOnce(() => new Promise(() => {}))
+    fireEvent.change(picker, { target: { value: 'case-1' } })
+    expect(checkVpnWarning).toHaveBeenLastCalledWith({ caseId: 'case-1' }, 'session')
+    expect(within(body).queryByRole('button', { name: 'Launch without VPN' })).toBeNull()
+    expect(launchButton('Launch')).toBeDefined()
+    fireEvent.change(picker, { target: { value: 'case-2' } })
+    await within(body).findByRole('button', { name: 'Launch without VPN' })
   })
 
   it('shows no Case row when it is opened for a Case', async () => {
@@ -667,36 +717,363 @@ describe('StartDialog (S2)', () => {
     expect(proxied.vpnStatus).not.toHaveBeenCalled()
   })
 
-  it('passes the VPN warning as a session warning, and launches once continued', async () => {
-    const { activateCase, launch, checkVpnWarning } = mount({ egress: DIRECT, warn: true })
-    open()
-    const body = await dialog()
-    await within(body).findByRole('option', { name: 'Brave' })
-    fireEvent.click(launchButton('Launch'))
-    await waitFor(() => expect(useVpnWarningStore.getState().open).toBe(true))
-    expect(useVpnWarningStore.getState().request?.occasion).toBe('session')
-    expect(checkVpnWarning).toHaveBeenCalledWith({ caseId: 'case-1' }, 'session')
-    expect(activateCase).not.toHaveBeenCalled()
-    expect(launch).not.toHaveBeenCalled()
-    act(() => settleVpnWarning('continue'))
-    await waitFor(() => expect(launch).toHaveBeenCalledWith(CHROME.executablePath))
-    expect(activateCase).toHaveBeenCalledWith('case-1')
+  // ADR-0032 VPN rule 3, as amended: a session that starts here is warned in this dialog, and
+  // no second dialog follows.
+  describe('with a VPN warning due', () => {
+    async function warned(options: MountOptions = {}) {
+      const mounted = mount({ egress: DIRECT, vpnSeen: false, warn: true, ...options })
+      open()
+      const body = await dialog()
+      await within(body).findByRole('option', { name: 'Brave' })
+      await within(body).findByRole('button', { name: 'Launch without VPN' })
+      return { ...mounted, body }
+    }
+
+    it('carries the warning: its sentence, both offers, and a button that names it', async () => {
+      const { body, checkVpnWarning, answerVpnWarning } = await warned()
+      expect(within(body).getByTestId('launch-no-vpn').textContent).toBe(NO_VPN_LINE)
+      expect(within(body).getByRole('button', { name: 'Set up a proxy' })).toBeDefined()
+      expect(muteBox(body)?.checked).toBe(false)
+      expect(within(body).queryByRole('button', { name: 'Launch' })).toBeNull()
+      expect(launchButton('Launch without VPN').disabled).toBe(false)
+      expect(checkVpnWarning).toHaveBeenCalledExactlyOnceWith({ caseId: 'case-1' }, 'session')
+      expect(answerVpnWarning).not.toHaveBeenCalled()
+    })
+
+    it('asks main again on the press, answers that the Operator continued, then launches', async () => {
+      const { checkVpnWarning, answerVpnWarning, activateCase, launch } = await warned()
+      fireEvent.click(launchButton('Launch without VPN'))
+      await waitFor(() => expect(launch).toHaveBeenCalledWith(CHROME.executablePath))
+      expect(checkVpnWarning).toHaveBeenCalledTimes(2)
+      expect(checkVpnWarning).toHaveBeenLastCalledWith({ caseId: 'case-1' }, 'session')
+      expect(answerVpnWarning).toHaveBeenCalledExactlyOnceWith({
+        caseId: 'case-1',
+        occasion: 'session',
+        choice: 'continue'
+      })
+      expect(checkVpnWarning.mock.invocationCallOrder[1]).toBeLessThan(
+        answerVpnWarning.mock.invocationCallOrder[0]
+      )
+      expect(answerVpnWarning.mock.invocationCallOrder[0]).toBeLessThan(
+        activateCase.mock.invocationCallOrder[0]
+      )
+      expect(activateCase.mock.invocationCallOrder[0]).toBeLessThan(
+        launch.mock.invocationCallOrder[0]
+      )
+      // The dialog was the warning: the one mounted at the root never opened.
+      expect(useVpnWarningStore.getState()).toMatchObject({ open: false, request: null })
+    })
+
+    it('mutes the network when the box is ticked', async () => {
+      const { body, answerVpnWarning, launch } = await warned()
+      fireEvent.click(muteBox(body)!)
+      expect(muteBox(body)?.checked).toBe(true)
+      fireEvent.click(launchButton('Launch without VPN'))
+      await waitFor(() => expect(launch).toHaveBeenCalled())
+      expect(answerVpnWarning).toHaveBeenCalledExactlyOnceWith({
+        caseId: 'case-1',
+        occasion: 'session',
+        choice: 'mute-network'
+      })
+    })
+
+    it('offers no mute where main could not read the network', async () => {
+      const { body, answerVpnWarning, launch } = await warned({ canMute: false })
+      expect(muteBox(body)).toBeNull()
+      expect(within(body).getByRole('button', { name: 'Set up a proxy' })).toBeDefined()
+      fireEvent.click(launchButton('Launch without VPN'))
+      await waitFor(() => expect(launch).toHaveBeenCalled())
+      expect(answerVpnWarning.mock.calls[0][0].choice).toBe('continue')
+    })
+
+    it('mutes nothing when main can no longer read the network on the press', async () => {
+      const { body, vpn, answerVpnWarning, launch } = await warned()
+      fireEvent.click(muteBox(body)!)
+      vpn.canMute = false
+      fireEvent.click(launchButton('Launch without VPN'))
+      await waitFor(() => expect(launch).toHaveBeenCalled())
+      expect(answerVpnWarning.mock.calls[0][0].choice).toBe('continue')
+    })
+
+    it('launches, and answers nothing, when no warning is due any more on the press', async () => {
+      const { vpn, checkVpnWarning, answerVpnWarning, activateCase, launch } = await warned()
+      vpn.due = false
+      fireEvent.click(launchButton('Launch without VPN'))
+      await waitFor(() => expect(launch).toHaveBeenCalled())
+      expect(checkVpnWarning).toHaveBeenCalledTimes(2)
+      expect(activateCase).toHaveBeenCalledWith('case-1')
+      expect(answerVpnWarning).not.toHaveBeenCalled()
+    })
+
+    it('opens the Egress setting from "Set up a proxy", and launches and answers nothing', async () => {
+      const { body, answerVpnWarning, activateCase, launch } = await warned()
+      fireEvent.click(within(body).getByRole('button', { name: 'Set up a proxy' }))
+      expect(navigate).toHaveBeenCalledExactlyOnceWith({
+        to: '/settings',
+        search: { section: 'egress' }
+      })
+      expect(useAppStore.getState().startDialogCaseId).toBeNull()
+      expect(answerVpnWarning).not.toHaveBeenCalled()
+      expect(activateCase).not.toHaveBeenCalled()
+      expect(launch).not.toHaveBeenCalled()
+    })
+
+    it('reads "Launch" once main was answered, when the launch then fails', async () => {
+      const { body, checkVpnWarning, answerVpnWarning, launch } = await warned({
+        launch: async () => Promise.reject({ message: 'gone', code: 'BROWSER_SPAWN_FAILED' })
+      })
+      fireEvent.click(launchButton('Launch without VPN'))
+      expect((await within(body).findByRole('status')).textContent).toContain('The launch failed')
+      expect(answerVpnWarning).toHaveBeenCalledOnce()
+      expect(launchButton('Launch').disabled).toBe(false)
+      expect(within(body).queryByRole('button', { name: 'Launch without VPN' })).toBeNull()
+      expect(within(body).queryByRole('button', { name: 'Set up a proxy' })).toBeNull()
+      expect(muteBox(body)).toBeNull()
+      // The line follows the VPN status, which has not changed.
+      expect(within(body).getByTestId('launch-no-vpn').textContent).toBe(NO_VPN_LINE)
+      fireEvent.click(launchButton('Launch'))
+      await waitFor(() => expect(launch).toHaveBeenCalledTimes(2))
+      expect(checkVpnWarning).toHaveBeenCalledTimes(3)
+      expect(answerVpnWarning).toHaveBeenCalledOnce()
+    })
+
+    it('refuses, and launches nothing, when main cannot be told the Operator continued', async () => {
+      const { body, answerVpnWarning, activateCase, launch } = await warned()
+      answerVpnWarning.mockRejectedValueOnce(new Error('main is gone'))
+      fireEvent.click(launchButton('Launch without VPN'))
+      const card = await within(body).findByRole('status')
+      expect(card.textContent).toBe('The launch failedmain is gone')
+      expect(activateCase).not.toHaveBeenCalled()
+      expect(launch).not.toHaveBeenCalled()
+      expect(useAppStore.getState().startDialogCaseId).toBe('case-1')
+      // Main was not told, so the warning is still due.
+      expect(launchButton('Launch without VPN').disabled).toBe(false)
+    })
+
+    // The warning and the line have different sources: main's check, and the polled VPN status.
+    it('shows its sentence even where the VPN status has not said a VPN is missing', async () => {
+      const { body } = await warned({ vpnSeen: true })
+      expect(within(body).getByTestId('launch-no-vpn').textContent).toBe(NO_VPN_LINE)
+    })
+
+    it('names the condition on the button when the launch would join a session too', async () => {
+      useAppStore.setState({ sessionActive: true })
+      const { body } = await warned()
+      expect(within(body).queryByRole('button', { name: 'Launch and join' })).toBeNull()
+    })
+
+    it('saves a typed name after asking main, and before answering it', async () => {
+      const { body, checkVpnWarning, answerVpnWarning, saveSettings, activateCase, launch } =
+        await warned({ operatorName: '' })
+      fireEvent.change(within(body).getByRole('textbox', { name: 'Operator Name' }), {
+        target: { value: 'A. Marsh' }
+      })
+      fireEvent.click(launchButton('Launch without VPN'))
+      await waitFor(() => expect(launch).toHaveBeenCalled())
+      expect(checkVpnWarning.mock.invocationCallOrder[1]).toBeLessThan(
+        saveSettings.mock.invocationCallOrder[0]
+      )
+      expect(saveSettings.mock.invocationCallOrder[0]).toBeLessThan(
+        answerVpnWarning.mock.invocationCallOrder[0]
+      )
+      expect(answerVpnWarning.mock.invocationCallOrder[0]).toBeLessThan(
+        activateCase.mock.invocationCallOrder[0]
+      )
+    })
+
+    it('leaves main unanswered when the name cannot be saved', async () => {
+      const { body, answerVpnWarning, activateCase, launch } = await warned({
+        operatorName: '',
+        saveSettings: async () => Promise.reject(new Error('disk full'))
+      })
+      fireEvent.change(within(body).getByRole('textbox', { name: 'Operator Name' }), {
+        target: { value: 'A. Marsh' }
+      })
+      fireEvent.click(launchButton('Launch without VPN'))
+      expect((await within(body).findByRole('alert')).textContent).toBe(
+        'The name could not be saved.'
+      )
+      expect(answerVpnWarning).not.toHaveBeenCalled()
+      expect(activateCase).not.toHaveBeenCalled()
+      expect(launch).not.toHaveBeenCalled()
+      expect(launchButton('Launch without VPN').disabled).toBe(false)
+    })
+
+    it('asks again each time it opens, and keeps nothing from the opening before', async () => {
+      const { body, checkVpnWarning } = await warned()
+      fireEvent.click(muteBox(body)!)
+      fireEvent.click(within(body).getByRole('button', { name: 'Cancel' }))
+      expect(useAppStore.getState().startDialogCaseId).toBeNull()
+      // The next opening's question stays unanswered, so what shows is what the dialog kept.
+      checkVpnWarning.mockImplementationOnce(() => new Promise(() => {}))
+      open()
+      const again = await dialog()
+      await within(again).findByRole('option', { name: 'Brave' })
+      expect(checkVpnWarning).toHaveBeenCalledTimes(2)
+      expect(launchButton('Launch').disabled).toBe(false)
+      expect(within(again).queryByRole('button', { name: 'Launch without VPN' })).toBeNull()
+      expect(muteBox(again)).toBeNull()
+    })
+
+    it('drops an answer that arrives after the dialog closed', async () => {
+      let answer: (check: VpnWarningCheck) => void = () => {}
+      const { checkVpnWarning } = mount({ egress: DIRECT, vpnSeen: false, warn: true })
+      checkVpnWarning.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            answer = resolve
+          })
+      )
+      open()
+      const body = await dialog()
+      await within(body).findByRole('option', { name: 'Brave' })
+      fireEvent.click(within(body).getByRole('button', { name: 'Cancel' }))
+      await act(async () => answer({ caseId: 'case-1', warn: true, canMute: true }))
+      checkVpnWarning.mockImplementationOnce(() => new Promise(() => {}))
+      open()
+      const again = await dialog()
+      await within(again).findByRole('option', { name: 'Brave' })
+      expect(checkVpnWarning).toHaveBeenCalledTimes(2)
+      expect(within(again).queryByRole('button', { name: 'Launch without VPN' })).toBeNull()
+      expect(launchButton('Launch').disabled).toBe(false)
+    })
   })
 
-  it('launches nothing when the Operator stops at the VPN warning, and offers it again', async () => {
-    const { activateCase, launch } = mount({ egress: DIRECT, warn: true })
-    open()
-    const body = await dialog()
-    await within(body).findByRole('option', { name: 'Brave' })
-    fireEvent.click(launchButton('Launch'))
-    await waitFor(() => expect(useVpnWarningStore.getState().open).toBe(true))
-    act(() => settleVpnWarning('dismiss'))
-    await waitFor(() => expect(useVpnWarningStore.getState().open).toBe(false))
-    expect(activateCase).not.toHaveBeenCalled()
-    expect(launch).not.toHaveBeenCalled()
-    expect(useAppStore.getState().startDialogCaseId).toBe('case-1')
-    expect(within(body).queryByRole('list', { name: 'Launch checks' })).toBeNull()
-    expect(launchButton('Launch').disabled).toBe(false)
+  describe('with no VPN warning due when it opens', () => {
+    async function unwarned(options: MountOptions = {}) {
+      const mounted = mount({ egress: DIRECT, ...options })
+      open()
+      const body = await dialog()
+      await within(body).findByRole('option', { name: 'Brave' })
+      await within(body).findByText('Direct')
+      await waitFor(() => expect(mounted.checkVpnWarning).toHaveBeenCalledOnce())
+      return { ...mounted, body }
+    }
+
+    // A muted network, or a Case already warned: the line follows the VPN status, and the
+    // button follows main's answer.
+    it('reads "Launch", offers nothing and answers nothing, though no VPN is seen', async () => {
+      const { body, checkVpnWarning, answerVpnWarning, launch } = await unwarned({
+        vpnSeen: false
+      })
+      expect((await within(body).findByTestId('launch-no-vpn')).textContent).toBe(NO_VPN_LINE)
+      expect(within(body).queryByRole('button', { name: 'Set up a proxy' })).toBeNull()
+      expect(muteBox(body)).toBeNull()
+      fireEvent.click(launchButton('Launch'))
+      await waitFor(() => expect(launch).toHaveBeenCalledWith(CHROME.executablePath))
+      expect(checkVpnWarning).toHaveBeenCalledTimes(2)
+      expect(answerVpnWarning).not.toHaveBeenCalled()
+    })
+
+    it('holds the launch when a warning comes due on the press, and shows it', async () => {
+      const { body, vpn, answerVpnWarning, saveSettings, activateCase, launch } = await unwarned({
+        operatorName: ''
+      })
+      fireEvent.change(await within(body).findByRole('textbox', { name: 'Operator Name' }), {
+        target: { value: 'A. Marsh' }
+      })
+      expect(within(body).queryByTestId('launch-no-vpn')).toBeNull()
+      // The network changes while the dialog is open.
+      vpn.due = true
+      fireEvent.click(launchButton('Launch'))
+      const named = await within(body).findByRole('button', { name: 'Launch without VPN' })
+      expect(within(body).getByTestId('launch-no-vpn').textContent).toBe(NO_VPN_LINE)
+      expect(within(body).getByRole('button', { name: 'Set up a proxy' })).toBeDefined()
+      expect(muteBox(body)?.checked).toBe(false)
+      expect(within(body).queryByRole('list', { name: 'Launch checks' })).toBeNull()
+      expect(useAppStore.getState().startDialogCaseId).toBe('case-1')
+      // Nothing was saved, answered or launched on a press that did not name the condition.
+      expect(saveSettings).not.toHaveBeenCalled()
+      expect(answerVpnWarning).not.toHaveBeenCalled()
+      expect(activateCase).not.toHaveBeenCalled()
+      expect(launch).not.toHaveBeenCalled()
+
+      fireEvent.click(named)
+      await waitFor(() => expect(launch).toHaveBeenCalledWith(CHROME.executablePath))
+      expect(saveSettings).toHaveBeenCalledExactlyOnceWith({ operatorName: 'A. Marsh' })
+      expect(answerVpnWarning).toHaveBeenCalledExactlyOnceWith({
+        caseId: 'case-1',
+        occasion: 'session',
+        choice: 'continue'
+      })
+    })
+
+    it('closes, and launches nothing, when cancelled while main is asked and a warning comes due', async () => {
+      let answer: (check: VpnWarningCheck) => void = () => {}
+      const { body, checkVpnWarning, answerVpnWarning, activateCase, launch, cancelLaunch } =
+        await unwarned()
+      checkVpnWarning.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            answer = resolve
+          })
+      )
+      fireEvent.click(launchButton('Launch'))
+      fireEvent.click(await within(body).findByRole('button', { name: 'Cancel' }))
+      await waitFor(() => expect(cancelLaunch).toHaveBeenCalledOnce())
+      await act(async () => answer({ caseId: 'case-1', warn: true, canMute: true }))
+      await waitFor(() => expect(useAppStore.getState().startDialogCaseId).toBeNull())
+      expect(answerVpnWarning).not.toHaveBeenCalled()
+      expect(activateCase).not.toHaveBeenCalled()
+      expect(launch).not.toHaveBeenCalled()
+    })
+
+    it('keeps the answer to the press when the answer to the opening arrives after it', async () => {
+      let answerOpening: (check: VpnWarningCheck) => void = () => {}
+      const { checkVpnWarning, launch } = mount({ egress: DIRECT, warn: true })
+      checkVpnWarning.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            answerOpening = resolve
+          })
+      )
+      open()
+      const body = await dialog()
+      await within(body).findByRole('option', { name: 'Brave' })
+      await within(body).findByText('Direct')
+      await waitFor(() => expect(launchButton('Launch').disabled).toBe(false))
+      fireEvent.click(launchButton('Launch'))
+      await within(body).findByRole('button', { name: 'Launch without VPN' })
+      await act(async () => answerOpening({ caseId: 'case-1', warn: false, canMute: false }))
+      expect(within(body).getByRole('button', { name: 'Launch without VPN' })).toBeDefined()
+      expect(launch).not.toHaveBeenCalled()
+    })
+
+    // The outcome `confirmContact` gave a failed check before the dialog asked for itself.
+    it('refuses, and launches nothing, when main cannot be asked on the press', async () => {
+      const { body, checkVpnWarning, activateCase, launch } = await unwarned()
+      checkVpnWarning.mockRejectedValueOnce(new Error('main is gone'))
+      fireEvent.click(launchButton('Launch'))
+      const card = await within(body).findByRole('status')
+      expect(card.textContent).toBe('The launch failedmain is gone')
+      expect(activateCase).not.toHaveBeenCalled()
+      expect(launch).not.toHaveBeenCalled()
+      expect(useAppStore.getState().startDialogCaseId).toBe('case-1')
+      fireEvent.click(launchButton('Launch'))
+      await waitFor(() => expect(launch).toHaveBeenCalledOnce())
+      expect(checkVpnWarning).toHaveBeenCalledTimes(3)
+    })
+
+    it('shows no warning when main cannot be asked as it opens, and asks on the press', async () => {
+      const { checkVpnWarning, answerVpnWarning, activateCase, launch } = mount({
+        egress: DIRECT,
+        warn: true
+      })
+      checkVpnWarning.mockRejectedValueOnce(new Error('main is not ready'))
+      open()
+      const body = await dialog()
+      await within(body).findByRole('option', { name: 'Brave' })
+      await within(body).findByText('Direct')
+      await waitFor(() => expect(launchButton('Launch').disabled).toBe(false))
+      expect(checkVpnWarning).toHaveBeenCalledOnce()
+      expect(within(body).queryByRole('status')).toBeNull()
+      fireEvent.click(launchButton('Launch'))
+      await within(body).findByRole('button', { name: 'Launch without VPN' })
+      expect(checkVpnWarning).toHaveBeenCalledTimes(2)
+      expect(answerVpnWarning).not.toHaveBeenCalled()
+      expect(activateCase).not.toHaveBeenCalled()
+      expect(launch).not.toHaveBeenCalled()
+    })
   })
 
   it('refuses with state 1 when Birdbrain found no browser', async () => {

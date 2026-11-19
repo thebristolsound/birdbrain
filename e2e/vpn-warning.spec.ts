@@ -102,6 +102,74 @@ async function captureEntry(page: Page, caseId: string): Promise<Record<string, 
 
 const keys = (record: Record<string, unknown>): string[] => Object.keys(record).sort()
 
+// Stands in for the browser the launch dialog would start: main offers one browser, and a
+// launch starts nothing and records which executable it was asked for.
+async function standInForLaunch(app: ElectronApplication): Promise<void> {
+  await app.evaluate(({ ipcMain }) => {
+    const launched: string[] = []
+    ;(globalThis as { e2eLaunched?: string[] }).e2eLaunched = launched
+    ipcMain.removeHandler('launchedBrowser:list')
+    ipcMain.handle('launchedBrowser:list', () => ({
+      ok: true,
+      data: [
+        {
+          family: 'chrome',
+          label: 'Google Chrome',
+          executablePath: '/e2e/chrome',
+          chosen: false,
+          lastVersion: null
+        }
+      ]
+    }))
+    ipcMain.removeHandler('launchedBrowser:launch')
+    ipcMain.handle('launchedBrowser:launch', (_, executablePath: string) => {
+      launched.push(executablePath)
+      return { ok: true, data: { state: 'none' } }
+    })
+  })
+}
+
+async function launches(app: ElectronApplication): Promise<string[]> {
+  return app.evaluate(() => (globalThis as { e2eLaunched?: string[] }).e2eLaunched ?? [])
+}
+
+// Main's own answer to whether a warning is due, which is what the dialogs ask.
+async function warningDue(
+  page: Page,
+  caseId: string,
+  occasion: 'site' | 'session'
+): Promise<boolean> {
+  return page.evaluate(
+    async (asked) => {
+      const w = window as unknown as {
+        birdbrain: {
+          egress: {
+            checkVpnWarning: (
+              target: { caseId: string },
+              occasion: string
+            ) => Promise<{ warn: boolean }>
+          }
+        }
+      }
+      const { warn } = await w.birdbrain.egress.checkVpnWarning(
+        { caseId: asked.caseId },
+        asked.occasion
+      )
+      return warn
+    },
+    { caseId, occasion }
+  )
+}
+
+async function mutedNetworks(page: Page): Promise<string[]> {
+  return page.evaluate(async () => {
+    const w = window as unknown as {
+      birdbrain: { settings: { get: () => Promise<{ vpnWarningMutedNetworks: string[] }> } }
+    }
+    return (await w.birdbrain.settings.get()).vpnWarningMutedNetworks
+  })
+}
+
 // Every key at any depth, for a field this ticket might have added on the capture path, which
 // a comparison between two Captures from the same build would not see.
 function allKeys(value: unknown): string[] {
@@ -268,6 +336,77 @@ test.describe('VPN warning', () => {
     await expect(page.getByRole('button', { name: 'Launch browser' })).toBeVisible({
       timeout: 10000
     })
+  })
+
+  // ADR-0032 VPN rule 3, as amended: a Capture Session that starts from the launch dialog is
+  // warned in that dialog, and the separate warning does not follow it.
+  test('warns in the launch dialog itself, and main then holds the Case as warned', async ({
+    electronApp,
+    page
+  }) => {
+    test.setTimeout(120000)
+    await standInForLaunch(electronApp)
+    const dialog = page.getByTestId('launch-start-dialog')
+    const launchBrowser = page.getByRole('button', { name: 'Launch browser', exact: true })
+    const launch = dialog.getByRole('button', { name: 'Launch', exact: true })
+    const launchWithoutVpn = dialog.getByRole('button', { name: 'Launch without VPN' })
+    const setUpProxy = dialog.getByRole('button', { name: 'Set up a proxy' })
+    const mute = dialog.getByRole('checkbox', { name: 'Do not warn on this network' })
+    const separateWarning = page.getByTestId('vpn-warning-dialog')
+
+    // A warning is due: the dialog carries its sentence, both offers, and the button that
+    // names the condition.
+    const caseA = await createCase(page, 'VPN launch A')
+    await openCaptures(page, caseA)
+    await launchBrowser.click()
+    await expect(launchWithoutVpn).toBeEnabled({ timeout: 10000 })
+    await expect(dialog.getByTestId('launch-no-vpn')).toContainText('VPN not seen.')
+    await expect(setUpProxy).toBeVisible()
+    await expect(mute).not.toBeChecked()
+    await expect(launch).toHaveCount(0)
+    await launchWithoutVpn.click()
+    await expect(dialog).toBeHidden({ timeout: 10000 })
+    await expect(separateWarning).toHaveCount(0)
+    expect(await launches(electronApp)).toEqual(['/e2e/chrome'])
+
+    // Main holds the Case as warned for a session start, and not for a contact with a site.
+    expect(await warningDue(page, caseA, 'session')).toBe(false)
+    expect(await warningDue(page, caseA, 'site')).toBe(true)
+    expect(await mutedNetworks(page)).toEqual([])
+
+    // So a second launch in that Case goes ahead from a button that reads Launch. The dialog
+    // asks main again on the press, and would hold the launch if a warning were due.
+    await launchBrowser.click()
+    await expect(launch).toBeEnabled({ timeout: 10000 })
+    await launch.click()
+    await expect(dialog).toBeHidden({ timeout: 10000 })
+    await expect(separateWarning).toHaveCount(0)
+    expect(await launches(electronApp)).toHaveLength(2)
+
+    // A new Case warns again, and the ticked box stops the warning on this network.
+    const caseB = await createCase(page, 'VPN launch B')
+    await openCaptures(page, caseB)
+    await launchBrowser.click()
+    await expect(launchWithoutVpn).toBeEnabled({ timeout: 10000 })
+    await mute.check()
+    await launchWithoutVpn.click()
+    await expect(dialog).toBeHidden({ timeout: 10000 })
+    await expect(separateWarning).toHaveCount(0)
+    expect(await launches(electronApp)).toHaveLength(3)
+    expect(await mutedNetworks(page)).toHaveLength(1)
+
+    // On the muted network a third Case is not warned, though the line still says no VPN is seen.
+    const caseC = await createCase(page, 'VPN launch C')
+    await openCaptures(page, caseC)
+    expect(await warningDue(page, caseC, 'session')).toBe(false)
+    await launchBrowser.click()
+    await expect(launch).toBeEnabled({ timeout: 10000 })
+    await expect(dialog.getByTestId('launch-no-vpn')).toBeVisible()
+    await expect(setUpProxy).toHaveCount(0)
+    await launch.click()
+    await expect(dialog).toBeHidden({ timeout: 10000 })
+    await expect(separateWarning).toHaveCount(0)
+    expect(await launches(electronApp)).toHaveLength(4)
   })
 
   test('does not warn while the Egress is a Proxy', async ({ page }) => {

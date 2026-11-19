@@ -34,95 +34,110 @@ interface PanelProps {
 // The Captures screen's one right panel. With no Capture Session to show it is the details panel
 // alone. With one, the details and the Capture Session are its two tabs, so the screen keeps
 // to four columns: the rail, the list, the viewer and this panel.
-export function CaptureRightPanel({ session, details, ...props }: PanelProps) {
-  if (!session) return <>{details}</>
-  return <TabbedPanel session={session} details={details} {...props} />
-}
-
-function TabbedPanel({
+//
+// Both forms are one tree, so the details stay mounted as a Capture Session comes and goes: the
+// inline note editor drops text it has not saved yet when it unmounts.
+export function CaptureRightPanel({
   session,
   form,
   tab,
   onTabChange,
   onCollapse,
   details
-}: PanelProps & { session: SessionView }) {
+}: PanelProps) {
   const recording = useAppStore((s) => s.sessionActive)
-  const { data: poppedOut = false } = useQuery(launchedBrowserPopOutQueryOptions)
+  const { data: poppedOut = false } = useQuery({
+    ...launchedBrowserPopOutQueryOptions,
+    enabled: session !== null
+  })
+  const shownTab: RightPanelTab = session ? tab : 'details'
 
   // The stub in the tab stands for a popped-out panel, and a closed browser has no window.
-  const popsOut = (session.kind === 'open' || session.kind === 'closing') && !poppedOut
+  const popsOut =
+    session !== null && (session.kind === 'open' || session.kind === 'closing') && !poppedOut
   // An overlay closes as one of its controls hands over to a dialog or another window.
   const onDone = form === 'overlay' ? onCollapse : undefined
   // The details panel has a collapse control of its own.
-  const ownCollapse = tab === 'session' || !details
+  const ownCollapse = shownTab === 'session' || !details
+  // With no tab to name it, the details' container is not a tab panel.
+  const plain = session
+    ? {}
+    : { role: undefined, 'aria-labelledby': undefined, tabIndex: undefined }
 
   return (
     <Tabs
-      value={tab}
+      value={shownTab}
       onValueChange={(value) => onTabChange(value as RightPanelTab)}
       className="h-full min-h-0 flex-1 gap-0"
     >
-      <div className="flex shrink-0 items-center gap-2 border-b border-border pr-2">
-        <TabsList
-          variant="line"
-          aria-label="Right panel"
-          className="h-auto justify-start px-2.5 pt-1"
-        >
-          <TabsTrigger value="details" className={TAB_CLASS}>
-            Details
-          </TabsTrigger>
-          <TabsTrigger value="session" className={TAB_CLASS}>
-            {recording && (
-              <span
-                data-testid="session-tab-rec"
-                aria-hidden="true"
-                className="h-1.5 w-1.5 shrink-0 rounded-full bg-danger-fg"
-              />
-            )}
-            Capture Session
-          </TabsTrigger>
-        </TabsList>
-        <span className="flex-1" />
-        {popsOut && (
-          <Button
-            variant="link"
-            disabled={session.kind === 'closing'}
-            className="shrink-0 px-0 text-[11px] text-text-muted underline"
-            onClick={() => {
-              onDone?.()
-              void popOutPanel()
-            }}
+      {session && (
+        <div className="flex shrink-0 items-center gap-2 border-b border-border pr-2">
+          <TabsList
+            variant="line"
+            aria-label="Right panel"
+            className="h-auto justify-start px-2.5 pt-1"
           >
-            Pop out
-          </Button>
-        )}
-        {ownCollapse && (
-          <button
-            type="button"
-            onClick={onCollapse}
-            title="Collapse panel"
-            aria-label="Collapse panel"
-            className={ICON_BUTTON_CLASS}
-          >
-            <ChevronRight className="h-3.5 w-3.5" />
-          </button>
-        )}
-      </div>
+            <TabsTrigger value="details" className={TAB_CLASS}>
+              Details
+            </TabsTrigger>
+            <TabsTrigger value="session" className={TAB_CLASS}>
+              {recording && (
+                <span
+                  data-testid="session-tab-rec"
+                  aria-hidden="true"
+                  className="h-1.5 w-1.5 shrink-0 rounded-full bg-danger-fg"
+                />
+              )}
+              Capture Session
+            </TabsTrigger>
+          </TabsList>
+          <span className="flex-1" />
+          {popsOut && (
+            <Button
+              variant="link"
+              disabled={session.kind === 'closing'}
+              className="shrink-0 px-0 text-[11px] text-text-muted underline"
+              onClick={() => {
+                onDone?.()
+                void popOutPanel()
+              }}
+            >
+              Pop out
+            </Button>
+          )}
+          {ownCollapse && (
+            <button
+              type="button"
+              onClick={onCollapse}
+              title="Collapse panel"
+              aria-label="Collapse panel"
+              className={ICON_BUTTON_CLASS}
+            >
+              <ChevronRight className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+      )}
       {/* Kept mounted while the other tab shows, so a note being typed is not dropped. */}
       <TabsContent
         value="details"
         forceMount
-        hidden={tab !== 'details'}
+        hidden={shownTab !== 'details'}
         className="flex min-h-0 flex-col"
+        {...plain}
       >
-        {details ?? (
-          <p className="px-5 py-4 text-xs text-text-muted">Select a Capture to see its details.</p>
-        )}
+        {details ??
+          (session && (
+            <p className="px-5 py-4 text-xs text-text-muted">
+              Select a Capture to see its details.
+            </p>
+          ))}
       </TabsContent>
-      <TabsContent value="session" className="flex min-h-0 flex-col">
-        <CaptureSessionPanel form={form} tabbed onDone={onDone} />
-      </TabsContent>
+      {session && (
+        <TabsContent value="session" className="flex min-h-0 flex-col">
+          <CaptureSessionPanel form={form} tabbed onDone={onDone} />
+        </TabsContent>
+      )}
     </Tabs>
   )
 }

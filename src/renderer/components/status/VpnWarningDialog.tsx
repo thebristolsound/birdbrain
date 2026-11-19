@@ -16,8 +16,9 @@ export const VPN_SESSION_CAVEAT =
   'Birdbrain sees this computer’s network path, not your browser’s. A VPN set up only in ' +
   'your browser is not seen.'
 
-// The one VPN warning (ADR-0032 rules 2 and 3), mounted once at the root. It never blocks:
-// Continue always lets the contact go ahead.
+// The VPN warning before a contact (ADR-0032 rules 2 and 3), mounted once at the root. A launch
+// carries the warning in the launch dialog instead. It never blocks: Continue always lets the
+// contact go ahead.
 export function VpnWarningDialog() {
   const open = useVpnWarningStore((s) => s.open)
   const request = useVpnWarningStore((s) => s.request)

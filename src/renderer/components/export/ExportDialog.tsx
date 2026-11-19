@@ -140,6 +140,9 @@ export function ExportDialog({ caseId, caseName, selectedCaptureIds, onClose }: 
   // The Case Archive is a third choice beside the two zips. It has no item set, so it is kept
   // apart from the selection.
   const [archiveChosen, setArchiveChosen] = useState(false)
+  // Whether the Evidence Package holds Operator notes, kept while another choice is selected so
+  // that coming back to Evidence Package does not put left-out notes back in.
+  const [evidenceNotes, setEvidenceNotes] = useState(true)
   const [archiveRun, setArchiveRun] = useState(false)
   const [purposeOrAuthority, setPurposeOrAuthority] = useState('')
   const [showChecklist, setShowChecklist] = useState(false)
@@ -276,8 +279,11 @@ export function ExportDialog({ caseId, caseName, selectedCaptureIds, onClose }: 
   }
 
   const applyPreset = (id: ExportPresetId) => {
+    const notes = selection.exportClass === 'evidence' ? selection.include.notes : evidenceNotes
+    setEvidenceNotes(notes)
     setArchiveChosen(false)
-    setSelection(EXPORT_PRESETS[id].selection)
+    const preset = EXPORT_PRESETS[id].selection
+    setSelection(id === 'full' ? { ...preset, include: { ...preset.include, notes } } : preset)
   }
 
   const toggleInclude = (key: 'captures' | 'screenshots' | 'auditTrail' | 'notes') => {

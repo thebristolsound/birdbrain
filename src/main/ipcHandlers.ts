@@ -1735,11 +1735,12 @@ export function registerIpcHandlers(deps: {
     if (
       typeof answer?.caseId !== 'string' ||
       !isVpnWarningOccasion(answer.occasion) ||
-      (choice !== 'continue' && choice !== 'mute-network')
+      (choice !== 'continue' && choice !== 'mute-network') ||
+      (answer.network !== undefined && typeof answer.network !== 'string')
     ) {
       throw new IpcFailure('Invalid VPN warning answer', 'INVALID_VPN_WARNING')
     }
-    vpnWarning.answer(answer.caseId, answer.occasion, choice)
+    vpnWarning.answer(answer.caseId, answer.occasion, choice, answer.network)
   })
 
   // Database Admin

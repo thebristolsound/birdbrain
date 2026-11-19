@@ -10,6 +10,12 @@ line. Supersedes the goal of a template for a person to sign in
 `docs/agents/osint-investigation-standards.md`, which now describes a factual export statement
 instead.
 
+**Amended 2026-11-19:** the export dialog no longer has the preset that the last consequence
+below names. Slice 4.2 of
+[the consolidation plan](../plans/2026-11-15-chrome-capture-export-consolidation.md) made an
+Evidence Package without Notes a checkbox under the Evidence Package choice, so that
+consequence, which leaves the preset's name to ADR-0010, has nothing left to refer to.
+
 ## Context
 
 Until this decision, `certification.html` was titled Certificate of authenticity, said it was

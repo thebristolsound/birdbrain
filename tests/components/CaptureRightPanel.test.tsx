@@ -139,6 +139,51 @@ describe('the right panel with no Capture Session to show', () => {
   })
 })
 
+describe('the right panel as a Capture Session comes and goes', () => {
+  // The inline note editor drops text it has not saved when it unmounts, so the details must be
+  // the same mounted element before, during and after a session.
+  it('keeps the details mounted, with what was typed, when a session starts and when it ends', () => {
+    fakeBridge({
+      cases: { list: vi.fn(async () => [FERRY]) },
+      settings: {
+        get: vi.fn(async () => ({ operatorName: 'A. Marsh', egress: { kind: 'direct' } }))
+      },
+      launchedBrowser: {
+        status: vi.fn(async () => OPEN),
+        popOutState: vi.fn(async () => false)
+      }
+    })
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const tree = (status: LaunchedBrowserStatus) => (
+      <QueryClientProvider client={client}>
+        <CaptureRightPanel
+          session={shown(status)}
+          form="rail"
+          tab="details"
+          onTabChange={() => {}}
+          onCollapse={() => {}}
+          details={<textarea aria-label="Inline note" />}
+        />
+      </QueryClientProvider>
+    )
+    const { rerender } = render(tree({ state: 'none' }))
+    const note = screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'Inline note' })
+    fireEvent.change(note, { target: { value: 'seen at 14:02' } })
+    // Alone, the details' container is not announced as a tab panel.
+    expect(screen.queryByRole('tabpanel')).toBeNull()
+
+    rerender(tree(OPEN))
+    expect(screen.getByRole('tablist', { name: 'Right panel' })).toBeTruthy()
+    expect(screen.getByRole('textbox', { name: 'Inline note' })).toBe(note)
+    expect(note.value).toBe('seen at 14:02')
+
+    rerender(tree({ state: 'none' }))
+    expect(screen.queryByRole('tablist')).toBeNull()
+    expect(screen.getByRole('textbox', { name: 'Inline note' })).toBe(note)
+    expect(note.value).toBe('seen at 14:02')
+  })
+})
+
 describe('the right panel with a Capture Session', () => {
   it('announces Details and Capture Session as two tabs of one tab list', async () => {
     mount()

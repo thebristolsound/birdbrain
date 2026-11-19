@@ -84,6 +84,7 @@ export function CaptureList({
   )
   const selectedCaptureId = useAppStore((s) => s.selectedCaptureId)
   const filteredCaptureIds = useAppStore((s) => s.filteredCaptureIds)
+  const activeSelectorFilters = useAppStore((s) => s.activeSelectorFilters)
   const tagFilteredCaptureIds = useAppStore((s) => s.tagFilteredCaptureIds)
   const { favorites, toggleFavorite } = useFavorites(caseId)
   // Rows carry relative times; one interval here keeps every row current
@@ -483,6 +484,7 @@ export function CaptureList({
                   isFavorite={favorites.has(cap.id)}
                   onToggleFavorite={() => toggleFavorite(cap.id)}
                   matchingSelectors={matchingSelectorsMap.get(cap.id)}
+                  filterSelectorIds={activeSelectorFilters}
                 />
               </EntityContextMenu>
             </motion.div>

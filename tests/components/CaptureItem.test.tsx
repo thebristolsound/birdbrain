@@ -145,15 +145,116 @@ describe('CaptureItem — detailed view', () => {
     expect(dot.className).toContain('bg-emerald-400')
   })
 
-  it('shows two selector badges plus an overflow chip naming the rest', () => {
+  it('names the one matching Selector in one chip, with no count', () => {
+    renderItem({ matchingSelectors: [selector('s1', 'alpha')] })
+
+    expect(screen.getAllByTestId('capture-item-selector-chip')).toHaveLength(1)
+    expect(screen.getByTestId('capture-item-selector-name').textContent).toBe('alpha')
+    expect(screen.queryByTestId('capture-item-selector-more')).toBeNull()
+  })
+
+  it('names the first of several matching Selectors and counts the others', () => {
     renderItem({
       matchingSelectors: [selector('s1', 'alpha'), selector('s2', 'beta'), selector('s3', 'gamma')]
     })
 
-    expect(screen.getByText('alpha')).toBeDefined()
-    expect(screen.getByText('beta')).toBeDefined()
+    expect(screen.getAllByTestId('capture-item-selector-chip')).toHaveLength(1)
+    expect(screen.getByTestId('capture-item-selector-name').textContent).toBe('alpha')
+    expect(screen.getByTestId('capture-item-selector-more').textContent).toBe('+2')
+    expect(screen.queryByText('beta')).toBeNull()
     expect(screen.queryByText('gamma')).toBeNull()
-    expect(screen.getByText('+1').getAttribute('title')).toBe('gamma')
+  })
+
+  it('names a Selector by its label, and by its pattern when it has none', () => {
+    renderItem({ matchingSelectors: [{ ...selector('s1', 'Alpha'), pattern: 'al+pha' }] })
+    expect(screen.getByTestId('capture-item-selector-name').textContent).toBe('Alpha')
+    cleanup()
+
+    renderItem({ matchingSelectors: [{ ...selector('s1', 'al+pha'), label: undefined }] })
+    const chip = screen.getByTestId('capture-item-selector-chip')
+    expect(screen.getByTestId('capture-item-selector-name').textContent).toBe('al+pha')
+    expect(chip.getAttribute('title')).toBe('al+pha')
+  })
+
+  it('names the Selector that filters the list, though another was created later', () => {
+    renderItem({
+      matchingSelectors: [selector('s1', 'alpha'), selector('s2', 'beta'), selector('s3', 'gamma')],
+      filterSelectorIds: ['s3']
+    })
+
+    expect(screen.getByTestId('capture-item-selector-name').textContent).toBe('gamma')
+    expect(screen.getByTestId('capture-item-selector-more').textContent).toBe('+2')
+  })
+
+  it('names the newest of the filtering Selectors a row matches', () => {
+    renderItem({
+      matchingSelectors: [selector('s1', 'alpha'), selector('s2', 'beta'), selector('s3', 'gamma')],
+      filterSelectorIds: ['s3', 's2', 's9']
+    })
+    expect(screen.getByTestId('capture-item-selector-name').textContent).toBe('beta')
+  })
+
+  it('keeps the newest name when the filter names no Selector the row matches', () => {
+    renderItem({
+      matchingSelectors: [selector('s1', 'alpha'), selector('s2', 'beta')],
+      filterSelectorIds: ['s9']
+    })
+    expect(screen.getByTestId('capture-item-selector-name').textContent).toBe('alpha')
+    expect(screen.getByTestId('capture-item-selector-more').textContent).toBe('+1')
+  })
+
+  it('puts every matching name in the chip title and description, shown name first', () => {
+    renderItem({
+      matchingSelectors: [selector('s1', 'alpha'), selector('s2', 'beta'), selector('s3', 'gamma')],
+      filterSelectorIds: ['s2']
+    })
+
+    const chip = screen.getByTestId('capture-item-selector-chip')
+    expect(chip.getAttribute('title')).toBe('beta, alpha, gamma')
+    const description = document.getElementById(chip.getAttribute('aria-describedby') ?? '')
+    expect(description?.textContent).toBe('Matching Selectors: beta, alpha, gamma')
+    // In the row, and hidden from sight only: the row is a button whose name
+    // comes from its content, so a screen reader reads the names with the row.
+    expect(screen.getByTestId('capture-item').contains(description)).toBe(true)
+    expect(description?.className).toBe('sr-only')
+    expect(description?.closest('[aria-hidden="true"], [hidden]')).toBeNull()
+  })
+
+  it('describes a single match too, and gives each row its own description', () => {
+    renderItem({ matchingSelectors: [selector('s1', 'alpha')] })
+    renderItem({ matchingSelectors: [selector('s2', 'beta')] })
+
+    const [first, second] = screen.getAllByTestId('capture-item-selector-chip')
+    expect(first.getAttribute('title')).toBe('alpha')
+    const firstId = first.getAttribute('aria-describedby') ?? ''
+    const secondId = second.getAttribute('aria-describedby') ?? ''
+    expect(firstId).not.toBe(secondId)
+    expect(document.getElementById(firstId)?.textContent).toBe('Matching Selectors: alpha')
+    expect(document.getElementById(secondId)?.textContent).toBe('Matching Selectors: beta')
+  })
+
+  it('draws no Selector chip and no description on a row with no match', () => {
+    renderItem({ filterSelectorIds: ['s1'] })
+
+    expect(screen.queryByTestId('capture-item-selector-chip')).toBeNull()
+    expect(screen.getByTestId('capture-item-chip-line').textContent).toBe('\u00a0')
+    expect(screen.getByTestId('capture-item').textContent).not.toContain('Matching Selectors')
+  })
+
+  // jsdom lays nothing out, so these pin the structure that makes the line one
+  // line high: it cannot wrap, it clips, and the name is what gives way.
+  it('keeps the chip line to one line, with the name truncating before the count', () => {
+    renderItem({
+      matchingSelectors: [selector('s1', 'a'.repeat(200)), selector('s2', 'beta')]
+    })
+
+    const line = screen.getByTestId('capture-item-chip-line').className.split(' ')
+    expect(line).not.toContain('flex-wrap')
+    expect(line).toEqual(expect.arrayContaining(['flex', 'overflow-hidden', 'whitespace-nowrap']))
+    const chip = screen.getByTestId('capture-item-selector-chip').className.split(' ')
+    expect(chip).toEqual(expect.arrayContaining(['flex', 'min-w-0']))
+    expect(screen.getByTestId('capture-item-selector-name').className).toBe('truncate')
+    expect(screen.getByTestId('capture-item-selector-more').className).toBe('shrink-0')
   })
 
   it('reserves the chip line on a row with no matches, sized like a real chip', () => {
@@ -163,11 +264,25 @@ describe('CaptureItem — detailed view', () => {
     expect(strut.getAttribute('aria-hidden')).toBe('true')
     expect(strut.className).toContain('invisible')
     const strutBox = strut.className.replace('invisible', '').trim()
+    const emptyLine = screen.getByTestId('capture-item-chip-line').className
     cleanup()
 
-    renderItem({ matchingSelectors: [selector('s1', 'alpha')] })
+    renderItem({ matchingSelectors: [selector('s1', 'alpha'), selector('s2', 'beta')] })
     expect(screen.queryByTestId('capture-item-chip-strut')).toBeNull()
-    expect(screen.getByText('alpha').className).toContain(strutBox)
+    expect(screen.getByTestId('capture-item-selector-chip').className).toContain(strutBox)
+    expect(screen.getByTestId('capture-item-chip-line').className).toBe(emptyLine)
+  })
+
+  it('gives the Favorite button a 24 pixel target around its 11 pixel star', () => {
+    renderItem()
+    const button = screen.getByLabelText('Favorite capture')
+    const classes = button.className.split(' ')
+    expect(classes).toEqual(expect.arrayContaining(['h-6', 'w-6', 'shrink-0', 'relative']))
+    // The margin gives back the 4.5 pixels a side the target adds to the star's
+    // old 15 pixel box, so the title keeps its width.
+    expect(classes).toContain('-m-[4.5px]')
+    const star = button.querySelector('svg')
+    expect(star?.getAttribute('class')).toContain('h-[11px] w-[11px]')
   })
 
   it('toggles the favourite without also selecting the row', () => {
@@ -271,6 +386,23 @@ describe('CaptureItem — selection affordances survive both views', () => {
     (view) => {
       renderItem({ view, showCheckbox: true })
       expect(screen.getByTestId('capture-select-checkbox').className).toContain('opacity-100')
+    }
+  )
+
+  it.each([
+    ['detailed', '-mt-px'],
+    ['list', 'self-center']
+  ] as const)(
+    'gives the checkbox a 24 pixel target around its 14 pixel box in the %s view',
+    (view, placement) => {
+      renderItem({ view })
+      const box = screen.getByTestId('capture-select-checkbox')
+      const classes = box.className.split(' ')
+      expect(classes).toEqual(expect.arrayContaining(['h-6', 'w-6', 'shrink-0', 'relative']))
+      // The margin gives back the 5 pixels a side the target adds, so the
+      // thumbnail and the title stay where they were.
+      expect(classes).toEqual(expect.arrayContaining(['-m-[5px]', placement]))
+      expect(box.firstElementChild?.className).toContain('h-3.5 w-3.5')
     }
   )
 

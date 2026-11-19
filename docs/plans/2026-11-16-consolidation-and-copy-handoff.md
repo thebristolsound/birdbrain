@@ -59,29 +59,25 @@ behind `main` in these places:
 
 | Waiting on | Holds up |
 | --- | --- |
-| Open question 2 of the parent plan: what the Data screen's two Verify buttons say | Slice 1.5 |
 | A ruling on the next tranche's verdicts, once the copy cut plan has them | Copy slices for Settings, Sharing, Data and the extension's pages |
 | The two open points under "Raised in review" in the copy cut plan: the scrolling line and the tour's Selector sentence | One row each of C7 and C4 |
-| Whether the launch dialog keeps asking about the VPN warning again when Launch is pressed. #2239 builds it that way, which keeps the check a launch made when Launch was pressed; the phase 3 plan leaves the point to the maintainer | Nothing |
 | Whether the Investigate view keeps its panes at the default 1,200 pixel window: beside the 72 pixel rail it has 1,128 pixels, under the 1,140 of `TABS_BELOW_WIDTH`, so it shows tabs | Nothing. The review of #2231 raised it |
 
 Apart from those two rows, nothing in the copy cut's first tranche waits for the maintainer.
 
 ## What can start now
 
-#2239 builds every consolidation slice that waited for nothing: 1.1, 1.2, 1.4, 1.6, 2.3, 2.4,
-3.1, 3.2, 4.1, 4.2, 5.1b, 7.1, 7.3 and 7.4, with the dashboard's label from 4.3. "The remaining
-slices, in one pull request" below says what it found. What is left of the consolidation:
+#2239 builds consolidation slices 1.1, 1.2, 1.4, 1.6, 2.3, 2.4, 3.1, 3.2, 4.1, 4.2, 5.1b, 7.1, 7.3
+and 7.4, the dashboard's label from 4.3, and the issue comments of 4.4. Its copy cut leaves slice
+3.3 nothing to build. #2240, which follows it, builds slices 1.5 and 7.2 after the maintainer's
+rulings of 2026-11-19 (decisions 8 to 10 of the parent plan) and fixes parts of what #2239 built.
+Slice 1.3 needs no work: the capture control from slice 5.4 already gives its held button a
+reason a keyboard can reach. What is left of the consolidation:
 
-| Slice | What | Waits for |
-| --- | --- | --- |
-| 1.5 | The scope on the Data screen's two Verify buttons | Open question 2 of the parent plan |
-| 7.2 | A count of Selector matches on each list row | Review pass 3 of `2026-11-15-unreviewed-surfaces-review-passes.md` |
-| 7.1, the inner sections | Identity and Capture environment folding on their own | The maintainer asking for it: it edits `ForensicsTab.tsx`, so it is `evidence-affecting` |
-| 0.1 | The feasibility assessment of the bundle | Nothing. The bundle is ruled on, so the assessment would record what was built |
-
-Slice 1.3 is not built and nothing replaces it: slice 5.4 removed the button it changes. Slice
-3.3 has nothing left to build, because the copy cut removed the launch dialog's tips.
+| What | Waits for |
+| --- | --- |
+| Slice 7.1's inner sections: Identity and Capture environment folding on their own | The maintainer asking for it: it edits `ForensicsTab.tsx`, so it is `evidence-affecting` |
+| Slice 0.1's feasibility assessment of the bundle | The maintainer asking for it. The bundle is ruled on and built, so the assessment would only record that |
 
 Copy cut slices:
 
@@ -308,6 +304,42 @@ What the slices found that the plans did not say:
 - The extension's pages still use `#71717a` for faint text. Slice 1.1 changed the app only.
 - "Check the proxy in Settings → Operator." in `startDialogModel.ts` still names the wrong tab.
   The copy cut plan leaves that string alone.
+
+## The follow-up to the remaining slices
+
+#2240 was cut from the head of #2239 and has `main` as its base since #2239 merged. It holds
+fixes to the dialogs and the right panel that #2239 built, the assessment from review pass 3,
+and slices 7.2 and 1.5. It edits two `blocking` files. In `DataExplorer.tsx` it changes both
+Verify labels and narrows "Verify listed" to the Exhibits the table lists (decision 10). In
+`ExportDialog.tsx` it keeps the Evidence Package's notes choice while another choice is
+selected.
+
+What it found:
+
+- Main mutes the network of its latest VPN check. A dialog that asks twice has to say which
+  network a tick was made for, so the check now returns a reference to the network and the
+  launch dialog mutes only when both checks give the same one.
+- A panel that is two different trees, with and without some state, remounts its children when
+  the state changes. The inline note editor drops unsaved text when it unmounts, so the right
+  panel on Captures is one tree now. The route can still unmount it: with the saved preference
+  set to a folded panel, the panel folds to its strip when a Capture Session ends, and text
+  typed in the note editor is lost. #2240 leaves that as it was.
+- The Data screen's tree menu still verifies every Exhibit under a node. With a search typed,
+  "Verify listed" and the menu's "Verify" on the selected node hand over different sets.
+- Main holds one network for each Case and occasion, and two surfaces check the session
+  occasion. The launch dialog's mute answer now names the network it showed, and main mutes
+  only when that is the network it holds.
+- A sub-option under a radio is lost when the radio's handler resets the whole selection. The
+  Export dialog keeps the notes choice of the Evidence Package while another choice is
+  selected.
+- A review reads commit dates. Two commits in #2239 put a test before the change it guards,
+  and the test's commit carries the later date, so the order alone did not show that the test
+  passed against the earlier code. Say in the pull request that the test was run at its own
+  commit, with the result.
+- An amended decision record must not state an open point as settled. ADR-0032 said the launch
+  dialog asks twice while the plans still left that to the maintainer; decision 8 now rules it.
+- A change that removes an option named in a decision record adds an amendment note to that
+  record. ADR-0010 and ADR-0043 still described the third export preset.
 
 ## Slices that share a file
 

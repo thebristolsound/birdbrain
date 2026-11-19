@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent, cleanup, within, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, cleanup, within, waitFor, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
-import type { Capture } from '@shared/types'
+import type { Capture, Selector } from '@shared/types'
 
 // The capture menu owns its own graph and its own coverage; what is under test
 // here is the per-list query, the narrowing strip and the empty-state branch.
@@ -273,6 +273,40 @@ describe('CaptureList narrowing strip', () => {
     const strip = screen.getByTestId('capture-list-narrowing')
     expect(strip.textContent).toContain('Search "acme"')
     expect(strip.textContent).toContain('1 selector filter')
+  })
+
+  it('hands the Selector filter to each row, which names that Selector', async () => {
+    const selector = (id: string, label: string): Selector => ({
+      id,
+      caseId: 'case1',
+      pattern: label,
+      isRegex: false,
+      enabled: true,
+      label,
+      createdAt: '2026-08-01T00:00:00.000Z'
+    })
+    fakeBridge({
+      captures: {
+        list: vi.fn(async () => CAPTURES),
+        listFavorites: vi.fn(async () => []),
+        getMatchingSelectors: vi.fn(async (captureId: string) =>
+          captureId === 'cap-b' ? [selector('sel-2', 'newer'), selector('sel-1', 'older')] : []
+        ),
+        getThumbnail: vi.fn(async () => null)
+      }
+    })
+    renderList()
+    const row = await screen.findByText('Unrelated notice')
+    const name = () =>
+      within(row.closest('[data-testid="capture-item"]') as HTMLElement).queryByTestId(
+        'capture-item-selector-name'
+      )?.textContent
+    await waitFor(() => expect(name()).toBe('newer'))
+
+    act(() => {
+      useAppStore.setState({ activeSelectorFilters: ['sel-1'], filteredCaptureIds: ['cap-b'] })
+    })
+    await waitFor(() => expect(name()).toBe('older'))
   })
 
   it('clears query, selector filters and menu filters from its one control', async () => {

@@ -118,8 +118,11 @@ with its findings ranked, and stops there. Fixes are planned afterwards, from th
   - Does the export preflight's notice still fit the dialog when hundreds of Captures lack
     Trusted Time?
 - **Acceptance.**
-  - [ ] The assessment gives a time and a verdict per section at each size.
-  - [ ] It says whether slice 7.2 should go ahead as written.
+  - [x] The assessment gives a time and a verdict per section at each size.
+  - [x] It says whether slice 7.2 should go ahead as written.
+- **Done on 2026-11-19.** The assessment is
+  `docs/specs/2026-11-19-large-case-review-assessment.md`. Its verdict on slice 7.2 is to go
+  ahead with changes, and decision 9 of the consolidation plan rules on them.
 
 ## Order
 

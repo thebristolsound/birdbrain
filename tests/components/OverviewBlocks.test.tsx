@@ -183,6 +183,22 @@ describe('OverviewSelectorsBlock', () => {
     expect(screen.getByText('off').className).toContain('opacity-40')
   })
 
+  it('says in words that a selector is switched off, for a reader who cannot see the dimming', () => {
+    withClient(
+      <OverviewSelectorsBlock
+        selectors={[
+          selector({ id: 's1', pattern: 'on' }),
+          selector({ id: 's2', pattern: 'off', enabled: false })
+        ]}
+        matchCounts={{}}
+      />
+    )
+
+    const [on, off] = screen.getAllByTestId('overview-selector-row')
+    expect(within(on).queryByText('Switched off')).toBeNull()
+    expect(within(off).getByText('Switched off').className).toContain('sr-only')
+  })
+
   it('offers no control that adds or toggles a selector, with or without selectors', () => {
     for (const selectors of [[], [selector({}), selector({ id: 's2', enabled: false })]]) {
       withClient(<OverviewSelectorsBlock selectors={selectors} matchCounts={{}} />)

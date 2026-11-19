@@ -258,6 +258,21 @@ describe('CaseOverview', () => {
     }
   )
 
+  it('puts the Selectors card above the Tags card, with no count in its heading', async () => {
+    renderOverview()
+    await waitFor(() => expect(screen.getByTestId('overview-tags-block')).toBeTruthy())
+
+    const selectorsCard = screen.getByTestId('overview-selectors-block')
+      .parentElement as HTMLElement
+    const tagsCard = screen.getByTestId('overview-tags-block').parentElement as HTMLElement
+    expect(
+      selectorsCard.compareDocumentPosition(tagsCard) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
+    // The heading row is the title and the link: the count is on each row and in the stat tile.
+    const heading = selectorsCard.firstElementChild as HTMLElement
+    expect(heading.textContent).toBe('SelectorsEdit in Signals')
+  })
+
   it('shows each Selector with its Captures and each Tag with its count', async () => {
     renderOverview()
 

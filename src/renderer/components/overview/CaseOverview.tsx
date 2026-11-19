@@ -45,7 +45,6 @@ interface SectionCardProps {
   title: string
   action?: string
   onAction?: () => void
-  badge?: ReactNode
   className?: string
   children: ReactNode
 }
@@ -55,7 +54,6 @@ function SectionCard({
   title,
   action,
   onAction,
-  badge,
   className,
   children
 }: SectionCardProps) {
@@ -66,7 +64,6 @@ function SectionCard({
         <span className="font-display text-[10px] font-semibold uppercase tracking-[0.06em] text-text-faint">
           {title}
         </span>
-        {badge}
         <span className="flex-1" />
         {action ? (
           <button
@@ -194,21 +191,16 @@ export function CaseOverview() {
               onReview={goToCaptures}
             />
           ) : null}
-          <SectionCard icon={Tags} title="Tags" action="Edit in Signals" onAction={goToSignals}>
-            <OverviewTagsBlock tags={tags} usageCounts={tagUsage} />
-          </SectionCard>
           <SectionCard
             icon={Crosshair}
             title="Selectors"
             action="Edit in Signals"
             onAction={goToSignals}
-            badge={
-              <span className="rounded-md bg-accent-subtle px-1.5 py-px font-mono text-[10px] font-semibold text-accent">
-                {selectors.length}
-              </span>
-            }
           >
             <OverviewSelectorsBlock selectors={selectors} matchCounts={matchCounts} />
+          </SectionCard>
+          <SectionCard icon={Tags} title="Tags" action="Edit in Signals" onAction={goToSignals}>
+            <OverviewTagsBlock tags={tags} usageCounts={tagUsage} />
           </SectionCard>
         </div>
       </div>

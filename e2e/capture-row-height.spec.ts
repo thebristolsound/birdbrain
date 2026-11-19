@@ -229,11 +229,15 @@ test.describe('Capture list row height', () => {
     const item = page.getByTestId('capture-item').filter({ hasText: 'Row corner' })
     await expect(item).toBeVisible({ timeout: 10000 })
 
-    // Two pixels inside the target's top left corner is outside the glyph and
-    // outside the old 15 pixel button, so only the 24 pixel target takes it.
-    await item.getByRole('button', { name: 'Favorite capture' }).click({ position: { x: 2, y: 2 } })
+    // Each point is measured from the glyph, not from the target, so it does not move with
+    // the target's size. Five pixels up and left of the star is past the two pixels of padding
+    // the button had before, and three pixels up and left of the box is past the checkbox it
+    // was before, so only a 24 pixel target takes either click.
+    const star = await item.locator('button[aria-label="Favorite capture"] svg').boundingBox()
+    await page.mouse.click(star!.x - 5, star!.y - 5)
     await expect(item.getByRole('button', { name: 'Unfavorite capture' })).toBeVisible()
-    await item.getByTestId('capture-select-checkbox').click({ position: { x: 2, y: 2 } })
+    const box = await item.locator('[data-testid="capture-select-checkbox"] > span').boundingBox()
+    await page.mouse.click(box!.x - 3, box!.y - 3)
     await expect(item.getByTestId('capture-select-checkbox')).toHaveAttribute(
       'aria-checked',
       'true'

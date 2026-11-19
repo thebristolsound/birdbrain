@@ -39,7 +39,7 @@ import { seedUnanchoredDerivedFile } from '../../helpers/mixedKindCase'
 import { buildSyntheticToken } from '../../helpers/timestampFixtures'
 
 // The known answers of `generateReport` (ADR-0004, ADR-0014): two fixed Cases, exported as
-// eight packages and one standalone HTML report, with every byte of every output pinned in
+// eleven packages and one standalone HTML report, with every byte of every output pinned in
 // tests/fixtures/export-known-answer/answers.json. A change that alters any member of any
 // package, the order of the members, or the Package Hash fails here and names the member.
 // The standalone report is pinned once, with Captures, screenshots, the audit trail and notes
@@ -52,8 +52,8 @@ import { buildSyntheticToken } from '../../helpers/timestampFixtures'
 // zip, the Package Hash the `export` Manifest Entry signs, and what Package Verification
 // says of the unpacked zip: its outcome, and every check it ran with the status it ended in.
 //
-// One Case is written through the app's own writers and three shared test helpers. Seven
-// answers export it, and an eighth exports the copy an archive import makes of it, whose rows
+// One Case is written through the app's own writers and three shared test helpers. Ten
+// answers export it, and an eleventh exports the copy an archive import makes of it, whose rows
 // the import renamed. The other is a Shared Case whose two chains this file writes by hand,
 // and one answer exports that. What the helpers write is part of each answer that encloses
 // or reports it: `seedEngineCapture` with the `ENGINE_FILES` and `ENGINE_CAPTURE_ID` of
@@ -84,7 +84,9 @@ import { buildSyntheticToken } from '../../helpers/timestampFixtures'
 //
 // Not covered: burned annotations and thumbnails made at export or ingest, because sharp's
 // encoded bytes differ between the system build some machines test with and the prebuilt
-// one CI uses (docs/agents/testing.md, "sharp under Electron on Linux").
+// one CI uses (docs/agents/testing.md, "sharp under Electron on Linux"). The three answers for
+// the Export dialog's selections pass `annotations: 'burned'` over a Case that holds no
+// annotation, so nothing is burned in them.
 
 const ids = vi.hoisted(() => {
   let scope = 0
@@ -797,6 +799,58 @@ describe.skipIf(sep !== '/')('export known answers', () => {
     expect(indexed.sort()).toEqual([source.page.id, source.plain.id, source.engine.id].sort())
     expect(answer.verification.outcome).toBe('verified')
     expectKnownAnswer('renamed-rows', answer)
+  })
+
+  // The three selections the Export dialog submits for a whole Case with its purpose field
+  // blank: literal copies, so a change to the dialog's own table cannot move these answers
+  // with it.
+  const dialogInclude = (
+    over: Partial<ExportOptions['include']> = {}
+  ): ExportOptions['include'] => ({
+    captures: true,
+    screenshots: true,
+    auditTrail: true,
+    notes: true,
+    annotations: 'burned',
+    ...over
+  })
+
+  it('pins the Evidence Package the dialog submits with Operator notes', async () => {
+    const { caseId } = await seedLocalCase()
+    const { answer, zip } = await exportZip(caseId, {
+      exportClass: 'evidence',
+      include: dialogInclude()
+    })
+
+    expect(zip.has(PACKAGE_ROOT_FILES.notes)).toBe(true)
+    expect(answer.verification.outcome).toBe('verified')
+    expectKnownAnswer('dialog-evidence-with-notes', answer)
+  })
+
+  it('pins the Evidence Package the dialog submits without Operator notes', async () => {
+    const { caseId } = await seedLocalCase()
+    const { answer, zip } = await exportZip(caseId, {
+      exportClass: 'evidence',
+      include: dialogInclude({ notes: false })
+    })
+
+    expect(zip.has(PACKAGE_ROOT_FILES.notes)).toBe(false)
+    expect(answer.verification.outcome).toBe('verified')
+    expectKnownAnswer('dialog-evidence-without-notes', answer)
+  })
+
+  it('pins the Working Copy the dialog submits', async () => {
+    const { caseId } = await seedLocalCase()
+    const { answer, zip, exportEntry } = await exportZip(caseId, {
+      exportClass: 'working-copy',
+      include: dialogInclude({ auditTrail: false })
+    })
+
+    expect(exportEntry.exportClass).toBe('working-copy')
+    expect(zip.has(WORKING_COPY_MARKER_FILENAME)).toBe(true)
+    expect(zip.has(PACKAGE_ROOT_FILES.notes)).toBe(true)
+    expect(answer.verification.outcome).toBe('not-verifiable')
+    expectKnownAnswer('dialog-working-copy', answer)
   })
 
   // Last on purpose: it reads what the tests above produced. A test that was removed or

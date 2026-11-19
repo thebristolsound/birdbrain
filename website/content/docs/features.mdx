@@ -109,7 +109,9 @@ prove and what they do not.
   capture keeps the address and title of the page it saved.
 - **Launch browser** is the filled button in the top bar, on every screen, while no Capture
   Session runs. On a screen with no case open, the launch dialog asks which case the browser
-  captures into.
+  captures into. If no operator name is saved, the dialog asks for it and saves it when you
+  launch. When Birdbrain sees no VPN on a Direct Egress and a warning is due, the dialog carries
+  the warning, and its button reads **Launch without VPN**.
 - In a browser you start with **Launch browser**, capture a tab with **Capture** in
   the Capture Session panel, which names the tab's title and address before you click, or with
   the shortcut Ctrl+Shift+F9 while the browser has focus. When the shortcut finds more than one
@@ -152,7 +154,8 @@ prove and what they do not.
 - Create a case with a wizard that offers starter selectors for email addresses, crypto
   addresses, IP addresses, domains, phone numbers, and usernames.
 - The case overview shows changes since your last visit, recent captures, an activity timeline,
-  an integrity summary, top sources, quick notes, tags, selectors, and a link map.
+  an integrity summary, top sources, quick notes, tags, selectors, and a link map. The overview
+  lists selectors and tags with their counts; you add and edit them on the Signals screen.
 - Filter the capture list by text, format, date, tag, or favourite, and act on a selection in
   bulk: tag, favourite, recapture, export, or delete.
 - View each capture as a screenshot, as the archived page with scripts turned off, as extracted
@@ -253,7 +256,10 @@ prove and what they do not.
 
 ## Export
 
-- Export an evidence package as a full bundle or as a court exhibit without notes. Each preset
+- **Export…** in the menu on the case name opens one dialog with three choices: an evidence
+  package, a working copy, or a case archive. Each choice shows its file type. A case archive
+  holds the whole case, so it is not offered for a selection of captures.
+- Export an evidence package with or without operator notes. Its contents
   can be adjusted, and an export can cover only selected captures.
 - An evidence package contains an HTML report, the captures, their screenshots, Transaction
   Records, and PDFs, the signed manifest, the public key, the timestamp tokens and authority
@@ -274,7 +280,7 @@ prove and what they do not.
 - The command palette (`Ctrl+K`) switches and creates cases, replays the walkthrough, and opens
   a problem report.
 - A case screen has one row of controls above it, the top bar. The case's name there opens a
-  menu: **Switch Case…**, sharing, **Export evidence report**, **Export case file**,
+  menu: **Switch Case…**, sharing, **Export…**,
   **Import Case Archive…** and **Case settings**. The rail on the left names each section of the
   case and holds **Settings** at its foot.
 - At the right of the top bar, a status control shows the Egress, the extension connection and
@@ -285,6 +291,10 @@ prove and what they do not.
   panel on any other screen. For a session the extension started, the mark opens a menu that holds
   **Stop Capture Session** and **Launch browser…**. On a case screen, the mark names the case that
   captures go into when it is another case.
+- On the Captures section, the Capture Session panel is a tab of the right panel, beside
+  **Details**. The **Capture Session** tab shows when a launched browser opens, and selecting a capture
+  shows **Details**. On the other sections of a case, the panel sits at the right edge of the
+  screen.
 - Choose a dark or light theme, one of three density settings, and reduced motion.
 - First launch opens a guided tour, an extension setup guide, and a demo case. Exports from the
   demo case are marked as demo material.

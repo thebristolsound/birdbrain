@@ -99,29 +99,44 @@ test.describe('Forensics tab', () => {
 
     await page.getByTestId('capture-item').first().waitFor({ timeout: 10000 })
 
-    // MHTML path. Forensics content now lives in the inspector's Chain of
-    // custody section, which is expanded by default — no tab to click.
+    // MHTML path. Forensics content lives in the inspector's Chain of custody
+    // section, which starts closed: the header chip states the status, and
+    // Re-verify sits on the section's heading.
     const mhtmlItem = page.getByTestId('capture-item').filter({ hasText: 'Forensics MHTML' })
     await mhtmlItem.click()
 
+    const custody = page.getByTestId('custody-section-toggle')
+    const custodyBody = page.getByTestId('custody-section-body')
+    await expect(custody).toHaveAttribute('aria-expanded', 'false')
+    await expect(custodyBody).toHaveCount(0)
+    await expect(page.getByTestId('forensics-reverify-btn')).toBeVisible()
+    await expect(page.getByTestId('capture-details-provenance-label')).toHaveText('Not verified')
+
+    await custody.click()
+    await expect(custodyBody).toBeVisible()
     await expect(page.getByText(/^Hash chain$/i)).toBeVisible()
     await expect(page.getByText(/^Identity$/i)).toBeVisible()
     await expect(page.getByText(/^Capture environment$/i)).toBeVisible()
     await expect(page.getByText(/^Headers$/i)).toHaveCount(0)
-    await expect(page.getByTestId('forensics-reverify-btn')).toBeVisible()
     await expect(page.getByTestId('forensics-legacy-banner')).toHaveCount(0)
     await expect(page.getByTestId('forensics-chain-status-label')).toHaveText('Not verified')
-    await expect(page.getByTestId('capture-details-provenance-label')).toHaveText('Not verified')
 
+    // Re-verify needs no open section: the chip takes the new status while it is closed.
+    await custody.click()
+    await expect(custodyBody).toHaveCount(0)
     await page.getByTestId('forensics-reverify-btn').click()
     await expect(page.getByTestId('forensics-reverify-btn')).toBeEnabled({ timeout: 5000 })
-    await expect(page.getByTestId('forensics-chain-status-label')).toHaveText('Verified')
     await expect(page.getByTestId('capture-details-provenance-label')).toHaveText('Verified')
+    await expect(custodyBody).toHaveCount(0)
 
-    // Legacy path
+    await custody.click()
+    await expect(page.getByTestId('forensics-chain-status-label')).toHaveText('Verified')
+
+    // Legacy path. The section stays as it was left, open, for the next Capture.
     const legacyItem = page.getByTestId('capture-item').filter({ hasText: 'Legacy HTML' })
     await legacyItem.click()
 
+    await expect(custody).toHaveAttribute('aria-expanded', 'true')
     await expect(page.getByTestId('forensics-legacy-banner')).toBeVisible()
     await expect(page.getByText(/^Hash chain$/i)).toHaveCount(0)
     await expect(page.getByText(/^Identity$/i)).toBeVisible()

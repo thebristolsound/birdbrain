@@ -1,31 +1,25 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import type { Capture } from '@shared/types'
+import type { CaptureEvent } from '@shared/types'
 import { CaptureMenu } from '@renderer/components/captures/CaptureMenu'
-import { settleVpnWarning, useVpnWarningStore } from '@renderer/lib/vpnWarning'
 import { useAppStore } from '@renderer/stores/appStore'
 import { fakeBridge } from '../renderer/fakeBridge'
-import { isDisabledItem, nextTurn, press } from './menuKeys'
+import { nextTurn } from './menuKeys'
 
-const capture: Capture = {
-  id: 'cap1',
-  caseId: 'case1',
+const pasted: CaptureEvent = {
+  type: 'received',
+  source: 'recapture',
   url: 'https://example.com/evidence',
-  title: 'Example',
-  hash: 'h',
-  timestamp: '2026-08-01T12:00:00.000Z',
-  createdAt: '2026-08-01T12:00:01.000Z',
-  format: 'mhtml',
-  method: 'extension'
+  timestamp: '2026-08-01T12:00:00.000Z'
 }
 
-function recaptureItem(): HTMLElement {
-  return screen.getByTestId('recapture-btn')
+function recaptureOf(captureId: string): CaptureEvent {
+  return { ...pasted, supersedesCaptureId: captureId }
 }
 
-function renderMenu() {
+function renderAddButton() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
     <QueryClientProvider client={client}>
@@ -36,118 +30,51 @@ function renderMenu() {
 }
 
 beforeEach(() => {
-  useVpnWarningStore.setState({ open: false, request: null, settle: null })
-  useAppStore.setState({ selectedCaptureId: capture.id, captureEvents: [] })
+  fakeBridge({})
+  useAppStore.setState({ selectedCaptureId: 'cap1', captureEvents: [] })
 })
 
 afterEach(() => {
   cleanup()
 })
 
-describe('CaptureMenu Recapture at the VPN warning', () => {
-  it('shows no Recapture error when the Operator stops at the warning', async () => {
-    const enqueue = vi.fn(async () => ({ accepted: 1, rejected: [] }))
-    fakeBridge({
-      captures: { list: vi.fn(async () => [capture]) },
-      recapture: { enqueue },
-      egress: {
-        checkVpnWarning: vi.fn(async () => ({ caseId: 'case1', warn: true, canMute: true }))
-      }
-    })
-    const trigger = renderMenu()
-    fireEvent.click(trigger)
-    // Enabled once the captures list has named the selected Capture.
-    await waitFor(() => expect(isDisabledItem(recaptureItem())).toBe(false))
-    fireEvent.click(recaptureItem())
-    await waitFor(() => expect(useVpnWarningStore.getState().open).toBe(true))
-    act(() => settleVpnWarning('dismiss'))
+describe('the add button above the capture list', () => {
+  it('is named for the one thing it does and opens no menu', () => {
+    const add = renderAddButton()
+    expect(add.getAttribute('aria-label')).toBe('Paste URLs to capture')
+    expect(add.getAttribute('title')).toBe('Paste URLs to capture')
+    expect(add.hasAttribute('aria-haspopup')).toBe(false)
 
-    // Enabled again once the stopped Recapture has settled.
-    fireEvent.click(trigger)
-    await waitFor(() => expect(isDisabledItem(recaptureItem())).toBe(false))
-    expect(enqueue).not.toHaveBeenCalled()
-    expect(screen.queryByTestId('recapture-error')).toBeNull()
-  })
-})
-
-describe('CaptureMenu as a menu', () => {
-  beforeEach(() => {
-    fakeBridge({
-      captures: { list: vi.fn(async () => [capture]) },
-      recapture: { enqueue: vi.fn(async () => ({ accepted: 1, rejected: [] })) }
-    })
-  })
-
-  it('walks its items with the arrow keys, Home and End', async () => {
-    const trigger = renderMenu()
-    trigger.focus()
-    await press('ArrowDown')
-    const paste = screen.getByTestId('capture-menu-paste-urls')
-    await waitFor(() => expect(isDisabledItem(recaptureItem())).toBe(false))
-    await waitFor(() => expect(document.activeElement).toBe(paste))
-
-    await press('ArrowDown', recaptureItem())
-    await press('ArrowDown', paste)
-    await press('End', recaptureItem())
-    await press('Home', paste)
-  })
-
-  // The add button is a Button, whose tap gesture is turned off: with it on, Enter opens the
-  // menu with no item focused (Menu.test.tsx).
-  it('opens on its first item when Enter is pressed on the add button', async () => {
-    const trigger = renderMenu()
-    trigger.focus()
-    await press('Enter')
-    expect(screen.getByRole('menu')).toBeTruthy()
-    await waitFor(() =>
-      expect(document.activeElement).toBe(screen.getByTestId('capture-menu-paste-urls'))
-    )
-  })
-
-  it('closes on Escape and returns focus to the add button', async () => {
-    const trigger = renderMenu()
-    fireEvent.click(trigger)
-    await screen.findByRole('menu')
-    await press('Escape')
+    fireEvent.click(add)
     expect(screen.queryByRole('menu')).toBeNull()
-    await waitFor(() => expect(document.activeElement).toBe(trigger))
+    expect(screen.queryByTestId('recapture-btn')).toBeNull()
+    expect(screen.queryByTestId('capture-menu-paste-urls')).toBeNull()
   })
 
-  it('skips Recapture while no Capture is selected, and a click on it does nothing', async () => {
-    useAppStore.setState({ selectedCaptureId: null })
-    const enqueue = vi.fn(async () => ({ accepted: 1, rejected: [] }))
-    fakeBridge({ captures: { list: vi.fn(async () => [capture]) }, recapture: { enqueue } })
-    const trigger = renderMenu()
-    trigger.focus()
-    await press('ArrowDown')
-    const paste = screen.getByTestId('capture-menu-paste-urls')
-    await waitFor(() => expect(document.activeElement).toBe(paste))
-    expect(isDisabledItem(recaptureItem())).toBe(true)
-    expect(recaptureItem().getAttribute('title')).toBe('Select a capture first')
+  it('opens the paste dialog on one click, and the dialog takes focus', async () => {
+    const add = renderAddButton()
+    expect(screen.queryByRole('dialog')).toBeNull()
 
-    // The arrow passes over the disabled item and comes back round to the only enabled one.
-    await press('ArrowDown')
-    await nextTurn()
-    expect(document.activeElement).toBe(paste)
-    await press('End')
-    await nextTurn()
-    expect(document.activeElement).toBe(paste)
-
-    fireEvent.click(recaptureItem())
-    expect(enqueue).not.toHaveBeenCalled()
-    expect(screen.getByRole('menu')).toBeTruthy()
-  })
-
-  it('opens the paste dialog from its first item, which keeps focus once the menu has gone', async () => {
-    const trigger = renderMenu()
-    fireEvent.click(trigger)
-    fireEvent.click(screen.getByTestId('capture-menu-paste-urls'))
+    add.focus()
+    fireEvent.click(add)
     const dialog = await screen.findByRole('dialog', { name: 'Paste URLs to capture' })
-    expect(screen.queryByRole('menu')).toBeNull()
     await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true))
-    // The closing menu takes no focus back a turn later.
-    await nextTurn()
     await nextTurn()
     expect(dialog.contains(document.activeElement)).toBe(true)
+  })
+
+  it('says a Recapture of the selected Capture is running, and not one of another Capture', () => {
+    renderAddButton()
+    expect(screen.queryByTestId('recapture-in-progress')).toBeNull()
+
+    act(() => useAppStore.setState({ captureEvents: [recaptureOf('cap2')] }))
+    expect(screen.queryByTestId('recapture-in-progress')).toBeNull()
+
+    act(() => useAppStore.setState({ captureEvents: [recaptureOf('cap1')] }))
+    expect(screen.getByTestId('recapture-in-progress').textContent).toBe('Recapturing…')
+
+    // A pasted address supersedes no Capture, and no selection is not a match for it.
+    act(() => useAppStore.setState({ selectedCaptureId: null, captureEvents: [pasted] }))
+    expect(screen.queryByTestId('recapture-in-progress')).toBeNull()
   })
 })

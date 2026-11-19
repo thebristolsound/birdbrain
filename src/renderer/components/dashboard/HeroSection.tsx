@@ -43,7 +43,7 @@ export function HeroSection({ onNewInvestigation, onOpenRecent, onImportCase }: 
             className="flex items-center gap-2 px-5 py-3 border border-border-strong hover:border-accent hover:bg-accent-subtle text-text-primary font-display font-semibold text-sm rounded-2xl transition-[transform,border-color,background-color] active:scale-[0.98]"
           >
             <Archive className="h-4 w-4 text-accent" />
-            Import Case…
+            Import Case Archive…
           </button>
         </div>
 

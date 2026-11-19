@@ -216,9 +216,8 @@ const indexRoute = createRoute({
   errorComponent: RouteErrorComponent
 })
 
-// Settings. `section=egress` opens on the Egress setting, which the VPN warning's
-// "Set up a proxy" choice links to; `section=operator` opens on the operator name, which the
-// launch start dialog's "Set operator name" links to.
+// Settings. `section=egress` opens on the Egress setting, which "Set up a proxy" links to in
+// the VPN warning and in the launch dialog; `section=operator` opens on the operator name.
 const settingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/settings',

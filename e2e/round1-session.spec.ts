@@ -155,15 +155,15 @@ test.describe('Round-1 observed session, by machine', () => {
       await expect(page.getByRole('status').filter({ hasText: 'Saved just now' })).toBeVisible()
       await expect(page.getByText('Session note')).toBeVisible()
 
-      // Step 6: hand it to someone without Birdbrain. The default preset is the
-      // full evidence bundle; what the recipient can check is the manifest, the
+      // Step 6: hand it to someone without Birdbrain. The dialog opens on the
+      // Evidence Package; what the recipient can check is the manifest, the
       // certification and the public key, so those are what must be inside.
       await page.click('button[aria-label="Overview"]')
       await page.waitForURL(/#\/cases\/.+\/overview/)
       await page.getByTestId('topbar-case-name').click()
-      await page.getByRole('menuitem', { name: 'Export evidence report' }).click()
-      await expect(page.getByRole('heading', { name: 'Export case' })).toBeVisible()
-      await expect(page.getByRole('radio', { name: /Full evidence bundle/ })).toBeChecked()
+      await page.getByRole('menuitem', { name: 'Export…', exact: true }).click()
+      await expect(page.getByRole('dialog', { name: /^Export / })).toBeVisible()
+      await expect(page.getByRole('radio', { name: /^Evidence Package/ })).toBeChecked()
       await stubSaveDialog(electronApp, bundlePath)
       await page.getByTestId('export-submit').click()
       await expect(page.getByText(`· ${bundlePath}`)).toBeVisible({ timeout: 15000 })

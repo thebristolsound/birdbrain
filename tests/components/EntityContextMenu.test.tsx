@@ -266,7 +266,7 @@ describe('menu customisation and export drill-in', () => {
     fireEvent.click(screen.getByTestId('context-menu-item-tag-export'))
     expect(screen.getAllByRole('menu')).toHaveLength(1)
     expect(screen.getByText('export destination')).toBeDefined()
-    expect(screen.getByRole('menuitem', { name: 'ZIP + manifest' })).toBeDefined()
+    expect(screen.getByRole('menuitem', { name: 'Evidence Package…' })).toBeDefined()
     fireEvent.click(screen.getByRole('menuitem', { name: 'Back' }))
     expect(screen.getByTestId('context-menu-item-tag-duplicate')).toBeDefined()
     fireEvent.click(screen.getByTestId('context-menu-item-tag-export'))

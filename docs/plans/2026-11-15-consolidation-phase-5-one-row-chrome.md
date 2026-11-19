@@ -254,5 +254,6 @@ extension-only session (decision 7, answer 2).
   records a supersession of standalone rows, and that README still calls the standalone the
   single design source, so this entry is the first of its kind and its wording is the
   maintainer's.
-- [ ] The parent plan's slices 5.1 to 5.5 are ticked and its status line updated. Slices 5.2
-  to 5.6 are ticked. Slice 5.1 stays open until 5.1b, the Download menu, merges.
+- [x] The parent plan's slices 5.1 to 5.5 are ticked and its status line updated. Slices 5.2
+  to 5.6 were ticked in #2235, and slice 5.1 is ticked in #2239, which holds 5.1b, the Download
+  menu.

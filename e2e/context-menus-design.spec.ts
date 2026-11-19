@@ -23,7 +23,7 @@ test('tag menu drills into export and persists customisation without executing a
   await page.screenshot({ path: testInfo.outputPath('tag-menu.png') })
   await page.getByRole('menuitem', { name: 'Export…', exact: true }).click()
   await expect(page.getByRole('menu')).toHaveCount(1)
-  await expect(page.getByRole('menuitem', { name: 'ZIP + manifest', exact: true })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: 'Evidence Package…', exact: true })).toBeVisible()
   await expect(page.getByRole('menuitem', { name: 'Copy as markdown', exact: true })).toBeVisible()
   await page.getByRole('menuitem', { name: 'Back', exact: true }).click()
   await page.getByRole('menuitem', { name: 'Customise this menu…', exact: true }).click()

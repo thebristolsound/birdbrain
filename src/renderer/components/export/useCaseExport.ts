@@ -9,16 +9,19 @@ function messageOf(err: unknown): string {
 
 type Progress = { step: string; percent: number }
 
+/** How a Case Archive export ended. A cancelled save dialog writes nothing and is no failure. */
+export type ArchiveExportOutcome = 'written' | 'canceled' | 'failed'
+
 interface CaseExports {
   pending: Record<string, Progress>
   failed: Record<string, string>
 }
 
-// A Case Archive export belongs to its Case, not to the menu that started it. The menu leaves
-// the screen on the dashboard and in Settings, and changes Case in place from the palette,
-// while an export can still be running. So the running steps and the failures are kept here,
-// outside any component and keyed by Case: coming back to the Case by any route finds its
-// export still running, or its failure still to dismiss.
+// A Case Archive export belongs to its Case, not to the dialog that started it or the menu that
+// shows it. The dialog closes while an export runs, and the menu leaves the screen on the
+// dashboard and in Settings and changes Case in place from the palette. So the running steps
+// and the failures are kept here, outside any component and keyed by Case: coming back to the
+// Case by any route finds its export still running, or its failure still to dismiss.
 export const useCaseExports = create<CaseExports>(() => ({ pending: {}, failed: {} }))
 
 function without<T>(map: Record<string, T>, key: string): Record<string, T> {
@@ -27,23 +30,23 @@ function without<T>(map: Record<string, T>, key: string): Record<string, T> {
   return next
 }
 
-// The Case menu's side of a Case Archive export: its progress while it runs, and its failure
-// until the Operator dismisses it, both for the Case on screen only.
+// One Case's Case Archive export: the start, its progress while it runs, and its failure until
+// the Operator dismisses it or starts again.
 export function useCaseExport(caseId: string) {
   const { exportArchive } = useCasesMutations()
   const progress = useCaseExports((s) => s.pending[caseId])
   const archiveError = useCaseExports((s) => s.failed[caseId] ?? '')
 
-  async function startArchive() {
+  async function startArchive(): Promise<ArchiveExportOutcome> {
     const id = caseId
     useCaseExports.setState((s) => ({
       pending: { ...s.pending, [id]: { step: 'Preparing archive…', percent: 0 } },
       failed: without(s.failed, id)
     }))
-    // The export listens for its Case's steps for as long as it runs, whether or not the menu
-    // is on screen, so coming back shows how far it has got. Steps of another Case's export
-    // are not its to keep. An export of this same Case started elsewhere, as the Members tab
-    // can, reports under the same Case, so its steps land here too.
+    // The export listens for its Case's steps for as long as it runs, whether or not anything
+    // that shows them is on screen, so coming back shows how far it has got. Steps of another
+    // Case's export are not its to keep. An export of this same Case started elsewhere, as the
+    // Members tab can, reports under the same Case, so its steps land here too.
     const stopListening = window.birdbrain.onArchiveProgress(({ caseId: from, step, percent }) => {
       if (from !== id) return
       useCaseExports.setState((s) =>
@@ -60,7 +63,7 @@ export function useCaseExport(caseId: string) {
     // The notice is app-wide and names its path, so it is raised even when the
     // operator has since switched cases: that is when it is most needed.
     if (written && !written.canceled && written.filePath) {
-      notifyExportWritten('Archive saved', written.filePath, written.filePath)
+      notifyExportWritten('Case Archive saved', written.filePath, written.filePath)
     }
     stopListening()
     const failed = failure
@@ -68,11 +71,14 @@ export function useCaseExport(caseId: string) {
       pending: without(s.pending, id),
       failed: failed === null ? s.failed : { ...s.failed, [id]: failed }
     }))
+    if (failed !== null) return 'failed'
+    return written && !written.canceled && written.filePath ? 'written' : 'canceled'
   }
 
   return {
     startArchive,
     isExporting: progress !== undefined,
+    progress,
     progressLabel: progress ? `${progress.step} — ${Math.round(progress.percent)}%` : null,
     archiveError,
     dismissArchiveError: () =>

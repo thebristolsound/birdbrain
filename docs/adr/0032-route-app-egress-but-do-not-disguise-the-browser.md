@@ -17,6 +17,13 @@ maintainer ruled on 2026-11-15 that the top bar shows the advisory as a mark wit
 below carries the amended text. The warning before a contact, and VPN rules 1, 3 and 4, are
 unchanged.
 
+**Amended 2026-11-19:** VPN rule 3 now has the launch dialog carry the warning for a Capture
+Session that starts there. The maintainer ruled on 2026-11-15 that a launch may carry the VPN
+warning inside the launch dialog, with no second dialog, for launches only (decision 3 of
+[the consolidation plan](../plans/2026-11-15-chrome-capture-export-consolidation.md)). The rule
+below carries the amended text. The warning before every other first contact, and VPN rules 1,
+2 and 4, are unchanged.
+
 ## Context
 
 A probe on 2026-09-27 ran two background Recaptures against a logging server. Every request left
@@ -117,7 +124,15 @@ maintainer ruled on 2026-09-28:
    warned again, and the file lists no place names.
 3. **Starting a Capture Session warns too.** The TLS Cert Chain re-fetch runs after extension
    Captures, and the Operator's own browsing is the larger exposure. That warning says Birdbrain
-   can see the machine's network path, not the browser's.
+   can see the machine's network path, not the browser's. When the session starts from the
+   launch dialog, the dialog itself carries the warning: the same sentence, the offer to set up
+   a proxy, the offer to stop warning on this network, and a primary button whose label says the
+   launch goes ahead without a VPN. No second dialog follows. The dialog asks whether a warning
+   is due when it opens and again when Launch is pressed, because the network can change while
+   the dialog is open. A warning that comes due on the press holds the launch, and the dialog
+   then shows it. This still counts as a warning: while one is due, the Operator cannot launch
+   without pressing a button that names the condition. A Capture Session started any other way
+   keeps the separate warning.
 4. **The result is not evidence.** No Manifest Entry records whether a VPN was seen. It is a guess
    about the machine, not about what the site saw, and a signed "not seen" could impeach an
    Operator whose VPN ran on the router.

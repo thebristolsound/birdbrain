@@ -9,6 +9,7 @@ import { SignalDetailRail } from '@renderer/components/signals/SignalDetailRail'
 import type { Signal } from '@renderer/components/signals/signalsModel'
 import { useAppStore } from '@renderer/stores/appStore'
 import { fakeBridge } from '../renderer/fakeBridge'
+import { exportIconSelector } from './exportIcon'
 
 const navigate = vi.fn()
 vi.mock('@tanstack/react-router', () => ({
@@ -193,6 +194,10 @@ describe('SignalDetailRail branches', () => {
     renderRail(selectorSignal)
     expect(screen.getByTestId('signal-filter-in-captures')).toBeTruthy()
     expect(screen.getByTestId('signal-export-csv')).toHaveProperty('disabled', false)
+    expect(screen.getByTestId('signal-export-csv').textContent).toBe('Export CSV')
+    expect(
+      screen.getByTestId('signal-export-csv').querySelector(exportIconSelector())
+    ).not.toBeNull()
 
     cleanup()
     renderRail(tagSignal)

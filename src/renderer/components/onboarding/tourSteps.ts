@@ -136,9 +136,7 @@ const caseSteps = (demoCase: boolean): TourStep[] => [
     target: 'selectors',
     route: 'signals',
     title: 'Selectors watch for patterns',
-    body:
-      'Emails, wallets, panel IPs — matches are highlighted across every capture, and ' +
-      'auto-capture can log pages that hit.'
+    body: 'Emails, wallets, panel IPs — matches are highlighted across every capture.'
   },
   {
     screen: 'Notes',

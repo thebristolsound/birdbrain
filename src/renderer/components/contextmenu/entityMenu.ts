@@ -18,7 +18,6 @@ import {
   Trash2,
   CopyPlus,
   Clipboard,
-  Download,
   X,
   Check,
   ChevronsDownUp,
@@ -38,6 +37,7 @@ import {
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { accelerator } from '@renderer/lib/accelerator'
+import { ExportIcon } from '@renderer/components/export/exportIcon'
 import { WAYBACK_LINK_DISCLOSURE_HINT } from '@renderer/components/captures/waybackLinkModel'
 
 /**
@@ -584,7 +584,7 @@ export function selectorMenuEntries(target: SelectorMenuTarget): MenuEntry[] {
     {
       id: 'selector-export',
       label: 'Export matches to CSV',
-      icon: Download,
+      icon: ExportIcon,
       // The CSV joins selector_matches to captures, so a selector that has
       // matched nothing would write a file with no rows in it. The rail's
       // button is disabled on the same condition.
@@ -653,7 +653,7 @@ export function tagMenuEntries(target: TagMenuTarget): MenuEntry[] {
     {
       id: 'tag-export',
       label: 'Export…',
-      icon: Download,
+      icon: ExportIcon,
       separatorBefore: true,
       drill: true,
       emptyLabel: 'No export destinations',
@@ -661,8 +661,8 @@ export function tagMenuEntries(target: TagMenuTarget): MenuEntry[] {
       items: [
         {
           id: 'tag-export-evidence',
-          label: 'ZIP + manifest',
-          icon: Archive,
+          label: 'Evidence Package…',
+          icon: ExportIcon,
           run: actions.exportCaptures
         },
         {

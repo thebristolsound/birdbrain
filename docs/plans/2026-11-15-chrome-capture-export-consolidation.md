@@ -268,8 +268,8 @@ These are independent of each other and of the bundle. They can start at once, e
 - [x] **1.2 Keep the Export dialog's primary action in view, and drop the filled banners (U9, C3).**
   Shipped in #2239. `ExportDialog.tsx`: the form scrolls and the footer stays fixed. The
   demonstration notice and the Trusted Time preflight notice become text with an icon, readable in
-  both themes, which also resolves #1524. `blocking` file: the Evidence impact section says layout
-  and colour only. `e2e/export.spec.ts` reads the names of the package's entries and nothing else,
+  both themes. #1524 stays open for the maintainer: slice 4.4 of the phase 4 plan says why.
+  `blocking` file: the Evidence impact section says layout and colour only. `e2e/export.spec.ts` reads the names of the package's entries and nothing else,
   so it does not show the package is unchanged. The slice shows that the dialog submits the same
   options: the preset tests in `tests/components/ExportDialog.test.tsx` pass unedited, and the slice
   changes nothing under `src/main/`.

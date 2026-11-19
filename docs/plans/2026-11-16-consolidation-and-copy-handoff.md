@@ -63,6 +63,7 @@ behind `main` in these places:
 | A ruling on the next tranche's verdicts, once the copy cut plan has them | Copy slices for Settings, Sharing, Data and the extension's pages |
 | The two open points under "Raised in review" in the copy cut plan: the scrolling line and the tour's Selector sentence | One row each of C7 and C4 |
 | Whether the launch dialog asks about the VPN warning again when Launch is pressed (slice 3.2 in the phase 3 plan) | That one point of slice 3.2 |
+| Whether the Investigate view keeps its panes at the default 1,200 pixel window: beside the 72 pixel rail it has 1,128 pixels, under the 1,140 of `TABS_BELOW_WIDTH`, so it shows tabs | Nothing. The review of #2231 raised it |
 
 Apart from those two rows, nothing in the copy cut's first tranche waits for the maintainer.
 
@@ -89,8 +90,8 @@ not because the stack leaves it out: "Progress on the chrome slices" has both. S
 for review pass 3 of `2026-11-15-unreviewed-surfaces-review-passes.md`, whose assessment says
 whether the slice goes ahead as written.
 
-Since decision 7, slices 2.3, 4.2 to 4.4 and 7.3 can start too. Slices 5.2 to 5.6 are built,
-as #2231 to #2235, and merge in the order written.
+Since decision 7, slices 2.3, 4.2 to 4.4 and 7.3 can start too. Slices 5.2 to 5.5 have
+merged, as #2231 to #2234, and slice 5.6 is #2235.
 
 Copy cut slices:
 
@@ -120,11 +121,11 @@ button it changes.
 | 2.1 | `feat/chrome-2.1-recording-mark` | #2228 | Merged on 2026-11-17 as `396ce264`. The review passed at `86cdaf8e` with fifteen findings, none blocking, and a comment on the pull request answers them |
 | 2.2 | `feat/chrome-2.2-one-stop-control` | #2229 | Merged on 2026-11-17 as `5c21ba25`. The review passed at `267b53a3` on its second round with six findings, none blocking, and a comment on the pull request answers them |
 | 6.1 | `feat/chrome-6.1-status-tiers` | #2230 | Merged on 2026-11-18 as `1ef4456a`, under the maintainer's override label after two reviews with no blocking finding. Two comments on the pull request answer the findings |
-| 5.2 | `feat/chrome-5.2-labelled-rail` | #2231 | Next for review at `c08d4869`, based on `main` |
-| 5.3 | `feat/chrome-5.3-case-menu` | #2232 | Draft, based on the 5.2 branch |
-| 5.4 | `feat/chrome-5.4-launch-control` | #2233 | Draft, based on the 5.3 branch |
-| 5.5 | `feat/chrome-5.5-one-row` | #2234 | Draft, based on the 5.4 branch |
-| 5.6 | `feat/chrome-5.6-docs` | #2235 | Draft, based on the 5.5 branch |
+| 5.2 | `feat/chrome-5.2-labelled-rail` | #2231 | Merged on 2026-11-18 as `8c7f99d6`. The review passed at `c08d4869` with fourteen findings, none blocking |
+| 5.3 | `feat/chrome-5.3-case-menu` | #2232 | Merged on 2026-11-18 as `c1099fab`. The third review passed at `4ec8808e` with five findings, none blocking, after two fix rounds |
+| 5.4 | `feat/chrome-5.4-launch-control` | #2233 | Merged on 2026-11-18 as `d6517289`. The second review passed at `784998ed` with six findings, none blocking, after one fix round |
+| 5.5 | `feat/chrome-5.5-one-row` | #2234 | Merged on 2026-11-19 as `674089e7`. The third review passed at `c16de79f` with six findings, none blocking, after two fix rounds |
+| 5.6 | `feat/chrome-5.6-docs` | #2235 | Next for review, based on `main`, with fixes for the last review of #2234 as commits `eb3dbd94` and `6559ebcc` |
 
 Each draft's base is the branch below it in the stack, so its diff is its slice alone. A pushed
 branch only gains commits: when a lower branch gains a fix, merge it up through each branch above
@@ -207,6 +208,48 @@ What the slices found that the plans did not say:
   `501d4069` answer the other findings: the ring has a border under forced colours, the layout
   spec reads the ring's computed style, and its launched browser test no longer waits five
   seconds on a folded panel, which had failed about one local run in four.
+- The maintainer chose, in a Claude Code session on 2026-11-18, to merge #2231 as it stood and
+  to merge the plans pull request, #2236, under the override label. The fixes for the review
+  of #2231 are commits `4b81b23e` and `8c3a4f60` on the 5.3 branch: the tests beside the
+  Capture Session rail read the rail's width from the constant, a test covers the window inset
+  on the last control of the top bar, and comments no longer give the 48 pixel rail. On the
+  5.4 branch the capture control is the last control, so commit `b74d7908` moves that test to
+  it. Merging these up conflicts on one line of `docs/agents/architecture.md` at each branch,
+  where the branch's own line is kept with the wording fix, and on `TopBar.tsx` from 5.3 into
+  5.4, where the 5.4 side is kept.
+- The first review of #2232 passed, and its findings were behaviour an Operator would meet,
+  so the maintainer chose, in a Claude Code session on 2026-11-18, to fix them before the
+  merge. What the Case menu taught:
+  - A dialog opened from the top bar renders through a portal. Inside the bar it comes before
+    the search, which keeps a layer of its own, and the search sits over it.
+  - The top bar drags the window, and its rule exempts buttons, inputs and links. Anything
+    else that takes the pointer there needs `[app-region:no-drag]`.
+  - State that has to outlive the Case menu does not live in it. The menu leaves the screen
+    on the dashboard and in Settings, so a running archive export and its failure are kept in
+    a store of their own in `useCaseExport.ts`, keyed by Case. A store's hook is named
+    `use…`, or the React compiler does not treat it as a hook and the tests fail on a changed
+    hook order.
+  - The second review blocked on the description: it said a guard held on every route when
+    it held on one, and that one test file covered every fix. A description says what the
+    code does and names each test file, and says nothing about earlier review rounds, which
+    the reviewers cannot read.
+- Each branch of the stack has to pass the end-to-end suite itself, not only the top one. On
+  the 5.4 branch the recording mark stands beside the Launch browser button, the bar's widest
+  state, and with the longest status word the page was 25 pixels too wide at a 1,000 pixel
+  window. The 5.5 branch replaces that arrangement, so the top of the stack passed while 5.4
+  failed in CI. Commit `f04793f5` hides the mark's source from view below 1,100 pixels there,
+  and merging it up keeps the 5.5 side. Commit `f356d6c7` makes the paste dialog keep the Case
+  it was opened for, the same fault the reviews found in the Case menu's export dialog.
+- The first review of #2233 blocked on two tests that passed with the code they cover undone:
+  a bridge fake whose unsubscribe did nothing, and an assertion made before the state under
+  test had loaded. A fake has to drop what the app drops, and a test of something hidden first
+  shows it present.
+- Merging `main` with `-X ours` does not settle a file that the branch deletes and `main`
+  changes. On the 5.5 branch `CaseActionBar.tsx` and its test stop the merge each time: keep
+  the deletion with `git rm`, then check that the tree equals the first parent's.
+- This file is on `main` since #2236. Later updates ride on the 5.6 branch, the docs slice.
+- The linked WSL machine stopped answering on 2026-11-18. Preflights then ran on Omarchy, in
+  about ten minutes each, after the scratch tree's test image library was rebuilt.
 - Marking a draft ready cancels the CI run its last push started. Let that run finish first,
   or the merge script later meets cancelled jobs at the head commit.
 - The remote refuses one push that updates several branches. Push the stack one branch at a
@@ -218,6 +261,23 @@ What the slices found that the plans did not say:
 - `Menu` swaps its trigger when a control changes state, as the capture control does between
   Launch browser and the recording mark. The button that held focus is unmounted, so the
   control moves focus to the button that replaced it.
+- The second review of #2234 blocked on a description sentence that said a failed start or
+  stop shows the Operator nothing. `MutationCache.onError` in `src/renderer/lib/queryClient.ts`
+  raises a toast for every failed mutation, and a unit test that builds its own query client
+  does not show it. Before a description says something does not happen, trace it through the
+  app's shared handlers.
+- A closing keyword directly before an issue's number closes that issue at the merge, even in
+  a sentence that says the pull request does not close it. The description of #2234 had such
+  a sentence, the merge closed #814, and it was reopened with a comment. #814 stays open for
+  three states where the recording mark shows and Stop is held: the launched browser's state
+  is being read, a launched browser is starting, and one is closing.
+- A query keeps its earlier answer when a later read fails. A control held on that answer
+  has to look at the failure first, as `stopHeld` in `LaunchControl.tsx` does since commit
+  `6e296dac`.
+- A held item of the shared menu is skipped by the arrow keys, so its reason, which is a
+  title, cannot be reached from the keyboard. The third review of #2234 raised it for Stop
+  and the session start; Paste URLs is held the same way. No slice here changes it and no
+  issue is filed for it.
 
 The stack is complete through 5.6. What is left of phase 5:
 
@@ -226,11 +286,10 @@ The stack is complete through 5.6. What is left of phase 5:
 - The design bundle and its row in `docs/design-handoff/README.md`. The maintainer approved
   the drafted wording in a Claude Code session on 2026-11-17, and commit `3a180c85` on the 5.6
   branch adds the bundle as `docs/design-handoff/2026-11-17-one-row-chrome/` with the row.
-  The row links the phase 0 plan and cites decision 7 of the parent plan. Both are on this
-  branch only, so the link is broken on `main` until this branch merges. The maintainer asked
-  on 2026-11-18, in a Claude Code session, for a pull request for this branch.
-- The parent plan's check boxes for slices 5.1 to 5.6, 2.1, 2.2 and 6.1, ticked as each pull
-  request merges.
+  The row links the phase 0 plan and cites decision 7 of the parent plan. Both reached `main`
+  with #2236, which merged on 2026-11-18 as `ac5509be` under the maintainer's override label.
+- The parent plan's check boxes. The 5.6 branch ticks slices 2.1, 2.2, 5.2 to 5.6 and 6.1.
+  Slice 5.1 stays open until 5.1b merges.
 
 ## Slices that share a file
 

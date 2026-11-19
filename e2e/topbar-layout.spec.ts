@@ -190,6 +190,8 @@ test.describe('Top bar layout', () => {
         await expect(statusWord).toHaveText('Egress unknown')
         const { width: wordWidth } = (await statusWord.boundingBox())!
         expect(wordWidth).toBeGreaterThan(30)
+        // The recording mark is still the control that was measured, not Launch browser.
+        await expect(mark.getByTestId('topbar-rec')).toBeVisible()
 
         // Every control on the right stays inside the window, and nothing scrolls sideways.
         for (const button of await controls.getByRole('button').all()) {

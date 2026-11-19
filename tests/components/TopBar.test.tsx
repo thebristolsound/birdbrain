@@ -84,15 +84,6 @@ describe('the case chrome', () => {
     expect(screen.getByTestId('global-search-input')).toBeTruthy()
   })
 
-  // The capture control starts and stops the extension's session from its menu
-  // (LaunchControl.test.tsx), so the top bar holds no switch. That the screen under it holds none
-  // either is e2e/topbar-layout.spec.ts's check.
-  it('holds no session switch in the bar', async () => {
-    renderAt('/cases/case1/overview')
-    await waitFor(() => expect(screen.getByTestId('topbar-case-name')).toBeTruthy())
-    expect(screen.queryByRole('switch')).toBeNull()
-  })
-
   // The status group, then the capture control (LaunchControl.test.tsx): Launch browser and the
   // menu beside it. Share and Export are items of the Case menu on the Case name, and Settings is
   // at the foot of the rail on a Case screen.
@@ -114,7 +105,6 @@ describe('the case chrome', () => {
     renderAt('/cases/new')
     expect(screen.queryByTestId('topbar-case-name')).toBeNull()
     expect(screen.queryByTestId('global-search-input')).toBeNull()
-    expect(screen.queryByRole('switch')).toBeNull()
     expect(getCase).not.toHaveBeenCalled()
   })
 
@@ -324,9 +314,10 @@ describe('the breadcrumb case name', () => {
 
 describe('the settings header', () => {
   // The mark is the capture control, whose menu holds Stop, so a session started on a Case can
-  // be stopped from Settings.
+  // be stopped from Settings. The extension is connected, which is when this header used to hold
+  // the session switch.
   it('keeps the recording mark as the session control while an extension session runs', () => {
-    useAppStore.setState({ sessionActive: true })
+    useAppStore.setState({ sessionActive: true, connectedToExtension: true })
     renderAt('/settings')
     expect(screen.getByText('Return to Birdbrain')).toBeTruthy()
     const control = screen.getByTestId('topbar-capture-session')

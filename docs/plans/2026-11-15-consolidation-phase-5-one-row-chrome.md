@@ -245,13 +245,14 @@ extension-only session (decision 7, answer 2).
 
 ## Slice 5.6: docs and record
 
-- [ ] `tester-guide.mdx` and `features.mdx` describe the positions as shipped.
-- [ ] `website/content/docs/screenshots.mdx` shows the old chrome in its images.
+- [x] `tester-guide.mdx` and `features.mdx` describe the positions as shipped.
+- [x] `website/content/docs/screenshots.mdx` shows the old chrome in its images.
   `e2e/readme-screenshots.spec.ts` writes fresh ones under `test-results/readme`; rerun it and
   replace the images the page uses.
-- [ ] The index in `docs/design-handoff/README.md` names the bundle as superseding the
+- [x] The index in `docs/design-handoff/README.md` names the bundle as superseding the
   2026-11-08 top bar and the rows of the 2026-08-21 standalone it replaces. No earlier bundle
   records a supersession of standalone rows, and that README still calls the standalone the
   single design source, so this entry is the first of its kind and its wording is the
   maintainer's.
-- [ ] The parent plan's slices 5.1 to 5.5 are ticked and its status line updated.
+- [ ] The parent plan's slices 5.1 to 5.5 are ticked and its status line updated. Slices 5.2
+  to 5.6 are ticked. Slice 5.1 stays open until 5.1b, the Download menu, merges.

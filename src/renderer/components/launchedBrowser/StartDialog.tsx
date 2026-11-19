@@ -146,6 +146,14 @@ export function StartDialog() {
     knownEgress !== null &&
     operatorName !== ''
 
+  // One browser found has no select to take the focus, so Launch takes it once it can be pressed.
+  const loneBrowser = browsers?.length === 1
+  const launchButton = useRef<HTMLButtonElement>(null)
+  const focusLaunch = open && !picking && loneBrowser && canLaunch
+  useEffect(() => {
+    if (focusLaunch) launchButton.current?.focus()
+  }, [focusLaunch])
+
   async function launch() {
     if (!caseId || !browser || !knownEgress) return
     cancelled.current = false
@@ -273,25 +281,31 @@ export function StartDialog() {
                     </dd>
                   </>
                 )}
-                <dt className="pt-1.5 text-text-muted">
-                  <label htmlFor="launch-browser-select">Browser</label>
+                <dt className={cn('text-text-muted', !loneBrowser && 'pt-1.5')}>
+                  {loneBrowser ? 'Browser' : <label htmlFor="launch-browser-select">Browser</label>}
                 </dt>
                 <dd>
                   {browsers && browser ? (
                     <>
-                      <select
-                        id="launch-browser-select"
-                        autoFocus={!picking}
-                        value={browser.executablePath}
-                        onChange={(e) => setSelectedPath(e.target.value)}
-                        className="h-7 w-full rounded border border-border-strong bg-surface px-2 text-xs text-text-primary"
-                      >
-                        {browsers.map((option) => (
-                          <option key={option.executablePath} value={option.executablePath}>
-                            {optionText(option)}
-                          </option>
-                        ))}
-                      </select>
+                      {loneBrowser ? (
+                        <span data-testid="launch-browser-only" className="text-text-primary">
+                          {optionText(browser)}
+                        </span>
+                      ) : (
+                        <select
+                          id="launch-browser-select"
+                          autoFocus={!picking}
+                          value={browser.executablePath}
+                          onChange={(e) => setSelectedPath(e.target.value)}
+                          className="h-7 w-full rounded border border-border-strong bg-surface px-2 text-xs text-text-primary"
+                        >
+                          {browsers.map((option) => (
+                            <option key={option.executablePath} value={option.executablePath}>
+                              {optionText(option)}
+                            </option>
+                          ))}
+                        </select>
+                      )}
                       <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-text-muted">
                         {browser.lastVersion && (
                           <span className="font-mono">{browser.lastVersion}</span>
@@ -363,6 +377,7 @@ export function StartDialog() {
                   </Button>
                 )}
                 <Button
+                  ref={launchButton}
                   className="shrink-0 whitespace-nowrap font-semibold text-accent-foreground"
                   disabled={!canLaunch}
                   onClick={() => void launch()}

@@ -411,6 +411,47 @@ describe('StartDialog (S2)', () => {
     expect(within(body).getByText('not launched yet')).toBeDefined()
   })
 
+  it('shows the one browser found as text, with its version, and launches it', async () => {
+    const { launch } = mount({ browsers: [CHROME] })
+    open()
+    const body = await dialog()
+    const only = await within(body).findByTestId('launch-browser-only')
+    expect(only.textContent).toBe('Google Chrome')
+    expect(within(body).queryByRole('combobox')).toBeNull()
+    expect(within(body).getByText('149.0.7827.55')).toBeDefined()
+    expect(within(body).getByText('from its last launch')).toBeDefined()
+    await waitFor(() => expect(launchButton('Launch').disabled).toBe(false))
+    fireEvent.click(launchButton('Launch'))
+    await waitFor(() => expect(launch).toHaveBeenCalledWith(CHROME.executablePath))
+  })
+
+  it('offers a choice between two browsers, and the choice takes the focus', async () => {
+    mount({ browsers: [CHROME, BRAVE] })
+    open()
+    const body = await dialog()
+    const select = await within(body).findByRole('combobox', { name: 'Browser' })
+    expect(within(body).queryByTestId('launch-browser-only')).toBeNull()
+    await waitFor(() => expect(launchButton('Launch').disabled).toBe(false))
+    expect(document.activeElement).toBe(select)
+  })
+
+  it('puts the focus on Launch when one browser leaves no choice to make', async () => {
+    mount({ browsers: [CHROME] })
+    open()
+    await within(await dialog()).findByTestId('launch-browser-only')
+    await waitFor(() => expect(document.activeElement).toBe(launchButton('Launch')))
+  })
+
+  it('leaves the focus on the Case when it asks which Case and one browser was found', async () => {
+    mount({ browsers: [CHROME], cases: [FERRY, HARBOR] })
+    act(() => useAppStore.getState().openStartDialogPicker())
+    const body = await screen.findByRole('dialog', { name: 'Launch a browser' })
+    const picker = await within(body).findByRole('combobox', { name: 'Case' })
+    await within(body).findByTestId('launch-browser-only')
+    await waitFor(() => expect(launchButton('Launch').disabled).toBe(false))
+    expect(document.activeElement).toBe(picker)
+  })
+
   // `1d`: the gate the launch would refuse at, shown before the browser starts.
   it('holds the launch until an operator name is set', async () => {
     mount({ operatorName: '  ' })

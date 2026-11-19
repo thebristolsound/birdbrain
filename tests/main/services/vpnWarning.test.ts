@@ -114,6 +114,29 @@ describe('the VPN warning', () => {
     expect(deps.muteNetwork).toHaveBeenCalledWith(networkHash(HOME))
   })
 
+  it('mutes when the answer names the network the warning was raised on', async () => {
+    const { deps, service } = harness()
+    const { network } = await service.check('case-a', 'session')
+    service.answer('case-a', 'session', 'mute-network', network)
+    expect(deps.muteNetwork).toHaveBeenCalledExactlyOnceWith(networkHash(HOME))
+  })
+
+  // Two surfaces can check the same Case and occasion. The later check replaces the network
+  // held for the warning, so an answer from the earlier one must not mute it.
+  it('mutes nothing when a later check moved the warning to another network', async () => {
+    const { state, deps, service } = harness()
+    const shown = await service.check('case-a', 'session')
+    state.reading = { vpnSeen: false, network: CAFE }
+    expect(await service.check('case-a', 'session')).toMatchObject({
+      warn: true,
+      network: networkHash(CAFE)
+    })
+    service.answer('case-a', 'session', 'mute-network', shown.network)
+    expect(deps.muteNetwork).not.toHaveBeenCalled()
+    // The answer still counts as the Operator going ahead in this Case.
+    expect(await service.check('case-a', 'session')).toMatchObject({ warn: false })
+  })
+
   it('cannot mute a network whose router address was not read', async () => {
     const { deps, service } = harness({ vpnSeen: false, network: null })
     expect(await service.check('case-a', 'site')).toEqual({

@@ -42,7 +42,12 @@ const settingsDeps: VpnWarningDeps = {
 export interface VpnWarningService {
   status(): Promise<VpnStatus>
   check(caseId: string, occasion: VpnWarningOccasion): Promise<VpnWarningCheck>
-  answer(caseId: string, occasion: VpnWarningOccasion, choice: VpnWarningChoice): void
+  answer(
+    caseId: string,
+    occasion: VpnWarningOccasion,
+    choice: VpnWarningChoice,
+    shownNetwork?: string
+  ): void
 }
 
 const warningKey = (caseId: string, occasion: VpnWarningOccasion): string => `${occasion}:${caseId}`
@@ -80,12 +85,14 @@ export function createVpnWarningService(deps: VpnWarningDeps = settingsDeps): Vp
       return { caseId, warn: true, canMute: hash !== null, ...(hash ? { network: hash } : {}) }
     },
 
-    answer(caseId, occasion, choice) {
+    answer(caseId, occasion, choice, shownNetwork) {
       const key = warningKey(caseId, occasion)
       warned.add(key)
       const hash = raisedOn.get(key)
       raisedOn.delete(key)
-      if (choice === 'mute-network' && hash) deps.muteNetwork(hash)
+      // A later check for the same Case and occasion may have replaced the network held here.
+      const shown = shownNetwork === undefined || shownNetwork === hash
+      if (choice === 'mute-network' && hash && shown) deps.muteNetwork(hash)
     }
   }
 }

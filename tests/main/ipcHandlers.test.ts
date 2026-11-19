@@ -4967,6 +4967,7 @@ describe('ipcHandlers — the VPN warning (ADR-0032)', () => {
     for (const answer of [
       null,
       { caseId, occasion: 'site', choice: 'set-up-proxy' },
+      { caseId, occasion: 'site', choice: 'mute-network', network: 5 },
       { occasion: 'site', choice: 'continue' },
       { caseId, choice: 'continue' }
     ]) {
@@ -5008,6 +5009,34 @@ describe('ipcHandlers — the VPN warning (ADR-0032)', () => {
     expect(settings.getSettings().vpnWarningMutedNetworks).toEqual([
       networkHash({ name: 'Example Network', routerMac: '00:00:5e:00:53:02' })
     ])
+  })
+
+  it('mutes only where the answer names the network the warning was raised on', async () => {
+    registerWithWarning()
+    const shown = expectOk(
+      await invoke(IPC_CHANNELS.EGRESS_CHECK_VPN_WARNING, { caseId }, 'session')
+    ) as { network: string }
+    expectOk(
+      await invoke(IPC_CHANNELS.EGRESS_ANSWER_VPN_WARNING, {
+        caseId,
+        occasion: 'session',
+        choice: 'mute-network',
+        network: 'another-network'
+      })
+    )
+    expect(settings.getSettings().vpnWarningMutedNetworks).toEqual([])
+
+    const other = caseRepo.createCase({ name: 'Other Case' }).id
+    expectOk(await invoke(IPC_CHANNELS.EGRESS_CHECK_VPN_WARNING, { caseId: other }, 'session'))
+    expectOk(
+      await invoke(IPC_CHANNELS.EGRESS_ANSWER_VPN_WARNING, {
+        caseId: other,
+        occasion: 'session',
+        choice: 'mute-network',
+        network: shown.network
+      })
+    )
+    expect(settings.getSettings().vpnWarningMutedNetworks).toEqual([shown.network])
   })
 
   // Rule 4: whether a VPN was seen is not evidence. The warning's channels leave every

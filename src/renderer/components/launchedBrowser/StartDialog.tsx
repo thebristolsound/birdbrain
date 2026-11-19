@@ -230,12 +230,15 @@ export function StartDialog() {
 
   // Tells main the Operator went ahead, which is what marks the Case warned and mutes a network.
   // Main mutes the network of its latest check, so the tick counts only where that is the
-  // network the form showed.
+  // network the form showed, and the answer names that network for main to compare.
   async function answerVpnWarning(forCase: string, check: VpnWarningCheck): Promise<void> {
     const mute =
       dueWarning !== null && dueWarning.mute && check.canMute && sameNetwork(dueWarning, check)
-    const choice = mute ? 'mute-network' : 'continue'
-    await birdbrain.egress.answerVpnWarning({ caseId: forCase, occasion: 'session', choice })
+    await birdbrain.egress.answerVpnWarning({
+      caseId: forCase,
+      occasion: 'session',
+      ...(mute ? { choice: 'mute-network', network: check.network } : { choice: 'continue' })
+    })
     setWarning(null)
   }
 

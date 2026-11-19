@@ -802,10 +802,12 @@ describe('StartDialog (S2)', () => {
       expect(muteBox(body)?.checked).toBe(true)
       fireEvent.click(launchButton('Launch without VPN'))
       await waitFor(() => expect(launch).toHaveBeenCalled())
+      // The answer names the network the form showed, for main to compare with its own.
       expect(answerVpnWarning).toHaveBeenCalledExactlyOnceWith({
         caseId: 'case-1',
         occasion: 'session',
-        choice: 'mute-network'
+        choice: 'mute-network',
+        network: 'network-a'
       })
     })
 

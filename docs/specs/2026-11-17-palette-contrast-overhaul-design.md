@@ -2,9 +2,10 @@
 
 **Date:** 2026-11-17
 
-**Status:** Proposal, drawn on the consolidation design canvas (board P and every other board) and
-graded by two model judges, over four rounds for both themes and then three rounds for light alone;
-awaiting the maintainer's ruling. Nothing in the app or the Birdbrain design system has changed.
+**Status:** Accepted by the maintainer on 2026-11-19. Drawn on the consolidation design canvas
+(board P and every other board) and graded by two model judges, over four rounds for both themes and
+then three rounds for light alone. Nothing in the app or the Birdbrain design system has changed
+yet.
 
 **Frame of reference:** `origin/main` at `54709f3`. Token values are cited from
 `src/renderer/styles/globals.css` at that commit. The canvas draws from the Birdbrain design system
@@ -121,8 +122,8 @@ These lists are a starting point, not an audit; the implementing change should g
 ## Tier reclassification
 
 The Export dialog's "Demonstration Case: fixture data, not evidence" notice moves from the problem
-tier to advisory, since nothing has failed. That is a tier ruling, listed on the canvas's Rules
-board as a proposal.
+tier to advisory, since nothing has failed. That tier ruling is listed on the bundle's Rules board
+and was accepted with the palette on 2026-11-19.
 
 ## How it was measured
 
@@ -145,9 +146,9 @@ changes left dark mode intact. From this pass on, the measurement also covers ho
 states: text inside them measures 4.69:1 at least in light and 5.01:1 in dark, and marks and
 control borders 3.35:1 and 3.86:1.
 
-## Open for the maintainer
+## Still open
 
-- **The design system.** If accepted, the Birdbrain design system artifact needs the same values,
-  so other mocks pick them up.
+- **The design system.** The Birdbrain design system artifact needs the same values, so other
+  mocks pick them up.
 - **The "Missing" integrity count.** It shares the nominal grey dot; a nonzero count needs its own
   mark before that state is drawn.

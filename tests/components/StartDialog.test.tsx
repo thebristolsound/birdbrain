@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type {
+  BirdbrainSettings,
   Case,
   EgressSetting,
   LaunchedBrowserOption,
@@ -73,6 +74,8 @@ interface MountOptions {
   lastActiveCaseId?: string | null
   status?: LaunchedBrowserStatus
   operatorName?: string
+  // The write of the settings, where a test needs it to fail or to stay in flight.
+  saveSettings?: (partial: Partial<BirdbrainSettings>) => Promise<Partial<BirdbrainSettings>>
   egress?: EgressSetting
   launch?: (executablePath: string) => Promise<LaunchedBrowserStatus>
   cancelLaunch?: () => Promise<LaunchedBrowserStatus>
@@ -106,13 +109,18 @@ function mount(options: MountOptions = {}) {
   )
   const cancelLaunch = vi.fn(options.cancelLaunch ?? (async () => status))
   const vpnStatus = vi.fn(async () => ({ vpnSeen }))
+  const saved = { operatorName, egress, lastActiveCaseId }
+  const saveSettings = vi.fn(
+    options.saveSettings ??
+      (async (partial: Partial<BirdbrainSettings>) => ({ ...saved, ...partial }))
+  )
   const checkVpnWarning = warn
     ? vi.fn(async () => ({ caseId: 'case-1', warn: true, canMute: true }))
     : quietVpnWarning().checkVpnWarning
   fakeBridge({
     egress: { vpnStatus, checkVpnWarning, answerVpnWarning: vi.fn(async () => undefined) },
     cases: { list: vi.fn(options.listCases ?? (async () => cases)) },
-    settings: { get: vi.fn(async () => ({ operatorName, egress, lastActiveCaseId })) },
+    settings: { get: vi.fn(async () => saved), update: saveSettings },
     session: { activateCase },
     launchedBrowser: {
       list: vi.fn(async () => browsers),
@@ -127,7 +135,7 @@ function mount(options: MountOptions = {}) {
       <StartDialog />
     </QueryClientProvider>
   )
-  return { client, activateCase, launch, cancelLaunch, vpnStatus, checkVpnWarning }
+  return { client, activateCase, launch, cancelLaunch, vpnStatus, checkVpnWarning, saveSettings }
 }
 
 function open(caseId = 'case-1') {
@@ -452,17 +460,185 @@ describe('StartDialog (S2)', () => {
     expect(document.activeElement).toBe(picker)
   })
 
-  // `1d`: the gate the launch would refuse at, shown before the browser starts.
-  it('holds the launch until an operator name is set', async () => {
-    mount({ operatorName: '  ' })
+  describe('with no operator name saved', () => {
+    async function nameField(): Promise<HTMLInputElement> {
+      const body = await dialog()
+      return (await within(body).findByRole('textbox', {
+        name: 'Operator Name'
+      })) as HTMLInputElement
+    }
+
+    async function ready(): Promise<HTMLElement> {
+      const body = await dialog()
+      await within(body).findByRole('option', { name: 'Brave' })
+      await waitFor(() => expect(body.textContent).toContain('Proxy · Harbor relay'))
+      return body
+    }
+
+    it('asks for the name in its row, and holds the launch while it is blank', async () => {
+      const { saveSettings } = mount({ operatorName: '  ' })
+      open()
+      const field = await nameField()
+      const body = await ready()
+      expect(field.value).toBe('')
+      expect(field.placeholder).toBe('e.g. Alex Smith')
+      expect(body.textContent).toContain('Every Capture carries an operator name.')
+      expect(within(body).queryByRole('button', { name: 'Set operator name' })).toBeNull()
+      expect(launchButton('Launch').disabled).toBe(true)
+      fireEvent.change(field, { target: { value: '   ' } })
+      expect(launchButton('Launch').disabled).toBe(true)
+      fireEvent.change(field, { target: { value: 'A. Marsh' } })
+      expect(launchButton('Launch').disabled).toBe(false)
+      fireEvent.change(field, { target: { value: '' } })
+      expect(launchButton('Launch').disabled).toBe(true)
+      expect(saveSettings).not.toHaveBeenCalled()
+      expect(navigate).not.toHaveBeenCalled()
+    })
+
+    it('saves the name as typed before it activates the Case, then launches', async () => {
+      const { saveSettings, activateCase, launch } = mount({ operatorName: '' })
+      open()
+      const field = await nameField()
+      await ready()
+      fireEvent.change(field, { target: { value: ' A. Marsh ' } })
+      fireEvent.click(launchButton('Launch'))
+      await waitFor(() => expect(launch).toHaveBeenCalledWith(CHROME.executablePath))
+      expect(saveSettings).toHaveBeenCalledExactlyOnceWith({ operatorName: ' A. Marsh ' })
+      expect(saveSettings.mock.invocationCallOrder[0]).toBeLessThan(
+        activateCase.mock.invocationCallOrder[0]
+      )
+      expect(activateCase.mock.invocationCallOrder[0]).toBeLessThan(
+        launch.mock.invocationCallOrder[0]
+      )
+      await waitFor(() => expect(useAppStore.getState().startDialogCaseId).toBeNull())
+    })
+
+    it('activates no Case while the name is still being saved', async () => {
+      let finishSave: () => void = () => {}
+      const { activateCase, launch } = mount({
+        operatorName: '',
+        saveSettings: (partial) =>
+          new Promise((resolve) => {
+            finishSave = () => resolve({ ...partial, egress: PROXY })
+          })
+      })
+      open()
+      const field = await nameField()
+      await ready()
+      fireEvent.change(field, { target: { value: 'A. Marsh' } })
+      fireEvent.click(launchButton('Launch'))
+      // Long enough for the Case to have been activated, were the launch not waiting.
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 50))
+      })
+      expect(activateCase).not.toHaveBeenCalled()
+      act(() => finishSave())
+      await waitFor(() => expect(launch).toHaveBeenCalled())
+      expect(activateCase).toHaveBeenCalledWith('case-1')
+    })
+
+    it('says so in the row when the save fails, and launches nothing', async () => {
+      const { activateCase, launch, saveSettings } = mount({
+        operatorName: '',
+        saveSettings: async () => Promise.reject(new Error('disk full'))
+      })
+      open()
+      const field = await nameField()
+      const body = await ready()
+      fireEvent.change(field, { target: { value: 'A. Marsh' } })
+      fireEvent.click(launchButton('Launch'))
+      const alert = await within(body).findByRole('alert')
+      expect(alert.textContent).toBe('The name could not be saved.')
+      expect(saveSettings).toHaveBeenCalledOnce()
+      expect(activateCase).not.toHaveBeenCalled()
+      expect(launch).not.toHaveBeenCalled()
+      expect(useAppStore.getState().startDialogCaseId).toBe('case-1')
+      // The form is back with what was typed, and the name can be saved again.
+      const again = await nameField()
+      expect(again.value).toBe('A. Marsh')
+      expect(again.getAttribute('aria-invalid')).toBe('true')
+      expect(within(body).queryByRole('list', { name: 'Launch checks' })).toBeNull()
+      expect(launchButton('Launch').disabled).toBe(false)
+      fireEvent.change(again, { target: { value: 'A. Marsh.' } })
+      expect(within(body).queryByRole('alert')).toBeNull()
+    })
+
+    it('closes, and launches nothing, when cancelled while a save that fails is in flight', async () => {
+      let failSave: () => void = () => {}
+      const { activateCase, launch, cancelLaunch } = mount({
+        operatorName: '',
+        saveSettings: () =>
+          new Promise((_, reject) => {
+            failSave = () => reject(new Error('disk full'))
+          })
+      })
+      open()
+      const field = await nameField()
+      const body = await ready()
+      fireEvent.change(field, { target: { value: 'A. Marsh' } })
+      fireEvent.click(launchButton('Launch'))
+      fireEvent.click(await within(body).findByRole('button', { name: 'Cancel' }))
+      await waitFor(() => expect(cancelLaunch).toHaveBeenCalledOnce())
+      act(() => failSave())
+      await waitFor(() => expect(useAppStore.getState().startDialogCaseId).toBeNull())
+      expect(activateCase).not.toHaveBeenCalled()
+      expect(launch).not.toHaveBeenCalled()
+      // The next opening starts clean: no name typed, no error, and the form on screen.
+      open()
+      expect((await nameField()).value).toBe('')
+      expect(within(await dialog()).queryByRole('alert')).toBeNull()
+    })
+
+    it('shows the saved name as text once a launch that saved it fails', async () => {
+      mount({
+        operatorName: '',
+        launch: async () => Promise.reject({ message: 'gone', code: 'BROWSER_SPAWN_FAILED' })
+      })
+      open()
+      const field = await nameField()
+      const body = await ready()
+      fireEvent.change(field, { target: { value: 'A. Marsh' } })
+      fireEvent.click(launchButton('Launch'))
+      expect((await within(body).findByRole('status')).textContent).toContain('The launch failed')
+      await waitFor(() => expect(within(body).queryByRole('textbox')).toBeNull())
+      expect(body.textContent).toContain('A. Marsh')
+      expect(launchButton('Launch').disabled).toBe(false)
+    })
+
+    it('puts the focus on the name when one browser leaves no choice to make', async () => {
+      mount({ operatorName: '', browsers: [CHROME] })
+      open()
+      const field = await nameField()
+      await within(await dialog()).findByTestId('launch-browser-only')
+      await waitFor(() => expect(document.activeElement).toBe(field))
+      // Typing a name makes Launch pressable, and the focus stays where the Operator types.
+      fireEvent.change(field, { target: { value: 'A. Marsh' } })
+      expect(launchButton('Launch').disabled).toBe(false)
+      expect(document.activeElement).toBe(field)
+    })
+
+    it('forgets a name typed and not saved when it closes', async () => {
+      mount({ operatorName: '' })
+      open()
+      fireEvent.change(await nameField(), { target: { value: 'A. Marsh' } })
+      fireEvent.click(within(await dialog()).getByRole('button', { name: 'Cancel' }))
+      expect(useAppStore.getState().startDialogCaseId).toBeNull()
+      open()
+      expect((await nameField()).value).toBe('')
+    })
+  })
+
+  it('asks for no name, and saves none, when one is saved', async () => {
+    const { saveSettings, launch } = mount()
     open()
     const body = await dialog()
-    expect(await within(body).findByText('Not set')).toBeDefined()
-    expect(body.textContent).toContain('Set your name before launching.')
-    expect(launchButton('Launch').disabled).toBe(true)
-    fireEvent.click(within(body).getByRole('button', { name: 'Set operator name' }))
-    expect(navigate).toHaveBeenCalledWith({ to: '/settings', search: { section: 'operator' } })
-    expect(useAppStore.getState().startDialogCaseId).toBeNull()
+    await within(body).findByRole('option', { name: 'Brave' })
+    await waitFor(() => expect(body.textContent).toContain('A. Marsh'))
+    expect(within(body).queryByRole('textbox')).toBeNull()
+    expect(body.textContent).not.toContain('Every Capture carries an operator name.')
+    fireEvent.click(launchButton('Launch'))
+    await waitFor(() => expect(launch).toHaveBeenCalled())
+    expect(saveSettings).not.toHaveBeenCalled()
   })
 
   // `1b`'s no-VPN line, in the words of the warning #2037 shipped (ADR-0032).

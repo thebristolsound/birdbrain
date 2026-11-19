@@ -3,10 +3,10 @@ import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import type { KnownEgress, LaunchedBrowserOption } from '@shared/types'
 import { refusalCode } from '@shared/ipc'
-import { Button, Dialog, DialogContent, DialogTitle } from '@renderer/components/ui'
+import { Button, Dialog, DialogContent, DialogTitle, Input } from '@renderer/components/ui'
 import { casesQueryOptions } from '@renderer/lib/api/cases'
 import { useSessionMutations } from '@renderer/lib/api/session'
-import { settingsQueryOptions } from '@renderer/lib/api/settings'
+import { settingsQueryOptions, useSettingsMutations } from '@renderer/lib/api/settings'
 import { vpnStatusQueryOptions } from '@renderer/lib/api/egress'
 import { confirmContact } from '@renderer/lib/vpnWarning'
 import { VPN_SESSION_CAVEAT } from '@renderer/components/status/VpnWarningDialog'
@@ -36,8 +36,6 @@ import {
 const TITLE_TIP =
   'The browser runs on a browser profile of its own. Pages in this browser can tell that ' +
   'software drives it.'
-
-const OPERATOR_TIP = 'Every Capture carries an operator name, so Birdbrain asks for it first.'
 
 const STEP_MARKS: Readonly<Record<StepProgress, { mark: string; className: string }>> = {
   done: { mark: '✓', className: 'text-success-fg' },
@@ -92,6 +90,7 @@ export function StartDialog() {
   const { data: status } = useQuery(launchedBrowserStatusQueryOptions)
   const { data: browsers } = useQuery({ ...launchedBrowsersQueryOptions, enabled: open })
   const { activateCase } = useSessionMutations()
+  const { update } = useSettingsMutations()
 
   const [selectedPath, setSelectedPath] = useState('')
   // The browser being launched and the Egress it was launched with.
@@ -103,6 +102,8 @@ export function StartDialog() {
   const [cancelling, setCancelling] = useState(false)
   const [cancelError, setCancelError] = useState('')
   const cancelled = useRef(false)
+  const [typedName, setTypedName] = useState('')
+  const [nameError, setNameError] = useState('')
 
   // Every way out of the dialog comes here, so the next opening starts clean.
   function dismiss() {
@@ -111,6 +112,8 @@ export function StartDialog() {
     setCancelling(false)
     setCancelError('')
     setPickedCaseId('')
+    setTypedName('')
+    setNameError('')
     cancelled.current = false
     close()
   }
@@ -121,13 +124,15 @@ export function StartDialog() {
   const egress = settings?.egress
   const knownEgress: KnownEgress | null = egress && egress.kind !== 'unavailable' ? egress : null
   const operatorName = settings?.operatorName?.trim() ?? ''
+  // No operator name is saved, so the dialog asks for one and saves it on Launch.
+  const askName = settings !== undefined && operatorName === ''
   // The no-VPN line (`1b`), under a Direct Egress only: the indicator's words with the session
   // warning's caveat, since Birdbrain sees this computer's route and not the browser's.
   const direct = knownEgress?.kind === 'direct'
   const { data: vpn } = useQuery({ ...vpnStatusQueryOptions, enabled: open && direct })
   const noVpnSeen = direct && vpn?.vpnSeen === false
 
-  // A refusal known before the launch starts. A missing operator name shows in its own row.
+  // A refusal known before the launch starts. A missing operator name is asked for in its row.
   const blocked =
     unavailableRefusal(status) ??
     busyRefusal(status) ??
@@ -144,21 +149,45 @@ export function StartDialog() {
     caseId !== null &&
     browser !== undefined &&
     knownEgress !== null &&
-    operatorName !== ''
+    (askName ? typedName.trim() !== '' : operatorName !== '')
 
-  // One browser found has no select to take the focus, so Launch takes it once it can be pressed.
+  // One browser found has no select to take the focus. The name field takes it while the
+  // dialog asks for a name, and otherwise Launch does once it can be pressed.
   const loneBrowser = browsers?.length === 1
+  const nameField = useRef<HTMLInputElement>(null)
   const launchButton = useRef<HTMLButtonElement>(null)
-  const focusLaunch = open && !picking && loneBrowser && canLaunch
+  const unclaimedFocus = open && !picking && !launching && loneBrowser
+  const focusName = unclaimedFocus && askName
+  const focusLaunch = unclaimedFocus && !askName && canLaunch
+  useEffect(() => {
+    if (focusName) nameField.current?.focus()
+  }, [focusName])
   useEffect(() => {
     if (focusLaunch) launchButton.current?.focus()
   }, [focusLaunch])
+
+  // Saved as typed, as the Operator tab saves it: the name is trimmed only to test for a blank.
+  async function saveName(): Promise<boolean> {
+    try {
+      await update.mutateAsync({ operatorName: typedName })
+      return true
+    } catch {
+      setNameError('The name could not be saved.')
+      return false
+    }
+  }
 
   async function launch() {
     if (!caseId || !browser || !knownEgress) return
     cancelled.current = false
     setRefusal(null)
     setLaunching({ browser, egress: knownEgress })
+    if (askName && !(await saveName())) {
+      // A cancel pressed while the name was saving still closes the dialog.
+      if (cancelled.current) dismiss()
+      else setLaunching(null)
+      return
+    }
     try {
       // A launch starts or joins a Capture Session, so it passes the VPN warning first
       // (ADR-0032 rule 3), as the capture menu's session start does.
@@ -208,12 +237,6 @@ export function StartDialog() {
     // The top bar's mark can have hidden the panel, and this button says it shows it.
     setPanelHidden(false)
     void navigate({ to: '/cases/$caseId/captures', params: { caseId: browserCaseId } })
-  }
-
-  // Lands on the operator name in the Operator tab (`1b`'s Set operator name).
-  function setOperatorName() {
-    dismiss()
-    void navigate({ to: '/settings', search: { section: 'operator' } })
   }
 
   return (
@@ -336,18 +359,49 @@ export function StartDialog() {
                     </p>
                   )}
                 </dd>
-                <dt className="text-text-muted">Operator</dt>
-                <dd>
-                  {operatorName ? (
-                    <span className="text-text-primary">{operatorName}</span>
+                <dt className={cn('text-text-muted', askName && 'pt-1.5')}>
+                  {askName ? (
+                    <label htmlFor="launch-operator-name">Operator Name</label>
                   ) : (
+                    'Operator'
+                  )}
+                </dt>
+                <dd>
+                  {askName ? (
                     <>
-                      <span className="font-semibold text-danger-fg">Not set</span>
-                      <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-text-muted">
-                        <span>Set your name before launching.</span>
-                        <InfoTip text={OPERATOR_TIP} />
-                      </div>
+                      <Input
+                        ref={nameField}
+                        id="launch-operator-name"
+                        type="text"
+                        value={typedName}
+                        onChange={(e) => {
+                          setTypedName(e.target.value)
+                          setNameError('')
+                        }}
+                        placeholder="e.g. Alex Smith"
+                        aria-invalid={nameError ? true : undefined}
+                        aria-describedby="launch-operator-name-note"
+                        className="h-7 bg-surface"
+                      />
+                      {nameError ? (
+                        <p
+                          id="launch-operator-name-note"
+                          role="alert"
+                          className="mt-0.5 text-[11px] text-danger-fg"
+                        >
+                          {nameError}
+                        </p>
+                      ) : (
+                        <p
+                          id="launch-operator-name-note"
+                          className="mt-0.5 text-[11px] text-text-muted"
+                        >
+                          Every Capture carries an operator name.
+                        </p>
+                      )}
                     </>
+                  ) : (
+                    <span className="text-text-primary">{operatorName}</span>
                   )}
                 </dd>
               </dl>
@@ -367,15 +421,6 @@ export function StartDialog() {
                 <Button variant="outline" className="shrink-0 whitespace-nowrap" onClick={dismiss}>
                   Cancel
                 </Button>
-                {settings && !operatorName && (
-                  <Button
-                    variant="outline"
-                    className="shrink-0 whitespace-nowrap"
-                    onClick={setOperatorName}
-                  >
-                    Set operator name
-                  </Button>
-                )}
                 <Button
                   ref={launchButton}
                   className="shrink-0 whitespace-nowrap font-semibold text-accent-foreground"

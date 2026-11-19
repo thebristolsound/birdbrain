@@ -120,11 +120,14 @@ function mount(options: MountOptions = {}) {
   )
   // Main's side of the warning, as `vpnWarning.ts` keeps it: a Case that was answered for is
   // warned, and is not warned again. A test changes `due` and `canMute` to move the network.
-  const vpn = { due: warn, canMute, warned: new Set<string>() }
+  const vpn = { due: warn, canMute, network: 'network-a', warned: new Set<string>() }
   const checkVpnWarning = vi.fn(async (target: VpnWarningTarget): Promise<VpnWarningCheck> => {
     const caseId = 'caseId' in target ? target.caseId : ''
     const due = vpn.due && !vpn.warned.has(caseId)
-    return { caseId, warn: due, canMute: due && vpn.canMute }
+    // A network main could read has a reference, and only such a network can be muted.
+    return due && vpn.canMute
+      ? { caseId, warn: true, canMute: true, network: vpn.network }
+      : { caseId, warn: due, canMute: false }
   })
   const answerVpnWarning = vi.fn(async ({ caseId }: VpnWarningAnswer) => {
     vpn.warned.add(caseId)
@@ -822,6 +825,57 @@ describe('StartDialog (S2)', () => {
       expect(answerVpnWarning.mock.calls[0][0].choice).toBe('continue')
     })
 
+    it('mutes nothing when the press finds another network than the one the form showed', async () => {
+      const { body, vpn, answerVpnWarning, launch } = await warned()
+      fireEvent.click(muteBox(body)!)
+      vpn.network = 'network-b'
+      fireEvent.click(launchButton('Launch without VPN'))
+      await waitFor(() => expect(launch).toHaveBeenCalled())
+      expect(answerVpnWarning).toHaveBeenCalledExactlyOnceWith({
+        caseId: 'case-1',
+        occasion: 'session',
+        choice: 'continue'
+      })
+    })
+
+    // Absence is not a match: two checks that name no network did not see the same one.
+    it('mutes nothing when main gives no reference to the network', async () => {
+      const { checkVpnWarning, answerVpnWarning, launch } = mount({
+        egress: DIRECT,
+        vpnSeen: false,
+        warn: true
+      })
+      checkVpnWarning.mockImplementation(async () => ({
+        caseId: 'case-1',
+        warn: true,
+        canMute: true
+      }))
+      open()
+      const body = await dialog()
+      await within(body).findByRole('option', { name: 'Brave' })
+      await within(body).findByRole('button', { name: 'Launch without VPN' })
+      fireEvent.click(muteBox(body)!)
+      fireEvent.click(launchButton('Launch without VPN'))
+      await waitFor(() => expect(launch).toHaveBeenCalled())
+      expect(answerVpnWarning.mock.calls[0][0].choice).toBe('continue')
+    })
+
+    it('drops the tick when a held launch finds another network', async () => {
+      const { body, vpn, answerVpnWarning } = await warned({
+        operatorName: '',
+        saveSettings: async () => Promise.reject(new Error('disk full'))
+      })
+      fireEvent.change(within(body).getByRole('textbox', { name: 'Operator Name' }), {
+        target: { value: 'A. Marsh' }
+      })
+      fireEvent.click(muteBox(body)!)
+      vpn.network = 'network-b'
+      fireEvent.click(launchButton('Launch without VPN'))
+      await within(body).findByRole('alert')
+      expect(muteBox(body)?.checked).toBe(false)
+      expect(answerVpnWarning).not.toHaveBeenCalled()
+    })
+
     it('launches, and answers nothing, when no warning is due any more on the press', async () => {
       const { vpn, checkVpnWarning, answerVpnWarning, activateCase, launch } = await warned()
       vpn.due = false
@@ -1135,6 +1189,50 @@ describe('StartDialog (S2)', () => {
       expect(launch).not.toHaveBeenCalled()
     })
 
+    it('offers Cancel again after a cancelled launch fails for another reason', async () => {
+      let failLaunch: () => void = () => {}
+      const { body, launch, cancelLaunch } = await unwarned({
+        launch: () =>
+          new Promise((_, reject) => {
+            failLaunch = () => reject({ message: 'gone', code: 'BROWSER_SPAWN_FAILED' })
+          })
+      })
+      fireEvent.click(launchButton('Launch'))
+      await waitFor(() => expect(launch).toHaveBeenCalledOnce())
+      fireEvent.click(within(body).getByRole('button', { name: 'Cancel' }))
+      await waitFor(() => expect(cancelLaunch).toHaveBeenCalledOnce())
+      act(() => failLaunch())
+      await within(body).findByRole('status')
+      fireEvent.click(launchButton('Launch'))
+      await waitFor(() => expect(launch).toHaveBeenCalledTimes(2))
+      expect(within(body).queryByText('Cancelling…')).toBeNull()
+      expect(within(body).getByRole('button', { name: 'Cancel' })).toHaveProperty('disabled', false)
+    })
+
+    it('closes when cancelled while main is asked on the press and the question fails', async () => {
+      let failQuestion: () => void = () => {}
+      const { body, checkVpnWarning, activateCase, launch, cancelLaunch } = await unwarned()
+      checkVpnWarning.mockImplementationOnce(
+        () =>
+          new Promise((_, reject) => {
+            failQuestion = () => reject(new Error('main is gone'))
+          })
+      )
+      fireEvent.click(launchButton('Launch'))
+      fireEvent.click(await within(body).findByRole('button', { name: 'Cancel' }))
+      await waitFor(() => expect(cancelLaunch).toHaveBeenCalledOnce())
+      act(() => failQuestion())
+      await waitFor(() => expect(useAppStore.getState().startDialogCaseId).toBeNull())
+      expect(activateCase).not.toHaveBeenCalled()
+      expect(launch).not.toHaveBeenCalled()
+      // The next opening is the form, with nothing left of the cancelled attempt.
+      open()
+      const again = await dialog()
+      await within(again).findByRole('option', { name: 'Brave' })
+      expect(within(again).queryByRole('status')).toBeNull()
+      expect(within(again).queryByText('Cancelling…')).toBeNull()
+    })
+
     // The outcome `confirmContact` gave a failed check before the dialog asked for itself.
     it('refuses, and launches nothing, when main cannot be asked on the press', async () => {
       const { body, checkVpnWarning, activateCase, launch } = await unwarned()
@@ -1209,8 +1307,10 @@ describe('StartDialog (S2)', () => {
     const body = await dialog()
     const card = await within(body).findByRole('status')
     expect(card.textContent).toBe('A launched browser is already openShow panel')
-    // The title is the reason, so no line of detail is drawn under it.
-    expect(card.firstElementChild?.childElementCount).toBe(1)
+    // The title is the reason, so the line of detail it used to carry is not drawn under it.
+    expect(within(card).getByText('A launched browser is already open')).toBeDefined()
+    expect(within(card).getByRole('button', { name: 'Show panel' })).toBeDefined()
+    expect(card.textContent).not.toContain('Only one can be open at a time.')
     // The canvas numbers its states for its catalogue; the app shows no number, and state 4
     // refuses nothing that went wrong, so it has no danger rule.
     expect(card.textContent).not.toMatch(/^\d/)

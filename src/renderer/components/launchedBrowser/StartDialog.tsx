@@ -33,15 +33,24 @@ import {
 } from '@renderer/components/launchedBrowser/startDialogModel'
 
 // A session warning main says is due for a Case (ADR-0032 VPN rule 3), with the Operator's
-// choice to stop warning on this network. The choice starts unmade.
+// choice to stop warning on this network. The choice starts unmade, and it is a choice about
+// `network`, the one the form was drawn for.
 interface SessionWarning {
   caseId: string
   canMute: boolean
   mute: boolean
+  network: string | undefined
 }
 
-function sessionWarning(caseId: string, { warn, canMute }: VpnWarningCheck): SessionWarning | null {
-  return warn ? { caseId, canMute, mute: false } : null
+function sessionWarning(caseId: string, check: VpnWarningCheck): SessionWarning | null {
+  const { warn, canMute, network } = check
+  return warn ? { caseId, canMute, mute: false, network } : null
+}
+
+// Whether a later check saw the network the form was drawn for. A network that could not be
+// read matches nothing.
+function sameNetwork(shown: SessionWarning, { network }: VpnWarningCheck): boolean {
+  return shown.network !== undefined && shown.network === network
 }
 
 const STEP_MARKS: Readonly<Record<StepProgress, { mark: string; className: string }>> = {
@@ -206,20 +215,26 @@ export function StartDialog() {
   }
 
   // Asked again on the press: the network can change while the dialog is open. A tick the
-  // Operator made stays while the network can still be muted, so a held launch does not undo it.
+  // Operator made stays only while the press finds the network it was made for, so a held
+  // launch does not undo it and a changed network does not inherit it.
   async function askVpnWarningAgain(forCase: string): Promise<VpnWarningCheck> {
     lastAsk.current += 1
     const check = await birdbrain.egress.checkVpnWarning({ caseId: forCase }, 'session')
     const next = sessionWarning(forCase, check)
-    setWarning(next && dueWarning ? { ...next, mute: dueWarning.mute && next.canMute } : next)
+    const keepTick = dueWarning !== null && dueWarning.mute && sameNetwork(dueWarning, check)
+    setWarning(next && { ...next, mute: keepTick && next.canMute })
     return check
   }
 
   const cameDue = ({ warn }: VpnWarningCheck) => warn && dueWarning === null
 
   // Tells main the Operator went ahead, which is what marks the Case warned and mutes a network.
-  async function answerVpnWarning(forCase: string, canMute: boolean): Promise<void> {
-    const choice = dueWarning?.mute && canMute ? 'mute-network' : 'continue'
+  // Main mutes the network of its latest check, so the tick counts only where that is the
+  // network the form showed.
+  async function answerVpnWarning(forCase: string, check: VpnWarningCheck): Promise<void> {
+    const mute =
+      dueWarning !== null && dueWarning.mute && check.canMute && sameNetwork(dueWarning, check)
+    const choice = mute ? 'mute-network' : 'continue'
     await birdbrain.egress.answerVpnWarning({ caseId: forCase, occasion: 'session', choice })
     setWarning(null)
   }
@@ -235,6 +250,7 @@ export function StartDialog() {
     cancelled.current = false
     setRefusal(null)
     setLaunching({ browser, egress: knownEgress })
+    let launchSent = false
     try {
       // A launch starts or joins a Capture Session, so it passes the VPN warning first
       // (ADR-0032 VPN rule 3). A warning the pressed form did not show holds the launch: the
@@ -258,25 +274,29 @@ export function StartDialog() {
         dismiss()
         return
       }
-      if (check.warn) await answerVpnWarning(caseId, check.canMute)
+      if (check.warn) await answerVpnWarning(caseId, check)
       await activateCase.mutateAsync(caseId)
       // A cancel while the Case was activating reached main before any launch it could stop.
       if (cancelled.current) {
         dismiss()
         return
       }
+      launchSent = true
       await launchBrowser(browser.executablePath)
       dismiss()
     } catch (error) {
+      // A cancelled attempt closes the dialog: when main says the launch was cancelled, and
+      // when a step before the launch failed, which left main nothing to cancel.
       if (
         cancelled.current &&
-        refusalCode(error, 'launchedBrowser:launch') === 'BROWSER_LAUNCH_CANCELLED'
+        (!launchSent || refusalCode(error, 'launchedBrowser:launch') === 'BROWSER_LAUNCH_CANCELLED')
       ) {
         dismiss()
         return
       }
       setRefusal(refusalFor(error, browser.label, knownEgress))
       setLaunching(null)
+      setCancelling(false)
     }
   }
 

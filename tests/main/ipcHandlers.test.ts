@@ -4932,7 +4932,8 @@ describe('ipcHandlers — the VPN warning (ADR-0032)', () => {
     ).toEqual({
       caseId,
       warn: true,
-      canMute: true
+      canMute: true,
+      network: networkHash({ name: 'Example Network', routerMac: '00:00:5e:00:53:02' })
     })
     expect(
       expectOk(await invoke(IPC_CHANNELS.EGRESS_CHECK_VPN_WARNING, { captureId }, 'site'))

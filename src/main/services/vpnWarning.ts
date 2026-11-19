@@ -77,7 +77,7 @@ export function createVpnWarningService(deps: VpnWarningDeps = settingsDeps): Vp
       const hash = network ? networkHash(network) : null
       if (hash && deps.mutedNetworks().includes(hash)) return quiet
       raisedOn.set(key, hash)
-      return { caseId, warn: true, canMute: hash !== null }
+      return { caseId, warn: true, canMute: hash !== null, ...(hash ? { network: hash } : {}) }
     },
 
     answer(caseId, occasion, choice) {

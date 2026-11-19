@@ -53,7 +53,8 @@ describe('the VPN warning', () => {
     expect(await service.check('case-a', 'site')).toEqual({
       caseId: 'case-a',
       warn: true,
-      canMute: true
+      canMute: true,
+      network: networkHash(HOME)
     })
     service.answer('case-a', 'site', 'continue')
     expect(await service.check('case-a', 'site')).toMatchObject({ warn: false })
@@ -69,7 +70,8 @@ describe('the VPN warning', () => {
     expect(await service.check('case-a', 'session')).toEqual({
       caseId: 'case-a',
       warn: true,
-      canMute: true
+      canMute: true,
+      network: networkHash(HOME)
     })
     service.answer('case-a', 'session', 'continue')
     expect(await service.check('case-a', 'session')).toMatchObject({ warn: false })

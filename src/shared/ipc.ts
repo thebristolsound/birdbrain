@@ -494,6 +494,9 @@ export interface VpnWarningCheck {
   caseId: string
   warn: boolean
   canMute: boolean
+  // An opaque reference to the network a warning was raised on, absent where it could not be
+  // read. Two checks that give the same reference saw the same network.
+  network?: string
 }
 
 export type VpnWarningChoice = 'continue' | 'mute-network'

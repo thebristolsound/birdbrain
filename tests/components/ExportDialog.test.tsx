@@ -401,6 +401,15 @@ describe('ExportDialog', () => {
     expect(lastSelection(generateReport)).toEqual(WITHOUT_NOTES_SELECTION)
   })
 
+  it('exports a Working Copy as its preset after notes were left out of the Evidence Package', async () => {
+    renderDialog()
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Leave out Operator notes' }))
+    fireEvent.click(screen.getByLabelText(WORKING))
+    fireEvent.click(screen.getByText('Export'))
+    await waitFor(() => expect(generateReport).toHaveBeenCalledTimes(1))
+    expect(lastSelection(generateReport)).toEqual(WORKING_SELECTION)
+  })
+
   it('offers the checkbox under the Evidence Package only while it is the chosen choice', () => {
     renderDialog()
 

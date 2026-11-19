@@ -1,3 +1,4 @@
+import { useId } from 'react'
 import { Star, Check, CopyPlus, RefreshCcw, Clock, FileX } from 'lucide-react'
 import { MemberCodeChip } from '@renderer/components/sharing/MemberCodeChip'
 import { COPY, HUE_CLASSES } from '@renderer/components/sharing/memberModel'
@@ -19,6 +20,12 @@ import logoImg from '@renderer/assets/logo.png'
 const CHIP_CLASS =
   'rounded-md border border-border px-1.5 py-px text-[10px] font-medium text-text-faint'
 
+// A 24px target around a smaller glyph, used with a negative margin that gives
+// back what it adds. `relative` keeps all of it above the text beside it.
+const HIT_AREA_CLASS = 'relative grid h-6 w-6 shrink-0 place-items-center'
+
+const selectorName = (selector: Selector) => selector.label || selector.pattern
+
 interface CaptureItemProps {
   capture: Capture
   isSelected: boolean
@@ -38,6 +45,9 @@ interface CaptureItemProps {
   // Sticky mode: once any row is checked, every row's checkbox stays visible.
   showCheckbox?: boolean
   matchingSelectors?: Selector[]
+  // The Selectors the list is filtered by. A row names the one it matches, so
+  // the filter's effect shows on the row.
+  filterSelectorIds?: string[]
   sharing?: CaptureSharing
 }
 
@@ -53,9 +63,11 @@ export function CaptureItem({
   onToggleMultiSelect,
   showCheckbox = false,
   matchingSelectors = [],
+  filterSelectorIds = [],
   sharing
 }: CaptureItemProps) {
   const { thumbnail } = useCaptureThumbnail(capture.id)
+  const selectorNamesId = useId()
 
   let hostname: string
   try {
@@ -67,8 +79,14 @@ export function CaptureItem({
   const provenance = getProvenanceColor(capture.lastVerifiedStatus)
   const now = nowMs ?? Date.now()
   const fullTimestamp = `Captured ${formatCaptureTimestampFull(capture.timestamp)}`
-  const shownSelectors = matchingSelectors.slice(0, 2)
-  const overflowSelectors = matchingSelectors.slice(2)
+  // Main hands the matches newest first, so with no filter the newest shows.
+  const shownSelector =
+    matchingSelectors.find((selector) => filterSelectorIds.includes(selector.id)) ??
+    matchingSelectors[0]
+  const otherSelectors = matchingSelectors.filter((selector) => selector !== shownSelector)
+  const selectorNames = shownSelector
+    ? [shownSelector, ...otherSelectors].map(selectorName).join(', ')
+    : ''
   const author = captureAttribution(capture, sharing?.members)
   const excluded = sharing?.exclusions?.has(capture.id) ?? false
   const exclusion = excluded ? (
@@ -116,8 +134,8 @@ export function CaptureItem({
       aria-checked={isMultiSelected}
       role="checkbox"
       data-testid="capture-select-checkbox"
-      className={`shrink-0 transition-opacity duration-150 ${
-        view === 'detailed' ? 'mt-1 self-start' : 'self-center'
+      className={`${HIT_AREA_CLASS} -m-[5px] transition-opacity duration-150 ${
+        view === 'detailed' ? '-mt-px self-start' : 'self-center'
       } ${
         isMultiSelected || showCheckbox
           ? 'opacity-100'
@@ -262,7 +280,7 @@ export function CaptureItem({
               }}
               aria-label={isFavorite ? 'Unfavorite capture' : 'Favorite capture'}
               aria-pressed={isFavorite}
-              className="shrink-0 self-center rounded p-0.5 transition-colors hover:bg-elevated/50"
+              className={`${HIT_AREA_CLASS} -m-[4.5px] self-center rounded transition-colors hover:bg-elevated/50`}
             >
               <Star
                 className={`h-[11px] w-[11px] ${
@@ -303,29 +321,38 @@ export function CaptureItem({
             {formatRelativeTime(capture.timestamp, now)}
           </span>
         </div>
-        {/* Always drawn so a row with no matches reserves the chip line and
-            stands as tall as its siblings; the invisible strut takes its
-            height from the same box as a real chip. */}
-        <div data-testid="capture-item-chip-line" className="mt-1.5 flex flex-wrap gap-1">
+        {/* Always drawn and never wrapped, so every row is the same height: the
+            invisible strut takes its height from the same box as a real chip. */}
+        <div
+          data-testid="capture-item-chip-line"
+          className="mt-1.5 flex min-w-0 gap-1 overflow-hidden whitespace-nowrap"
+        >
           {exclusion}
-          {shownSelectors.map((selector) => (
+          {shownSelector && (
             <div
-              key={selector.id}
-              className={`max-w-[110px] truncate ${CHIP_CLASS}`}
-              title={selector.label || selector.pattern}
+              data-testid="capture-item-selector-chip"
+              className={`flex min-w-0 gap-1 ${CHIP_CLASS}`}
+              title={selectorNames}
+              aria-describedby={selectorNamesId}
             >
-              {selector.label || selector.pattern}
-            </div>
-          ))}
-          {overflowSelectors.length > 0 && (
-            <div
-              className={CHIP_CLASS}
-              title={overflowSelectors.map((s) => s.label || s.pattern).join(', ')}
-            >
-              +{overflowSelectors.length}
+              <span data-testid="capture-item-selector-name" className="truncate">
+                {selectorName(shownSelector)}
+              </span>
+              {otherSelectors.length > 0 && (
+                <span data-testid="capture-item-selector-more" className="shrink-0">
+                  +{otherSelectors.length}
+                </span>
+              )}
             </div>
           )}
-          {matchingSelectors.length === 0 && (
+          {/* Hidden from sight only: the row is a button, so a screen reader
+              reads this as part of the row. */}
+          {shownSelector && (
+            <span id={selectorNamesId} className="sr-only">
+              Matching Selectors: {selectorNames}
+            </span>
+          )}
+          {!shownSelector && (
             <span
               aria-hidden="true"
               data-testid="capture-item-chip-strut"

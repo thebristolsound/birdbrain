@@ -215,7 +215,7 @@ The verdicts use fixed limits:
 | Viewer | Click on a row, to the row marked and the viewer's title shown | 36 ms (22 to 53). Comfortable | 94 ms (86 to 147). Strained | 0.82 s (0.51 to 2.44). Not comfortable |
 | List search | Slowest key press while typing "tender" | 32 ms. Comfortable | 240 ms. Strained | 2.4 s (2.3 to 2.4). Not comfortable |
 | List search | Clearing the box, to every row drawn again | 28 ms. Comfortable | 195 ms. Strained | 1.04 s (1.00 to 1.17). Not comfortable |
-| Case search | Results shown for a common word, with the bar's 300 ms wait | 0.34 s. Comfortable | 0.39 s. Comfortable | 0.62 s (0.54 to 0.63). Comfortable |
+| Case search | Results shown for a common word, with the bar's 300 ms wait | 0.34 s, 0.04 s after the wait. Comfortable | 0.39 s, 0.09 s after the wait. Comfortable | 0.62 s (0.54 to 0.63), 0.32 s after the wait. Strained |
 | Data screen | First open: table and tree drawn | 0.04 s. Comfortable | 0.13 s. Comfortable | 0.57 s. Comfortable |
 | Data screen | Click on a table row, to the row selected | 8 ms. Comfortable | 41 ms. Comfortable | 165 ms. Strained |
 | Data screen | Tree to Indicators, Domain Reference listed | 61 ms. Comfortable | 73 ms. Comfortable | 173 ms. Strained |
@@ -229,6 +229,9 @@ Notes on the table:
 
 - The verdict is on time only. A section can be comfortable in time and still have a finding:
   the Link Map, the Case search results, and the Indicators list each do.
+- The Case search bar waits a fixed 300 ms after the last key press before it asks for
+  results. Its verdict is on the time after that wait, which the row gives beside the measured
+  time, because the wait is the same at every size and is not the Case's doing.
 - The Overview's counts animate upward for about 0.6 seconds on first open, which is most of
   its time at every size.
 - The eight 2,000 launches, in seconds: 4.0, 22.4, 28.5, 46.5, 145.2, 175.8, 184.3, and
@@ -295,7 +298,8 @@ horizontal overflow was seen in the list, the details panel, the Overview, or th
   seconds, and selects a row in 0.17 seconds, which is strained.
 - **Indicators list.** Comfortable in time at 50 and 500 and strained at 2,000. What breaks
   first is its length, finding 13.
-- **Case search results.** Comfortable in time at every size. What breaks first is the length
+- **Case search results.** Comfortable in time at 50 and 500, and strained at 2,000, where the
+  results took 0.32 seconds after the bar's fixed wait. What breaks first is the length
   of the list, finding 12, already at 500 Captures with 621 results.
 - **Signals.** Its own screen is comfortable at every size. Its two lists grow with Selectors
   and Tags, not with Captures, and 20 and 30 of them were no strain. Each list shows about six

@@ -68,7 +68,7 @@ the cell says otherwise. Light values that do not change are omitted.
 | `--color-control` (new) | Control boundaries, nominal dot | | `#7a7a84` (3.8:1) | | `#7a7a84` (3.8:1; 3.4:1 on a hovered row) |
 | `--color-hover` (new) | Hover, keyboard highlight, open pill | | 6% white | | 6% ink, `rgba(24,24,40,0.06)` |
 | `--color-input` | Input border | `--color-border-strong` | `--color-control` | `#8b8b93` | `--color-control` |
-| `--color-success-fg` | Verified | `#34d399` | `#4ec38e` (7.3:1) | | |
+| `--color-success-fg` | Verified | `#34d399` | `#4ec38e` (7.3:1) | `#047857` | `#046c4e` (5.2:1 on its tint, 5.1:1 hovered) |
 | `--color-danger-fg` | Problem words, recording | `#f87171` | `#f47a7a` (6.1:1) | | |
 | `--color-warning-fg` | Warning words, if any | `#fbbf24` | `#e5a84b` (7.8:1) | | |
 | `--color-warning-mark` (new) | Amber dot, icon, bar | | `#e5a84b` (9.0:1 on surface) | | `#b06d00` (3.7:1; 4.2:1 on white) |
@@ -84,6 +84,9 @@ the cell says otherwise. Light values that do not change are omitted.
 The bundle's `palette.css` holds the same set, with the ratio of each in a comment. A text copy,
 extracted from the bundle, sits beside it as
 [`palette.css`](../design-handoff/2026-11-17-one-row-chrome/palette.css).
+One value departs from it: the table takes `#046c4e` for light `--color-success-fg`, where the
+bundle keeps `#047857`, which measures 4.45:1 on its own tint over the darker light surface and
+4.3:1 on a hovered row.
 
 ### Rules
 
@@ -154,17 +157,17 @@ effort scored 7.5, 8.0 and 8.5. Both passed on the third round, and both checked
 changes left dark mode intact. From this pass on, the measurement also covers hover and highlight
 states for what the boards draw inside a hoverable item: text there measures 4.69:1 at least in
 light and 5.01:1 in dark, and marks and control borders 3.35:1 and 3.86:1. Two pairs the boards
-never draw fall short; see "Still open".
+never draw fell short: the table fixes one, and "Still open" holds the other.
 
 ## Still open
 
-- **Two hover pairs under 4.5:1.** Review on #2238 found two text pairs that no board draws but the
-  app could: light `--color-success-fg` `#047857` on a hovered row (4.3:1), and dark
-  `--color-text-faint` `#92939d` on a hovered item over `--color-elevated` (4.5:1 rounded, 4.49:1
-  exact). Raising them would change two accepted values and the bundle, so it waits for the
-  maintainer. Candidates that clear both states: light success `#046c4e` (5.1:1 hovered, 5.7:1 on
-  surface) and dark faint `#9798a2` (4.8:1 hovered, 5.7:1 on elevated). Until then, keep success
-  words and faint text off hovered rows on those surfaces.
+- **One hover pair under 4.5:1.** Review on #2238 found two text pairs that no board draws but the
+  app could. Light `--color-success-fg` `#047857` on a hovered row (4.3:1) is fixed in the table,
+  which takes `#046c4e` (5.1:1 hovered, 5.7:1 on surface). Dark `--color-text-faint` `#92939d` on
+  a hovered item over `--color-elevated` measures 4.5:1 rounded, 4.49:1 exact. Raising it would
+  change an accepted value and the bundle, so it waits for the maintainer. The candidate that
+  clears both states is `#9798a2` (4.8:1 hovered, 5.7:1 on elevated). Until then, keep faint text
+  off hovered items on that surface.
 
 - **The design system.** The Birdbrain design system artifact needs the same values, so other
   mocks pick them up.

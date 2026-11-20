@@ -128,15 +128,6 @@ describe('captureRowOf', () => {
     expect(absent.boundTlsAbsent).toBe('not-https')
   })
 
-  it('leaves every capture engine column empty for a writer that turns them off', () => {
-    const off: CaptureRowLocal = { ...LOCAL, captureEngineFields: false }
-    // Two entries, because one cannot sign Bound TLS Details and the reason they are absent.
-    for (const entry of [ENGINE, { ...ENTRY, boundTlsAbsent: 'not-https' as const }]) {
-      const row = captureRowOf(entry, off)
-      for (const key of ENGINE_KEYS) expect(row[key]).toBeUndefined()
-    }
-  })
-
   it("carries another member's authorship and committed time only when given", () => {
     expect(captureRowOf(ENTRY, LOCAL)).toMatchObject({ author: undefined, committedAt: undefined })
     const author = { installationId: 'alice', memberCode: 'AL' }

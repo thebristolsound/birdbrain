@@ -63,7 +63,7 @@ describe('CapturePreferences screenshots toggle', () => {
   it('draws the box from theme tokens in both states', () => {
     renderPanel()
     const { className } = screenshotsCheckbox()
-    expect(className).toContain('border-border-strong')
+    expect(className).toContain('border-control')
     expect(className).toContain('bg-canvas')
     expect(className).toContain('checked:border-accent')
     expect(className).toContain('checked:bg-accent')

@@ -619,7 +619,7 @@ export function DataExplorer() {
     <div className="flex h-full min-h-0" data-testid="data-explorer">
       <aside className="flex w-[276px] shrink-0 flex-col border-r border-border bg-surface">
         <div className="border-b border-border p-2.5">
-          <div className="flex items-center gap-1.5 rounded border border-border-strong bg-canvas px-2 py-[5px]">
+          <div className="flex items-center gap-1.5 rounded border border-input bg-canvas px-2 py-[5px]">
             <Search size={13} className="shrink-0 text-text-muted" />
             <input
               type="text"

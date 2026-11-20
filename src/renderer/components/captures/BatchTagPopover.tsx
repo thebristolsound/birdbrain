@@ -22,7 +22,7 @@ const CHECKBOX_BASE =
 function checkboxClass(state: BatchTagState): string {
   if (state === 'all') return `${CHECKBOX_BASE} border-accent-fill bg-accent-fill`
   if (state === 'partial') return `${CHECKBOX_BASE} border-accent bg-transparent`
-  return `${CHECKBOX_BASE} border-border-strong bg-transparent`
+  return `${CHECKBOX_BASE} border-control bg-transparent`
 }
 
 function ariaChecked(state: BatchTagState): boolean | 'mixed' {

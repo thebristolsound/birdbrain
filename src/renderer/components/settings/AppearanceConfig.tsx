@@ -105,7 +105,7 @@ export function AppearanceConfig() {
               onClick={handleToggle}
               className={cn(
                 'relative inline-flex h-5 w-9 items-center rounded-full transition-colors',
-                reduce ? 'bg-accent-fill' : 'bg-text-faint'
+                reduce ? 'bg-accent-fill' : 'bg-control'
               )}
             >
               <span

@@ -139,6 +139,36 @@ describe('filled controls', () => {
   })
 })
 
+describe('control boundaries', () => {
+  const root = join(process.cwd(), 'src/renderer')
+  const sources = readdirSync(root, { recursive: true, encoding: 'utf-8' }).filter((path) =>
+    /\.tsx?$/.test(path)
+  )
+  // A checkbox or switch that fills when on draws its off state in the control colour, the
+  // only boundary colour that holds 3:1 on every surface.
+  const toggle = /\?\s*'(?:border-accent-fill )?bg-accent-fill'\s*:\s*'([^']*)'/g
+
+  it('finds the toggles it checks', () => {
+    const found = sources.flatMap((path) => [
+      ...readFileSync(join(root, path), 'utf-8').matchAll(toggle)
+    ])
+    expect(found.length).toBeGreaterThanOrEqual(9)
+  })
+
+  it('draws every off toggle in the control colour', () => {
+    const offenders = sources.flatMap((path) =>
+      readFileSync(join(root, path), 'utf-8')
+        .split('\n')
+        .flatMap((line, i) =>
+          [...line.matchAll(toggle)]
+            .filter(([, off]) => !/\b(bg|border)-control\b/.test(off))
+            .map(() => `${path}:${i + 1}`)
+        )
+    )
+    expect(offenders).toEqual([])
+  })
+})
+
 describe('status words in the dark theme', () => {
   it.each(['success-fg', 'danger-fg', 'warning-fg'])('%s is at least 4.5:1 on elevated', (fg) => {
     expect(contrast(darkToken(fg), darkToken('elevated'))).toBeGreaterThanOrEqual(4.5)

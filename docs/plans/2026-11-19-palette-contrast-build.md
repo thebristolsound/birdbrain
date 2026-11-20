@@ -36,9 +36,14 @@ Each slice is one pull request with before and after screenshots in both themes.
    set `--color-accent` to `#9497ff` dark and `#4346d1` light, with the bundle's hover and subtle
    values. A test fails any line that puts `text-white` on a solid `bg-accent`. The maintainer
    approved this slice on 2026-11-19, in the Claude Code session that built it.
-3. **Control boundaries.** Inputs, search fields, checkboxes, radios, the switch track and
-   icon-only outline buttons take `border-control`. Hairlines between regions stay on
-   `border-border`. Starts from the 101 `border-border-strong` hits in 55 files.
+3. **Control boundaries.** Text fields, selects and the two search-field wrappers that drew
+   their own border in `border-border` or `border-border-strong` take `border-input`, which
+   already points at `--color-control`. Custom checkboxes take `border-control` when
+   unchecked, and switch tracks `bg-control` when off. A test fails any toggle whose off state
+   is not in the control colour. Native checkboxes and radios keep Chromium's own drawing, and
+   no icon-only outline button exists today. Dashed add-rows and inline edit fields that show
+   no border at rest are not boundaries and stay as they are. The maintainer approved this
+   slice on 2026-11-19, in the Claude Code session that built it.
 4. **Hover tint.** `hover:bg-elevated` (100 hits in 52 files), the keyboard highlight and the open
    pill take `bg-hover`.
 5. **Status tiers.** The nominal dot draws in `--color-control` and the advisory mark is a hollow

@@ -124,7 +124,7 @@ export function DbTables() {
             id="db-table-select"
             value={selectedTable}
             onChange={(e) => setSelectedTable(e.target.value)}
-            className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-text-primary outline-none focus:border-accent"
+            className="rounded-lg border border-input bg-surface px-3 py-1.5 text-sm text-text-primary outline-none focus:border-accent"
           >
             {TABLES.map((t) => (
               <option key={t} value={t}>

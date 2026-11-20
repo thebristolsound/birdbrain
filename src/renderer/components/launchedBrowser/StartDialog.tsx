@@ -377,7 +377,7 @@ export function StartDialog() {
                           autoFocus
                           value={pickedCase.id}
                           onChange={(e) => setPickedCaseId(e.target.value)}
-                          className="h-7 w-full rounded border border-border-strong bg-surface px-2 text-xs text-text-primary"
+                          className="h-7 w-full rounded border border-input bg-surface px-2 text-xs text-text-primary"
                         >
                           {pickable.map((option) => (
                             <option key={option.id} value={option.id}>
@@ -410,7 +410,7 @@ export function StartDialog() {
                           autoFocus={!picking}
                           value={browser.executablePath}
                           onChange={(e) => setSelectedPath(e.target.value)}
-                          className="h-7 w-full rounded border border-border-strong bg-surface px-2 text-xs text-text-primary"
+                          className="h-7 w-full rounded border border-input bg-surface px-2 text-xs text-text-primary"
                         >
                           {browsers.map((option) => (
                             <option key={option.executablePath} value={option.executablePath}>

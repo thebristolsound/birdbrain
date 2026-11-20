@@ -39,8 +39,7 @@ its own. Every pull request carries before and after screenshots in both themes.
    23 that keep the accent are 16 solid dots, bars and progress fills and 7 tints, none with
    white text on it. Then set `--color-accent` to `#9497ff` dark and `#4346d1` light, with the
    bundle's hover and subtle values, and point `--color-primary` at the fill. A test counts the
-   solid accent backgrounds in each file against those marks, so a control moved back fails it. The maintainer
-   approved this slice on 2026-11-19, in the Claude Code session that built it.
+   solid accent backgrounds in each file against those marks, so a control moved back fails it.
 3. **Control boundaries.** Inputs, search fields, checkboxes, radios, the switch track and
    icon-only outline buttons take `border-control`. Hairlines between regions stay on
    `border-border`. Starts from the 101 `border-border-strong` hits in 55 files.

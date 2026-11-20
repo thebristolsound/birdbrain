@@ -32,6 +32,20 @@ describe('InstallExtensionStepper', () => {
     expect(outcome.querySelectorAll('[class*="emerald"]').length).toBe(0)
   })
 
+  // The illustrated Developer mode switch is a filled control with a white thumb, so it takes
+  // the fill colour, not the accent text colour.
+  it('draws the step 1 Developer mode switch on in the fill colour', () => {
+    const { container } = render(<InstallExtensionStepper step={0} />)
+    const tracks = [...container.querySelectorAll('.rounded-full')].filter((el) =>
+      el.querySelector(':scope > .bg-white')
+    )
+    expect(tracks.length).toBeGreaterThan(0)
+    for (const track of tracks) {
+      expect(track.classList).toContain('bg-accent-fill')
+      expect(track.classList).not.toContain('bg-accent')
+    }
+  })
+
   it('renders the folder-picker illustration for step 3', () => {
     render(<InstallExtensionStepper step={2} />)
     expect(screen.getByText('Select the extension folder')).toBeDefined()

@@ -4,10 +4,11 @@
 
 **Status:** Accepted by the maintainer on 2026-11-19. Drawn on the consolidation design canvas
 (board P and every other board) and graded by two model judges: both themes until each judge passed
-it (Fable on its third round, Opus on its fourth), then the light theme alone for three rounds. One
-part is already on main: the hollow advisory ring (#2230). Slice 1.1 has also lifted dark faint text
-to `#85858e`, short of this palette's value. The rest is not built, and the Birdbrain design system
-artifact is unchanged.
+it (Fable on its third round, Opus on its fourth), then the light theme alone for three rounds.
+Three of its status rules already hold on main, in `statusGroupModel.ts` and `StatusGroup.tsx`: the
+hollow advisory ring (#2230), Connected as nominal, and the problem icon and words in
+`--color-danger-fg`. Slice 1.1 has also lifted dark faint text to `#85858e`, short of this
+palette's value. The rest is not built, and the Birdbrain design system artifact is unchanged.
 
 **Frame of reference:** `origin/main` at `d4dc422`. Token values in the "now" columns are cited
 from `src/renderer/styles/globals.css` at that commit. The canvas draws from the Birdbrain design
@@ -132,7 +133,12 @@ at least:
   and the settings panels, each need a tier: advisory (neutral words and a mark) or problem.
 - Tag and case-type chips: hue on the glyph, words neutral.
 - Hover fills: the `hover:bg-elevated` call sites (about a hundred in `src/renderer`) move to
-  `--color-hover`, since rule 4 replaces a lighter surface with an ink tint.
+  `--color-hover`, since rule 4 replaces a lighter surface with an ink tint. So do the keyboard
+  highlight, open and selected fills that reuse `bg-elevated`: the `data-[highlighted]:`,
+  `data-[state=open]:`, `aria-expanded:` and `focus:` prefixes in the menus, `CaseMenu`,
+  `NotesOverview` and `LaunchControl`, and the conditional `bg-elevated` on the open status pill
+  and the selected recording mark. In light, menus and cards are white, so these vanish as they
+  stand.
 - Filled on-states (a checked checkbox, an on switch) take `--color-accent-fill`, as the button
   does.
 - `StatusGroup`'s nominal dot (`DOT.nominal`, now `bg-text-faint`) moves to `--color-control`.
@@ -140,7 +146,7 @@ at least:
   gives advisory words. They move to `--color-text-muted`, so advisory stays a step brighter.
 
 These lists are a starting point, not an audit; the implementing change should grep every
-`text-warning-fg`, `bg-accent` and `border-border-strong` call site.
+`text-warning-fg`, `bg-accent`, `bg-elevated` and `border-border-strong` call site.
 
 ## Tier reclassification
 

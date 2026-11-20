@@ -4,17 +4,19 @@
 
 **Status:** Accepted by the maintainer on 2026-11-19. Drawn on the consolidation design canvas
 (board P and every other board) and graded by two model judges: both themes until each judge passed
-it (Fable on its third round, Opus on its fourth), then the light theme alone for three rounds. Two
-parts are already on main: the hollow advisory ring (#2230) and slice 1.1's lift of dark faint text
-to `#85858e`. The rest is not built, and the Birdbrain design system artifact is unchanged.
+it (Fable on its third round, Opus on its fourth), then the light theme alone for three rounds. One
+part is already on main: the hollow advisory ring (#2230). Slice 1.1 has also lifted dark faint text
+to `#85858e`, short of this palette's value. The rest is not built, and the Birdbrain design system
+artifact is unchanged.
 
 **Frame of reference:** `origin/main` at `d4dc422`. Token values in the "now" columns are cited
 from `src/renderer/styles/globals.css` at that commit. The canvas draws from the Birdbrain design
 system artifact, whose dark faint text is `#82838c`; the app ships `#85858e`.
 
 **Creative:** the
-[2026-11-17 one-row chrome bundle](../design-handoff/2026-11-17-one-row-chrome/) carries the final
-palette in both themes. It ships packed as one HTML file. Every board inlines `palette.css` (the
+[2026-11-17 one-row chrome bundle](../design-handoff/2026-11-17-one-row-chrome/) carries the palette
+as drawn, in both themes. The token table below departs from it in one value, the light success
+green. It ships packed as one HTML file. Every board inlines `palette.css` (the
 token overrides, with each ratio in a comment) and `bb.css` (the shell classes that use them), and
 board P shows each token before and after.
 
@@ -134,6 +136,8 @@ at least:
 - Filled on-states (a checked checkbox, an on switch) take `--color-accent-fill`, as the button
   does.
 - `StatusGroup`'s nominal dot (`DOT.nominal`, now `bg-text-faint`) moves to `--color-control`.
+- `StatusGroup`'s popover rows: nominal words use `text-text-secondary` today, the colour rule 2
+  gives advisory words. They move to `--color-text-muted`, so advisory stays a step brighter.
 
 These lists are a starting point, not an audit; the implementing change should grep every
 `text-warning-fg`, `bg-accent` and `border-border-strong` call site.
@@ -163,8 +167,10 @@ the exercise to be repeated for light mode. Fable 5.2 scored 8.0, 8.5 and 8.8; O
 effort scored 7.5, 8.0 and 8.5. Both passed on the third round, and both checked that the light
 changes left dark mode intact. From this pass on, the measurement also covers hover and highlight
 states for what the boards draw inside a hoverable item: text there measures 4.69:1 at least in
-light and 5.01:1 in dark, and marks and control borders 3.35:1 and 3.86:1. Two pairs the boards
-never draw fell short: the table fixes one, and "Still open" holds the other.
+light and 5.01:1 in dark, and marks and control borders 3.35:1 and 3.86:1. Review found pairs the
+boards never draw that fall short of 4.5:1. The light success green on a hovered row and on its own
+tint is fixed in the table; the dark faint grey on a hovered item over `--color-elevated` is under
+"Still open".
 
 ## Still open
 

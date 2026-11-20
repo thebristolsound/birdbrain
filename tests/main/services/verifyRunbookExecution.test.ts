@@ -1,7 +1,16 @@
 import { describe, it, expect, beforeAll, beforeEach, afterAll, afterEach, vi } from 'vitest'
 import { execFileSync } from 'child_process'
 import { createHash, createSign, generateKeyPairSync } from 'crypto'
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import {
+  appendFileSync,
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync
+} from 'fs'
 import { dirname, join } from 'path'
 import { tmpdir } from 'os'
 import { Readable } from 'stream'
@@ -1515,6 +1524,43 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
       }
     )
 
+    // #2203: each block once read a manifest it could not open or parse as one holding no
+    // exhibit, and exited 0.
+    const UNREAD_MANIFEST = [
+      {
+        name: 'a missing manifest',
+        damage: (path: string) => rmSync(path),
+        says: 'CHAIN MISSING OR EMPTY: manifest.jsonl'
+      },
+      {
+        name: 'an empty manifest',
+        damage: (path: string) => writeFileSync(path, ''),
+        says: 'CHAIN MISSING OR EMPTY: manifest.jsonl'
+      },
+      {
+        name: 'a manifest line that is not JSON',
+        damage: (path: string) => appendFileSync(path, 'not json\n'),
+        says: 'CHAIN UNREADABLE: manifest.jsonl'
+      }
+    ]
+
+    for (const { name, damage, says } of UNREAD_MANIFEST) {
+      it.skipIf(!RUNS)(`exit non-zero on ${name}`, () => {
+        const dir = corruptedCopy(`runbook-unread-${name.replace(/\W/g, '-')}`)
+        const blocks = [EXHIBIT_BLOCK, DERIVED_BLOCK].map((marker) => step5Block(dir, marker))
+        damage(join(dir, 'manifest.jsonl'))
+        for (const block of blocks) {
+          const harness = runRunbookBlocks([block], { cwd: dir })
+          expect(harness.ok, harness.stdout).toBe(false)
+          for (const shell of ['sh', 'bash'] as const) {
+            const plain = runPlain([block], dir, shell)
+            expect(plain.status, `${shell}: ${plain.stdout}`).not.toBe(0)
+            expect(plain.stdout).toContain(says)
+          }
+        }
+      })
+    }
+
     for (const row of TAMPERED) {
       it.skipIf(!RUNS)(`exit non-zero on ${row.name}`, () => {
         const dir = corruptedCopy(`runbook-${row.name.replace(/\W/g, '-')}`)
@@ -1944,6 +1990,70 @@ describe("the runbook's receipt block under a plain shell", () => {
       )
       expect(plain.status).not.toBe(0)
     })
+  }
+
+  // #2203: a chain the block could not parse, and a package holding no chain, once exited 0
+  // having checked nothing. The package without a receipt passes, so in each case below the
+  // status comes from the damaged input alone.
+  const memberChain = memberChainPath(RECEIPT_MEMBER_ID)
+  const UNREAD_CHAIN = [
+    {
+      name: 'the package manifest holds a line that is not JSON',
+      damage: () => appendFileSync(join(dir, 'manifest.jsonl'), 'not json\n'),
+      says: 'CHAIN UNREADABLE: manifest.jsonl'
+    },
+    {
+      name: "a member's chain holds a line that is not JSON",
+      damage: () => appendFileSync(join(dir, memberChain), 'not json\n'),
+      says: `CHAIN UNREADABLE: ${memberChain}`
+    },
+    {
+      name: 'the package holds no chain',
+      damage: () => {
+        rmSync(join(dir, 'manifest.jsonl'))
+        rmSync(join(dir, memberChain))
+      },
+      says: 'CHAIN MISSING OR EMPTY: manifest.jsonl'
+    },
+    {
+      name: "the package manifest is missing beside a member's chain",
+      damage: () => rmSync(join(dir, 'manifest.jsonl')),
+      says: 'CHAIN MISSING OR EMPTY: manifest.jsonl'
+    },
+    {
+      name: 'the package manifest is empty',
+      damage: () => writeFileSync(join(dir, 'manifest.jsonl'), ''),
+      says: 'CHAIN MISSING OR EMPTY: manifest.jsonl'
+    }
+  ]
+
+  for (const shell of ['sh', 'bash'] as const) {
+    it.skipIf(!RUNS)(`exits 0 under ${shell} on chains that hold no receipt`, () => {
+      writeReceiptPackage(dir, { withoutReceipt: true })
+      const plain = runPlain([receiptBlock], dir, shell)
+      expect(plain.stdout).toBe('')
+      expect(plain.status).toBe(0)
+    })
+
+    // A member who has written nothing yet holds an empty chain file (manifest.ts).
+    it.skipIf(!RUNS)(`exits 0 under ${shell} beside an empty member chain`, () => {
+      writeReceiptPackage(dir, { withoutReceipt: true })
+      writeFileSync(join(dir, memberChain), '')
+      const plain = runPlain([receiptBlock], dir, shell)
+      expect(plain.stdout).toBe('')
+      expect(plain.status).toBe(0)
+    })
+
+    for (const { name, damage, says } of UNREAD_CHAIN) {
+      it.skipIf(!RUNS)(`exits non-zero under ${shell} when ${name}`, () => {
+        writeReceiptPackage(dir, { withoutReceipt: true })
+        damage()
+        const plain = runPlain([receiptBlock], dir, shell)
+        expect(plain.stdout.trim()).toBe(says)
+        expect(plain.status).not.toBe(0)
+        expect(runRunbookBlocks([receiptBlock], { cwd: dir }).ok).toBe(false)
+      })
+    }
   }
 })
 

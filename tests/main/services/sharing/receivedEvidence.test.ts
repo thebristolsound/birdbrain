@@ -435,7 +435,16 @@ describe('received evidence (#1811)', () => {
     expect(localPdf.errors).toEqual([mismatch(pdfFile.rel, capture.pdfHash)])
     noRow()
 
+    // The peer does not hold the PDF: the author's record is here, and still no row.
     rmSync(pdfFile.abs)
+    source.files.delete(pdfFile.rel)
+    const noPdf = await pull(CASE_ID, source)
+    expect(noPdf.errors).toEqual([])
+    expect(noPdf.capturesApplied).toBe(0)
+    expect(existsSync(pdfFile.abs)).toBe(false)
+    noRow()
+
+    source.files.set(pdfFile.rel, pdf)
     source.files.set(recordFile.rel, record)
     const landed = await pull(CASE_ID, source)
     expect(landed.errors).toEqual([])

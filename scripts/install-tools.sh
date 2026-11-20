@@ -238,8 +238,9 @@ if [ -z "$node_dir" ] && [ "$install" = 1 ]; then
 fi
 if [ -n "$node_dir" ]; then
   [ "$node_dir" = "$(path_dir node || true)" ] || dirs+=("$node_dir")
-  # A cache-installed Node has no pnpm; corepack ships with it and reads packageManager.
-  if [ "$install" = 1 ] && ! PATH="$node_dir:$PATH" command -v pnpm >/dev/null 2>&1 &&
+  # A cache-installed Node has no pnpm; corepack ships with it and reads packageManager. pnpm
+  # must run, not only resolve: a mise pnpm shim with no pinned version is on PATH and exits 1.
+  if [ "$install" = 1 ] && ! PATH="$node_dir:$PATH" pnpm --version >/dev/null 2>&1 &&
     [ -x "$node_dir/corepack" ] && [ -w "$node_dir" ]; then
     if ! { PATH="$node_dir:$PATH" "$node_dir/corepack" enable pnpm --install-directory "$node_dir" &&
       (cd "$ROOT" && PATH="$node_dir:$PATH" COREPACK_ENABLE_DOWNLOAD_PROMPT=0 \
@@ -250,7 +251,7 @@ if [ -n "$node_dir" ]; then
       log "corepack could not provide pnpm"
     fi
   fi
-  PATH="$node_dir:$PATH" command -v pnpm >/dev/null 2>&1 || missing+=("pnpm")
+  PATH="$node_dir:$PATH" pnpm --version >/dev/null 2>&1 || missing+=("pnpm")
 else
   missing+=("node $NODE_MAJOR")
 fi

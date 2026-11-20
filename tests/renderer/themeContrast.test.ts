@@ -9,10 +9,21 @@ const blocks = {
 }
 type Theme = keyof typeof blocks
 
+/**
+ * The six-digit hex a token resolves to, following `var()` aliases. The dark block overrides
+ * only what changes, so a token it does not declare falls back to the light declaration and
+ * its aliases resolve against the dark values, as on the page.
+ */
 function token(theme: Theme, name: string): string {
-  const match = new RegExp(`--color-${name}:\\s*(#[0-9a-fA-F]{6})\\s*;`).exec(blocks[theme])
-  if (!match) throw new Error(`${theme} declares no six-digit hex for --color-${name}`)
-  return match[1].toLowerCase()
+  const declared = (block: string): string | undefined =>
+    new RegExp(`--color-${name}:\\s*([^;]+);`).exec(block)?.[1].trim()
+  const value = declared(blocks[theme]) ?? (theme === 'dark' ? declared(blocks.light) : undefined)
+  const alias = value && /^var\(--color-([\w-]+)\)$/.exec(value)
+  if (alias) return token(theme, alias[1])
+  if (!value || !/^#[0-9a-fA-F]{6}$/.test(value)) {
+    throw new Error(`${theme} resolves --color-${name} to no six-digit hex`)
+  }
+  return value.toLowerCase()
 }
 
 function darkToken(name: string): string {
@@ -81,7 +92,7 @@ describe('faint text in the dark theme', () => {
 describe.each(themes)('the %s palette', (theme) => {
   it.each(
     planes.flatMap((plane) =>
-      ['text-secondary', 'text-muted', 'text-faint'].map((text) => [text, plane])
+      ['text-primary', 'text-secondary', 'text-muted', 'text-faint'].map((text) => [text, plane])
     )
   )('%s is at least 4.5:1 on %s', (text, plane) => {
     expect(contrast(token(theme, text), token(theme, plane))).toBeGreaterThanOrEqual(4.5)
@@ -94,12 +105,42 @@ describe.each(themes)('the %s palette', (theme) => {
     expect(contrast(control, over(rgbaToken(theme, 'hover'), base))).toBeGreaterThanOrEqual(3)
   })
 
-  it.each(['accent-fill', 'accent-fill-hover'])('white text is at least 4.5:1 on %s', (fill) => {
-    expect(contrast('#ffffff', token(theme, fill))).toBeGreaterThanOrEqual(4.5)
+  // `bg-primary text-primary-foreground` is the shadcn spelling of a filled control.
+  it.each(['accent-fill', 'accent-fill-hover', 'primary'])(
+    'white text is at least 4.5:1 on %s',
+    (fill) => {
+      expect(
+        contrast(token(theme, 'primary-foreground'), token(theme, fill))
+      ).toBeGreaterThanOrEqual(4.5)
+    }
+  )
+
+  it.each(planes)('accent text, hovered or not, is at least 4.5:1 on %s', (plane) => {
+    expect(contrast(token(theme, 'accent'), token(theme, plane))).toBeGreaterThanOrEqual(4.5)
+    expect(contrast(token(theme, 'accent-hover'), token(theme, plane))).toBeGreaterThanOrEqual(4.5)
   })
 
-  it.each(planes)('accent text is at least 4.5:1 on %s', (plane) => {
-    expect(contrast(token(theme, 'accent'), token(theme, plane))).toBeGreaterThanOrEqual(4.5)
+  // The accent badge, the toast action and the info medallion put accent text on the tint.
+  it.each(planes)('accent text is at least 4.5:1 on the accent tint over %s', (plane) => {
+    const tint = over(rgbaToken(theme, 'accent-subtle'), token(theme, plane))
+    expect(contrast(token(theme, 'accent'), tint)).toBeGreaterThanOrEqual(4.5)
+  })
+
+  it.each(
+    planes.flatMap((plane) =>
+      [
+        'success-fg',
+        'danger-fg',
+        'warning-fg',
+        'hue-orange-fg',
+        'hue-sky-fg',
+        'hue-pink-fg',
+        'hue-teal-fg',
+        'hue-violet-fg'
+      ].map((text) => [text, plane])
+    )
+  )('%s is at least 4.5:1 on %s', (text, plane) => {
+    expect(contrast(token(theme, text), token(theme, plane))).toBeGreaterThanOrEqual(4.5)
   })
 
   it.each(['surface', 'card', 'elevated'])('the advisory mark is at least 3:1 on %s', (plane) => {
@@ -115,9 +156,27 @@ describe.each(themes)('the %s palette', (theme) => {
 })
 
 describe('filled controls', () => {
-  // White text on the dark accent text colour measures under 3:1, so a filled
-  // control must take the fill token instead.
-  const solidAccent = /(^|[\s'"`:])bg-accent(-hover)?(?![-\w/[])/
+  // White on the dark accent text colour measures under 3:1, so anything with text or a white
+  // glyph on it takes the fill token. A solid accent background stays only on marks that hold
+  // nothing: dots, bars, progress fills and the skeleton. A checkbox or button moved back to
+  // `bg-accent` raises its file's count here, even when its white check sits on another line.
+  const solidAccent = /(^|[\s'"`:])bg-accent(-hover)?(?![-\w/[])/g
+  const marks: Record<string, number> = {
+    'components/captures/CaptureItem.tsx': 1,
+    'components/dashboard/caseTypeStyle.ts': 1,
+    'components/dashboard/cases/NewCaseWizard.tsx': 1,
+    'components/export/ExportProgress.tsx': 1,
+    'components/launchedBrowser/CaptureControl.tsx': 1,
+    'components/layout/CommandPalette.tsx': 1,
+    'components/layout/Sidebar.tsx': 2,
+    'components/layout/TopBar.tsx': 1,
+    'components/overview/ActivityTimeline.tsx': 1,
+    'components/settings/UpdatesConfig.tsx': 1,
+    'components/sharing/InviteDialog.tsx': 1,
+    'components/sharing/SyncCard.tsx': 1,
+    'components/sharing/memberModel.ts': 2,
+    'components/ui/skeleton.tsx': 1
+  }
   const root = join(process.cwd(), 'src/renderer')
   const sources = readdirSync(root, { recursive: true, encoding: 'utf-8' }).filter((path) =>
     /\.tsx?$/.test(path)
@@ -127,15 +186,16 @@ describe('filled controls', () => {
     expect(sources.length).toBeGreaterThan(100)
   })
 
-  it('never puts white text on the accent text colour', () => {
-    const offenders = sources.flatMap((path) =>
-      readFileSync(join(root, path), 'utf-8')
-        .split('\n')
-        .map((line, i) => ({ line, at: `${path}:${i + 1}` }))
-        .filter(({ line }) => solidAccent.test(line) && /\btext-white\b/.test(line))
-        .map(({ at }) => at)
+  it('keeps a solid accent background to the dots, bars and progress fills', () => {
+    const found = Object.fromEntries(
+      sources
+        .map((path) => [
+          path.replaceAll('\\', '/'),
+          readFileSync(join(root, path), 'utf-8').match(solidAccent)?.length ?? 0
+        ])
+        .filter(([, count]) => count !== 0)
     )
-    expect(offenders).toEqual([])
+    expect(found).toEqual(marks)
   })
 })
 
@@ -166,11 +226,5 @@ describe('control boundaries', () => {
         )
     )
     expect(offenders).toEqual([])
-  })
-})
-
-describe('status words in the dark theme', () => {
-  it.each(['success-fg', 'danger-fg', 'warning-fg'])('%s is at least 4.5:1 on elevated', (fg) => {
-    expect(contrast(darkToken(fg), darkToken('elevated'))).toBeGreaterThanOrEqual(4.5)
   })
 })

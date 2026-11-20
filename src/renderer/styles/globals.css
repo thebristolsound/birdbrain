@@ -119,7 +119,7 @@
   --color-card-foreground: var(--color-text-primary);
   --color-popover: var(--color-surface);
   --color-popover-foreground: var(--color-text-primary);
-  --color-primary: var(--color-accent);
+  --color-primary: var(--color-accent-fill);
   --color-primary-foreground: #ffffff;
   --color-secondary: var(--color-elevated);
   --color-secondary-foreground: var(--color-text-primary);

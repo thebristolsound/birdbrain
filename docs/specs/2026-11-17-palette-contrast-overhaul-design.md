@@ -45,7 +45,7 @@ measurement of every text element, status dot and control border on the ten cons
 
 ### Tokens
 
-Every token whose value changes is listed. Contrast is given for the text and mark colours,
+Every token whose value changes is listed. Contrast is given for each proposed text and mark colour,
 measured on the surface each sits on: `--color-surface` in light, `--color-elevated` in dark unless
 the cell says otherwise. Light values that do not change are omitted.
 
@@ -59,31 +59,33 @@ the cell says otherwise. Light values that do not change are omitted.
 | `--color-text-muted` | Descriptions | `#a1a1aa` | `#a8a8b2` (6.9:1) | | |
 | `--color-text-faint` | Labels, timestamps | `#85858e` (4.6:1) | `#92939d` (5.3:1) | `#66666f` | `#63636c` (5.3:1) |
 | `--color-accent` | Text and strokes | `#6467f2` (3.9:1) | `#9497ff` (6.3:1) | `#4f52e0` (5.3:1) | `#4346d1` (6.1:1) |
-| `--color-accent-hover` | Hovered link and accent text | `#7a7cf5` | `#a7aaff` | `#4346d1` | `#3a3dc0` |
+| `--color-accent-hover` | Hovered link and accent text | `#7a7cf5` | `#a7aaff` (7.6:1) | `#4346d1` | `#3a3dc0` (7.1:1) |
 | `--color-accent-subtle` | Selected tint, accent badge | `rgba(100,103,242,0.16)` | `rgba(120,124,255,0.14)` | `rgba(100,103,242,0.10)` | `rgba(79,82,224,0.09)` |
 | `--color-accent-fill` (new) | Filled button | | `#5457e6` (white 5.4:1) | | `#4f52e0` (white 5.8:1) |
 | `--color-accent-fill-hover` (new) | Its hover | | `#4a4dd6` | | `#4346d1` |
 | `--color-border` | Hairlines | `#27272a` | `#2a2a30` | `#e4e4e7` | `#d6d6dc` |
 | `--color-border-strong` | Panel, menu and pill edges | `#3d3d42` | `#3a3a41` | `#d4d4d8` | `#bdbdc6` |
-| `--color-control` (new) | Control boundaries, nominal dot | | `#7a7a84` (3.8:1) | | `#7a7a84` (3.8:1; 3.4:1 on a hovered row) |
+| `--color-control` (new) | Control boundaries, nominal dot | | `#7a7a84` (3.8:1) | | `#7a7a84` (3.8:1; 3.3:1 on a hovered row) |
 | `--color-hover` (new) | Hover, keyboard highlight, open pill | | 6% white | | 6% ink, `rgba(24,24,40,0.06)` |
 | `--color-input` | Input border | `--color-border-strong` | `--color-control` | `#8b8b93` | `--color-control` |
-| `--color-success-fg` | Verified | `#34d399` | `#4ec38e` (7.3:1) | `#047857` | `#046c4e` (5.2:1 on its tint, 5.1:1 hovered) |
+| `--color-success-fg` | Verified | `#34d399` | `#4ec38e` (7.4:1) | `#047857` | `#046c4e` (5.2:1 on its tint, 5.1:1 hovered) |
 | `--color-danger-fg` | Problem words, recording | `#f87171` | `#f47a7a` (6.1:1) | | |
 | `--color-warning-fg` | Warning words, if any | `#fbbf24` | `#e5a84b` (7.8:1) | | |
 | `--color-warning-mark` (new) | Amber dot, icon, bar | | `#e5a84b` (9.0:1 on surface) | | `#b06d00` (3.7:1; 4.2:1 on white) |
-| `--color-hue-orange-fg` | Categorical | `#f97316` | `#f08a3c` | | |
-| `--color-hue-sky-fg` | Categorical | `#0ea5e9` | `#38b6f0` | | |
-| `--color-hue-pink-fg` | Categorical | `#ec4899` | `#f06fa8` | | |
-| `--color-hue-teal-fg` (new) | Captures in the link map | | `#3cc7b4` | | `#0f766e` |
-| `--color-hue-violet-fg` (new) | Selectors in the link map | | `#c084fc` | | `#7e22ce` |
+| `--color-hue-orange-fg` | Categorical glyph | `#f97316` | `#f08a3c` (7.5:1 on surface) | | |
+| `--color-hue-sky-fg` | Categorical glyph | `#0ea5e9` | `#38b6f0` (8.2:1 on surface) | | |
+| `--color-hue-pink-fg` | Categorical glyph | `#ec4899` | `#f06fa8` (6.8:1 on surface) | | |
+| `--color-hue-teal-fg` (new) | Captures in the link map | | `#3cc7b4` (9.0:1 on surface) | | `#0f766e` (4.9:1) |
+| `--color-hue-violet-fg` (new) | Selectors in the link map | | `#c084fc` (7.1:1 on surface) | | `#7e22ce` (6.2:1) |
 | `--color-scrim` (new) | Behind a dialog | | `rgba(0,0,0,0.55)` | | `rgba(24,24,32,0.28)` |
 | `--shadow-card` | Cards, cells, frames | `none` | `none` | `0 1px 2px rgba(0,0,0,0.04)` | `0 1px 2px rgba(24,24,40,0.06)` |
-| `--shadow-overlay`, `--shadow-menu` (new) | Dialogs, popovers, menus | | unchanged | | cool two-layer shadows; values in the bundle's `palette.css` |
+| `--shadow-overlay` | Dialogs, popovers | unchanged | unchanged | `0 10px 30px rgba(0,0,0,0.12)` | cool two-layer shadow; value in `palette.css` |
+| `--shadow-menu` (new) | Menus | | `0 20px 25px -5px rgba(0,0,0,.28), 0 8px 10px -6px rgba(0,0,0,.22)` | | cool two-layer shadow; value in `palette.css` |
 
-The bundle's `palette.css` holds the same set, with the ratio of each in a comment. A text copy,
-extracted from the bundle, sits beside it as
-[`palette.css`](../design-handoff/2026-11-17-one-row-chrome/palette.css).
+The bundle's `palette.css` holds the same set. A text copy, extracted from the bundle, sits beside
+it as [`palette.css`](../design-handoff/2026-11-17-one-row-chrome/palette.css). Its comments carry
+ratios written during the design rounds, some against earlier surfaces; where they differ from
+this table, the table's recomputed figures hold.
 One value departs from it: the table takes `#046c4e` for light `--color-success-fg`, where the
 bundle keeps `#047857`, which measures 4.45:1 on its own tint over the darker light surface and
 4.3:1 on a hovered row.
@@ -127,6 +129,11 @@ at least:
 - The other `text-warning-fg` call sites, including `ExportDialog.tsx`, `RecentCapturesStrip.tsx`
   and the settings panels, each need a tier: advisory (neutral words and a mark) or problem.
 - Tag and case-type chips: hue on the glyph, words neutral.
+- Hover fills: the `hover:bg-elevated` call sites (about a hundred in `src/renderer`) move to
+  `--color-hover`, since rule 4 replaces a lighter surface with an ink tint.
+- Filled on-states (a checked checkbox, an on switch) take `--color-accent-fill`, as the button
+  does.
+- `StatusGroup`'s nominal dot (`DOT.nominal`, now `bg-text-faint`) moves to `--color-control`.
 
 These lists are a starting point, not an audit; the implementing change should grep every
 `text-warning-fg`, `bg-accent` and `border-border-strong` call site.

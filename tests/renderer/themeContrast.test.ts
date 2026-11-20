@@ -31,9 +31,11 @@ function darkToken(name: string): string {
 }
 
 function rgbaToken(theme: Theme, name: string): [number, number, number, number] {
-  const match = new RegExp(
-    `--color-${name}:\\s*rgba\\((\\d+),\\s*(\\d+),\\s*(\\d+),\\s*([\\d.]+)\\)\\s*;`
-  ).exec(blocks[theme])
+  const declared = (block: string) =>
+    new RegExp(
+      `--color-${name}:\\s*rgba\\((\\d+),\\s*(\\d+),\\s*(\\d+),\\s*([\\d.]+)\\)\\s*;`
+    ).exec(block)
+  const match = declared(blocks[theme]) ?? (theme === 'dark' ? declared(blocks.light) : null)
   if (!match) throw new Error(`${theme} declares no rgba() for --color-${name}`)
   const [, r, g, b, a] = match
   return [Number(r), Number(g), Number(b), Number(a)]
@@ -144,6 +146,23 @@ describe.each(themes)('the %s palette', (theme) => {
     )
   )('%s is at least 4.5:1 on %s', (text, plane) => {
     expect(contrast(token(theme, text), token(theme, plane))).toBeGreaterThanOrEqual(4.5)
+  })
+
+  // Badges, toast medallions and the Verified mark put status text on its own 10% tint.
+  it.each(
+    planes.flatMap((plane) => ['success', 'danger', 'warning'].map((status) => [status, plane]))
+  )('%s text is at least 4.5:1 on its own tint over %s', (status, plane) => {
+    const tint = over(rgbaToken(theme, `${status}-surface`), token(theme, plane))
+    expect(contrast(token(theme, `${status}-fg`), tint)).toBeGreaterThanOrEqual(4.5)
+  })
+
+  it.each(
+    planes.flatMap((plane) =>
+      ['success-fg', 'danger-fg', 'warning-fg'].map((text) => [text, plane])
+    )
+  )('%s is at least 4.5:1 on a hovered row over %s', (text, plane) => {
+    const hovered = over(rgbaToken(theme, 'hover'), token(theme, plane))
+    expect(contrast(token(theme, text), hovered)).toBeGreaterThanOrEqual(4.5)
   })
 
   it.each(['surface', 'card', 'elevated'])('the advisory mark is at least 3:1 on %s', (plane) => {

@@ -13,7 +13,7 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: 'bg-accent text-white shadow-[var(--shadow-btn)] hover:bg-accent-hover',
+        default: 'bg-accent-fill text-white shadow-[var(--shadow-btn)] hover:bg-accent-fill-hover',
         destructive: 'bg-red-600 text-white hover:bg-red-700',
         outline: 'border border-border-strong bg-transparent hover:bg-elevated text-text-primary',
         ghost: 'hover:bg-elevated text-text-muted hover:text-text-primary',

@@ -103,25 +103,7 @@ export function buildTagSignals(
 }
 
 /**
- * The Auto-capture card's description, and the disclosure under it.
- *
- * The description used to say that any page matching an enabled selector is
- * captured automatically while browsing. Nothing shipped does that: both
- * passive producers in the extension's service worker — shouldCapture/
- * captureTab and shouldSelectorCapture/handleSelectorCapture — sit inside the
- * hotfix comment block, so no page is captured without an explicit action. The
- * sentence is written to be true on its own rather than corrected by the
- * disclosure below it, because a screenshot of the card, or an operator who
- * reads only the heading, carries the primary sentence and not the footnote.
- */
-export const AUTO_CAPTURE_DESCRIPTION = 'Applies to every case.'
-
-export const AUTO_CAPTURE_SUSPENDED =
-  'Passive capture is suspended in this extension build. No page is captured without an ' +
-  'explicit action.'
-
-/**
- * The collapsed summary on the Auto-capture card: how many exclusions this case
+ * The collapsed summary on the exclusions row: how many exclusions this case
  * carries, and what they do to the global list.
  */
 export function exclusionSummary(count: number, mode: AutoCaptureExclusionMode): string {

@@ -56,7 +56,7 @@ launch dialog's no-VPN line is already plain text.
     scrolls.
   - Each filled notice becomes text with an icon in the matching `-fg` colour on the dialog's
     own surface, with a left rule if it needs separation. No tinted box.
-  - The notices stay readable in the light theme, which resolves #1524.
+  - The notices stay readable in the light theme, which is the defect #1524 reports.
 - **Out of scope.** Wording, presets and which notices show. Phase 4 changes those.
 - **Files.** `src/renderer/components/export/ExportDialog.tsx`.
 - **Tests.** `tests/components/ExportDialog.test.tsx`: the footer is outside the scrolling
@@ -73,7 +73,8 @@ launch dialog's no-VPN line is already plain text.
   - [ ] `export-submit` is visible on open at 900 pixels of window height.
   - [ ] No notice in the dialog uses a `-surface` background.
   - [ ] Each notice's text is at least 4.5:1 in both themes.
-  - [ ] #1524 is closed by the pull request.
+  - [ ] #1524 is settled by the maintainer. #2239 removes the defect but not in the way the
+    issue's brief asks, so it carries no closing line.
 
 ## Slice 1.3: give a disabled Launch browser a reachable reason
 
@@ -133,8 +134,12 @@ the Capture and capture-log context menus that `entityMenu.ts` builds.
 
 ## Slice 1.5: name the scope on the Data screen's Verify buttons
 
-Finding U16. Waits for the parent plan's open question 2: the labels are the maintainer's, and
-this plan no longer proposes any.
+Finding U16. It waited for the parent plan's open question 2: the labels are the maintainer's.
+Decision 10 of the parent plan gives them on 2026-11-19: "Verify listed" for `node-verify` and
+"Verify Exhibit" for `row-verify`. The same decision makes one behaviour change, so that the
+first label is exact: `node-verify` passes only the Exhibits the table lists, which a typed
+search narrows. The "Change" line below, written before the ruling, says no behaviour changes.
+#2240 builds the slice.
 
 `DataExplorer.tsx` renders two buttons labelled "Verify":
 

@@ -17,6 +17,7 @@ const base = {
   listCollapsed: false,
   detailsCollapsed: false,
   hasSelection: true,
+  sessionPanel: false,
   forcedPanelOpen: false
 }
 
@@ -105,9 +106,43 @@ describe('visibleCaptureColumns', () => {
         listCollapsed: true,
         detailsCollapsed: true,
         hasSelection: false,
+        sessionPanel: false,
         forcedPanelOpen: true
       }).viewer
     ).toBe('panel')
+  })
+})
+
+// The Capture Session is a tab of the right panel, so the panel has something to show with no
+// Capture selected, and a running session stays one click from its stop control.
+describe('while the right panel holds the Capture Session tab', () => {
+  const session = { ...base, sessionPanel: true }
+
+  it('shows the panel with no Capture selected', () => {
+    expect(visibleCaptureColumns({ ...session, hasSelection: false }).details).toBe('panel')
+    expect(capturePanelIds(visibleCaptureColumns({ ...session, hasSelection: false }))).toEqual([
+      'capture-list',
+      'capture-viewer',
+      'capture-details'
+    ])
+  })
+
+  it('folds to the strip with no Capture selected, and opens the overlay from it', () => {
+    const folded = { ...session, hasSelection: false, detailsCollapsed: true }
+    expect(visibleCaptureColumns(folded).details).toBe('rail')
+    expect(visibleCaptureColumns(folded).detailsOverlay).toBe(false)
+    expect(visibleCaptureColumns({ ...folded, forcedPanelOpen: true }).detailsOverlay).toBe(true)
+  })
+
+  it('keeps the strip on the Wayback tab, where the details alone would go', () => {
+    expect(visibleCaptureColumns({ ...session, waybackActive: true }).details).toBe('rail')
+    expect(visibleCaptureColumns({ ...base, waybackActive: true }).details).toBe('hidden')
+  })
+
+  it('lets the strip open the overlay on the Wayback tab', () => {
+    const open = { ...session, waybackActive: true, forcedPanelOpen: true }
+    expect(visibleCaptureColumns(open).detailsOverlay).toBe(true)
+    expect(visibleCaptureColumns({ ...open, sessionPanel: false }).detailsOverlay).toBe(false)
   })
 })
 
@@ -140,34 +175,30 @@ describe('panel bounds', () => {
   })
 })
 
-// Design review of 2026-11-04, answer 1: while the Capture Session rail is docked the viewer keeps
-// at least 480 pixels. The window figures add the 72-pixel side rail and, for the fold, the
-// 320-pixel Capture Session rail.
-describe('beside the Capture Session rail', () => {
+// The viewer's 480-pixel minimum is the point where the one right
+// panel folds to its strip. The window figures add the 72-pixel side rail.
+describe('the right panel with the Capture Session tab', () => {
   const SIDE = SIDE_RAIL_PX
-  const RAIL = 320
 
-  it('keeps the viewer at 480 while the rail is docked, and at its own 360 otherwise', () => {
+  it('keeps the viewer at 480 while that panel is docked, and at its own 360 otherwise', () => {
     expect(viewerMinPx(true)).toBe(480)
     expect(viewerMinPx(false)).toBe(360)
   })
 
-  it('folds the details panel below a 1,054-pixel screen, a 1,446-pixel window', () => {
+  it('folds below a 1,054-pixel screen, a 1,126-pixel window', () => {
     expect(detailsFoldRoomPx(true)).toBe(240 + 7 + 480 + 7 + 320)
-    expect(detailsFoldRoomPx(true) + RAIL + SIDE).toBe(1_446)
+    expect(detailsFoldRoomPx(true) + SIDE).toBe(1_126)
   })
 
-  it('keeps the window rule with no rail docked', () => {
+  it("keeps the details panel's own fold with no Capture Session", () => {
     expect(detailsFoldRoomPx(false)).toBe(1_052)
   })
+})
 
-  it('docks the rail from a 1,159-pixel window on the Captures tab', () => {
-    expect(captureSessionRailFits(1_159 - SIDE, false)).toBe(true)
-    expect(captureSessionRailFits(1_158 - SIDE, false)).toBe(false)
-  })
-
-  it('docks the rail from a 1,348-pixel window on the Wayback tab', () => {
-    expect(captureSessionRailFits(1_348 - SIDE, true)).toBe(true)
-    expect(captureSessionRailFits(1_347 - SIDE, true)).toBe(false)
+// The other Case screens dock the Capture Session as a rail of its own.
+describe('the Capture Session rail on the other Case screens', () => {
+  it('docks from a 1,159-pixel window', () => {
+    expect(captureSessionRailFits(1_159 - SIDE_RAIL_PX)).toBe(true)
+    expect(captureSessionRailFits(1_158 - SIDE_RAIL_PX)).toBe(false)
   })
 })

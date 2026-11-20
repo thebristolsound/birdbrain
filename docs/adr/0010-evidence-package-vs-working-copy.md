@@ -1,5 +1,12 @@
 # Two export classes: Evidence Package and Working Copy
 
+**Amended 2026-11-19:** the export dialog no longer has a preset row. Slice 4.2 of
+[the consolidation plan](../plans/2026-11-15-chrome-capture-export-consolidation.md) replaced it
+with three choices: Evidence Package, with a checkbox that leaves Operator notes out, Working
+Copy, and Case Archive. The two export classes this record decides are unchanged. The preset row
+under "Consequences" describes the dialog as it was: an Evidence Package without Notes is now
+the checkbox, not a preset of its own.
+
 The export dialog's presets resolve into two distinct export classes, not one package type with optional parts. An **Evidence Package** always contains its Certification and the full Manifest chain (ADR-0009) — those checklist rows render always-on and cannot be deselected. A **Working Copy** is a clearly-labelled non-evidentiary export — selected artifacts, extracted text, notes, and the browsable index, with no Certification and no evidentiary claims — for the Operator's own working use.
 
 **Why the split exists:** the design-handoff prototype contradicted itself — its README declared the chain-of-custody cover sheet "always included" while its Working-copy preset code excluded it ("no custody paperwork"). Both instincts are right and they cannot live in one artifact class. The cover sheet is the existing Certification extended (nine fields + purpose-or-authority + signature rules — not a second overlapping operator statement), and a package whose Certification is omittable weakens the definition of every package: a receiving party could never assume from the format alone that an operator statement exists. Splitting the classes keeps the Evidence Package definition strong while preserving the legitimate "just give me my material" export.

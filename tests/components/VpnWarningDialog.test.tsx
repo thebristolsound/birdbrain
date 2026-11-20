@@ -34,6 +34,10 @@ describe('VpnWarningDialog', () => {
     open({ occasion: 'site', canMute: true })
     const dialog = screen.getByTestId('vpn-warning-dialog')
     expect(screen.getByRole('heading', { name: 'Birdbrain did not see a VPN' })).toBeDefined()
+    expect(dialog.querySelector('p')?.textContent).toBe(
+      'Sites will see this computer’s own connection. A VPN on your router or network does ' +
+        'not show here.'
+    )
     expect(dialog.textContent).not.toMatch(/no VPN/i)
     expect(screen.queryByTestId('vpn-warning-session')).toBeNull()
     expect(screen.queryByTestId('vpn-warning-no-network')).toBeNull()
@@ -47,7 +51,9 @@ describe('VpnWarningDialog', () => {
   it('offers no mute when the network could not be read, and says why', () => {
     open({ occasion: 'site', canMute: false })
     expect(screen.queryByTestId('vpn-warning-mute')).toBeNull()
-    expect(screen.getByTestId('vpn-warning-no-network')).toBeDefined()
+    expect(screen.getByTestId('vpn-warning-no-network').textContent).toBe(
+      'This network cannot be identified, so it cannot be muted.'
+    )
   })
 
   it.each([

@@ -24,6 +24,7 @@ vi.mock('@renderer/components/export/ExportDialog', () => ({
 import { CaptureSelectionBar } from '@renderer/components/captures/CaptureSelectionBar'
 import { fakeBridge, quietVpnWarning } from '../renderer/fakeBridge'
 import { stubMatchMedia } from './matchMediaStub'
+import { exportIconSelector } from './exportIcon'
 
 const SELECTED = ['cap-1', 'cap-2']
 
@@ -210,6 +211,11 @@ describe('CaptureSelectionBar', () => {
     renderBar({ onDeleteSelection })
     fireEvent.click(screen.getByTitle('Delete selection'))
     expect(onDeleteSelection).toHaveBeenCalledWith(SELECTED)
+  })
+
+  it('draws the export button with the one export icon', () => {
+    renderBar()
+    expect(screen.getByTitle('Export selection').querySelector(exportIconSelector())).not.toBeNull()
   })
 
   it('opens the export dialog scoped to the selection (#399)', async () => {

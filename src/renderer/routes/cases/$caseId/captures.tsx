@@ -13,6 +13,11 @@ import { CaptureList } from '@renderer/components/captures/CaptureList'
 import { CaptureViewer } from '@renderer/components/captures/CaptureViewer'
 import { CaptureDetailsPanel } from '@renderer/components/captures/CaptureDetailsPanel'
 import { CaptureDetailsRail } from '@renderer/components/captures/CaptureDetailsRail'
+import {
+  CaptureRightPanel,
+  CaptureRightStrip,
+  type RightPanelTab
+} from '@renderer/components/captures/CaptureRightPanel'
 import { ListColumnRail } from '@renderer/components/layout/ListColumn'
 import { SEPARATOR_CLASS } from '@renderer/components/layout/listColumnSize'
 import { WaybackPanel } from '@renderer/components/captures/WaybackPanel'
@@ -27,7 +32,7 @@ import {
   SIDE_RAIL_PX,
   VIEWER_PANEL
 } from '@renderer/components/captures/captureColumns'
-import { useCaptureSessionRailDocked } from '@renderer/components/launchedBrowser/CaptureSessionDock'
+import { useHostedCaptureSessionPanel } from '@renderer/components/launchedBrowser/CaptureSessionDock'
 import { useCaptureView } from '@renderer/components/captures/useCaptureView'
 import { useListColumnCollapsed } from '@renderer/hooks/useListColumnCollapsed'
 import { useListColumnWidth } from '@renderer/hooks/useListColumnWidth'
@@ -148,10 +153,11 @@ export function CapturesRoute() {
   const { remove: removeCapture, removeMany } = useCapturesMutations(caseId)
   const deselectCaptures = useAppStore((s) => s.deselectCaptures)
   const activeViewerTab = useAppStore((s) => s.activeViewerTab)
-  // The screen's own width, which the Capture Session rail beside it takes from (#1831).
   const rootRef = useRef<HTMLDivElement>(null)
   const screenWidth = useViewWidth(rootRef, window.innerWidth - SIDE_RAIL_PX)
-  const railDocked = useCaptureSessionRailDocked()
+  // The Capture Session panel is a tab of this screen's right panel, not a rail beside it.
+  const sessionView = useHostedCaptureSessionPanel()
+  const sessionPanel = sessionView !== null
   const { view, setView } = useCaptureView()
   const { collapsed: listCollapsed, setCollapsed: setListCollapsed } = useListColumnCollapsed()
 
@@ -172,18 +178,33 @@ export function CapturesRoute() {
   // overlay so custody/tags/notes stay reachable on narrow windows. Not
   // Wayback: it is a viewer tab now, and the overlay is dropped while it is up.
   const [forcedPanelOpen, setForcedPanelOpen] = useState(false)
+  const [rightTab, setRightTab] = useState<RightPanelTab>(selectedCaptureId ? 'details' : 'session')
+  // The Operator's fold of the panel while it holds the Capture Session tab. It is not the saved
+  // preference, which is for the details alone.
+  const [sessionCollapsed, setSessionCollapsed] = useState(false)
+
+  // A starting Capture Session shows its tab, in an open panel.
+  const [hadSessionPanel, setHadSessionPanel] = useState(sessionPanel)
+  if (sessionPanel !== hadSessionPanel) {
+    setHadSessionPanel(sessionPanel)
+    if (sessionPanel) {
+      setRightTab('session')
+      setSessionCollapsed(false)
+    }
+  }
+  // Selecting a Capture shows its details.
+  const [shownCaptureId, setShownCaptureId] = useState(selectedCaptureId)
+  if (selectedCaptureId !== shownCaptureId) {
+    setShownCaptureId(selectedCaptureId)
+    if (selectedCaptureId) setRightTab('details')
+  }
 
   // Sync forced flag from the screen's width.
   useEffect(() => {
-    setPanelCollapsedForced(screenWidth < detailsFoldRoomPx(railDocked))
-  }, [screenWidth, railDocked, setPanelCollapsedForced])
-
-  useEffect(() => {
-    if (!panelCollapsedForced) setForcedPanelOpen(false)
-  }, [panelCollapsedForced])
+    setPanelCollapsedForced(screenWidth < detailsFoldRoomPx(sessionPanel))
+  }, [screenWidth, sessionPanel, setPanelCollapsedForced])
 
   const userPref = settings?.detailsPanelCollapsed ?? false
-  const panelDisplayedCollapsed = panelCollapsedForced || userPref
 
   const selectedCapture = useMemo(
     () => captures.find((c) => c.id === selectedCaptureId) ?? null,
@@ -213,6 +234,24 @@ export function CapturesRoute() {
   // with no list to pick a row from.
   const waybackActive = activeViewerTab === 'wayback' && selectedCapture !== null
 
+  // Folded by the layout, not by the Operator: the strip then opens the panel as an overlay.
+  // The Wayback tab takes the width, and a panel that holds the Capture Session keeps its strip
+  // there.
+  const foldedForWayback = waybackActive && sessionPanel
+  const panelFolded = panelCollapsedForced || foldedForWayback
+  const panelDisplayedCollapsed = panelFolded || (sessionPanel ? sessionCollapsed : userPref)
+
+  useEffect(() => {
+    if (!panelFolded) setForcedPanelOpen(false)
+  }, [panelFolded])
+
+  // An overlay left up from before would cover the compare panes; the strip opens it again.
+  const [wasFoldedForWayback, setWasFoldedForWayback] = useState(foldedForWayback)
+  if (foldedForWayback !== wasFoldedForWayback) {
+    setWasFoldedForWayback(foldedForWayback)
+    if (foldedForWayback) setForcedPanelOpen(false)
+  }
+
   const columns = useMemo(
     () =>
       visibleCaptureColumns({
@@ -220,14 +259,16 @@ export function CapturesRoute() {
         listCollapsed,
         detailsCollapsed: panelDisplayedCollapsed,
         hasSelection: selectedCapture !== null,
-        forcedPanelOpen: panelCollapsedForced && forcedPanelOpen
+        sessionPanel,
+        forcedPanelOpen: panelFolded && forcedPanelOpen
       }),
     [
       waybackActive,
       listCollapsed,
       panelDisplayedCollapsed,
       selectedCapture,
-      panelCollapsedForced,
+      sessionPanel,
+      panelFolded,
       forcedPanelOpen
     ]
   )
@@ -249,6 +290,18 @@ export function CapturesRoute() {
 
   function toggleUserPref() {
     updateSettings.mutate({ detailsPanelCollapsed: !userPref })
+  }
+
+  function collapsePanel() {
+    if (sessionPanel) setSessionCollapsed(true)
+    else toggleUserPref()
+  }
+
+  function expandPanel(tab: RightPanelTab) {
+    setRightTab(tab)
+    if (panelFolded) setForcedPanelOpen(true)
+    else if (sessionPanel) setSessionCollapsed(false)
+    else toggleUserPref()
   }
 
   async function handleDelete() {
@@ -324,6 +377,36 @@ export function CapturesRoute() {
     [captures, addNoteCaptureId]
   )
 
+  // The one right panel, docked in its column or over the screen from the folded strip.
+  function rightPanel(form: 'rail' | 'overlay') {
+    const collapse = form === 'overlay' ? () => setForcedPanelOpen(false) : collapsePanel
+    return (
+      <CaptureRightPanel
+        session={sessionView}
+        form={form}
+        tab={rightTab}
+        onTabChange={setRightTab}
+        onCollapse={collapse}
+        details={
+          selectedCapture && (
+            <CaptureDetailsPanel
+              capture={selectedCapture}
+              caseId={caseId}
+              onCollapse={collapse}
+              onOpenExternal={() => void handleOpenExternal(selectedCapture.url)}
+              onCopyUrl={handleCopyUrl}
+              onCopyHash={handleCopyHash}
+              onDuplicate={handleDuplicate}
+              isDuplicating={isDuplicating}
+              onDelete={() => setShowDeleteConfirm(true)}
+              onOpenAddNote={() => setAddNoteCaptureId(selectedCapture.id)}
+            />
+          )
+        }
+      />
+    )
+  }
+
   return (
     <div ref={rootRef} className="relative flex h-full flex-1 overflow-hidden">
       {columns.list === 'rail' && (
@@ -379,13 +462,13 @@ export function CapturesRoute() {
         )}
         <Panel
           id={VIEWER_PANEL.id}
-          minSize={viewerMinPx(railDocked)}
+          minSize={viewerMinPx(sessionPanel && columns.details === 'panel')}
           className="flex min-w-0"
           style={{ overflow: 'hidden' }}
         >
           <CaptureViewer />
         </Panel>
-        {columns.details === 'panel' && selectedCapture && (
+        {columns.details === 'panel' && (
           <>
             <Separator id="capture-details-separator" className={SEPARATOR_CLASS} />
             <Panel
@@ -400,18 +483,7 @@ export function CapturesRoute() {
                 data-testid="capture-details-aside"
                 className="flex min-w-0 flex-1 flex-col overflow-hidden border-l border-border bg-surface"
               >
-                <CaptureDetailsPanel
-                  capture={selectedCapture}
-                  caseId={caseId}
-                  onCollapse={toggleUserPref}
-                  onOpenExternal={() => void handleOpenExternal(selectedCapture.url)}
-                  onCopyUrl={handleCopyUrl}
-                  onCopyHash={handleCopyHash}
-                  onDuplicate={handleDuplicate}
-                  isDuplicating={isDuplicating}
-                  onDelete={() => setShowDeleteConfirm(true)}
-                  onOpenAddNote={() => setAddNoteCaptureId(selectedCapture.id)}
-                />
+                {rightPanel('rail')}
               </aside>
             </Panel>
           </>
@@ -426,39 +498,27 @@ export function CapturesRoute() {
           onClose={() => useAppStore.getState().setActiveViewerTab('screenshot')}
         />
       )}
-      {columns.details === 'rail' && selectedCapture && (
-        <aside
-          data-testid="capture-details-aside"
-          className="w-10 shrink-0 overflow-hidden border-l border-border bg-surface"
-        >
-          <CaptureDetailsRail
-            capture={selectedCapture}
-            caseId={caseId}
-            forced={panelCollapsedForced}
-            onExpand={panelCollapsedForced ? () => setForcedPanelOpen(true) : toggleUserPref}
-            onOpenExternal={() => void handleOpenExternal(selectedCapture.url)}
-          />
-        </aside>
+      {columns.details === 'rail' && (
+        <CaptureRightStrip session={sessionView} onExpandSession={() => expandPanel('session')}>
+          {selectedCapture && (
+            <CaptureDetailsRail
+              capture={selectedCapture}
+              caseId={caseId}
+              forced={panelFolded}
+              onExpand={() => expandPanel('details')}
+              onOpenExternal={() => void handleOpenExternal(selectedCapture.url)}
+            />
+          )}
+        </CaptureRightStrip>
       )}
 
-      {/* Overlay details panel for viewports too narrow for the docked panel */}
-      {columns.detailsOverlay && selectedCapture && (
+      {/* The right panel as an overlay, where the layout leaves no room to dock it */}
+      {columns.detailsOverlay && (
         <div
           data-testid="capture-details-overlay"
           className="absolute right-0 top-0 z-40 h-full w-[400px] border-l border-border bg-surface shadow-xl"
         >
-          <CaptureDetailsPanel
-            capture={selectedCapture}
-            caseId={caseId}
-            onCollapse={() => setForcedPanelOpen(false)}
-            onOpenExternal={() => void handleOpenExternal(selectedCapture.url)}
-            onCopyUrl={handleCopyUrl}
-            onCopyHash={handleCopyHash}
-            onDuplicate={handleDuplicate}
-            isDuplicating={isDuplicating}
-            onDelete={() => setShowDeleteConfirm(true)}
-            onOpenAddNote={() => setAddNoteCaptureId(selectedCapture.id)}
-          />
+          {rightPanel('overlay')}
         </div>
       )}
 

@@ -1,19 +1,15 @@
 import { useEffect, useState, type KeyboardEvent } from 'react'
+import { useNavigate } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
-import { Camera, ChevronDown, X } from 'lucide-react'
+import { ChevronDown, ChevronRight, X } from 'lucide-react'
 import type { AutoCaptureExclusionMode } from '@shared/types'
 import { validateIgnorePattern } from '@shared/urlPatterns'
-import { settingsQueryOptions, useSettingsMutations } from '@renderer/lib/api/settings'
+import { settingsQueryOptions } from '@renderer/lib/api/settings'
 import {
   caseAutoCapturePolicyQueryOptions,
   useCaseAutoCapturePolicyMutation
 } from '@renderer/lib/api/cases'
-import {
-  AUTO_CAPTURE_DESCRIPTION,
-  AUTO_CAPTURE_SUSPENDED,
-  exclusionFooter,
-  exclusionSummary
-} from '@renderer/components/signals/signalsModel'
+import { exclusionFooter, exclusionSummary } from '@renderer/components/signals/signalsModel'
 
 interface AutoCaptureCardProps {
   caseId: string
@@ -24,15 +20,12 @@ const MODES: Array<{ mode: AutoCaptureExclusionMode; label: string }> = [
   { mode: 'override', label: 'Override global' }
 ]
 
-// The Auto-capture card, and the per-case exclusion list inside it (#400).
-//
-// Two things sit here that are easy to confuse, so the copy separates them: the
-// switch writes a single app-wide setting, and the exclusion list belongs to
-// this case alone.
+// The per-case exclusion list (#400), collapsed to one row. The app-wide switch
+// is in Settings, which the row links to.
 export function AutoCaptureCard({ caseId }: AutoCaptureCardProps) {
+  const navigate = useNavigate()
   const { data: settings } = useQuery(settingsQueryOptions)
   const { data: policy } = useQuery(caseAutoCapturePolicyQueryOptions(caseId))
-  const { update: updateSettings } = useSettingsMutations()
   const savePolicy = useCaseAutoCapturePolicyMutation(caseId)
 
   const [open, setOpen] = useState(false)
@@ -41,12 +34,6 @@ export function AutoCaptureCard({ caseId }: AutoCaptureCardProps) {
 
   const exclusions = policy?.exclusions ?? []
   const mode = policy?.mode ?? 'stack'
-  const autoCaptureMode = settings?.autoCaptureMode ?? 'notify'
-  // 'auto' captures every page, not only selector matches. A two-state switch
-  // cannot say that, so it reads on and refuses to move rather than quietly
-  // rewriting the operator's capture policy to something narrower.
-  const modeIsAuto = autoCaptureMode === 'auto'
-  const switchOn = autoCaptureMode !== 'notify'
 
   useEffect(() => {
     setError(null)
@@ -82,22 +69,8 @@ export function AutoCaptureCard({ caseId }: AutoCaptureCardProps) {
   }
 
   return (
-    <section
-      data-tour="selectors"
-      className="rounded-md border border-border bg-card p-[var(--d-card)]"
-    >
+    <section className="rounded-md border border-border bg-card px-[var(--d-card)] py-2.5">
       <div className="flex items-center gap-3">
-        <Camera
-          className={`h-4 w-4 shrink-0 ${switchOn ? 'text-accent' : 'text-text-faint'}`}
-          strokeWidth={2}
-        />
-        <div className="min-w-0 flex-1">
-          <div className="text-xs font-semibold text-text-primary">Auto-capture</div>
-          <div className="mt-px text-[10px] text-text-muted" data-testid="auto-capture-description">
-            {AUTO_CAPTURE_DESCRIPTION}
-          </div>
-        </div>
-
         <button
           type="button"
           onClick={() => setOpen((value) => !value)}
@@ -111,44 +84,20 @@ export function AutoCaptureCard({ caseId }: AutoCaptureCardProps) {
             strokeWidth={2}
           />
         </button>
-
+        <span className="flex-1" />
         <button
           type="button"
-          role="switch"
-          aria-checked={switchOn}
-          aria-label="Auto-capture"
-          disabled={modeIsAuto}
-          data-testid="auto-capture-switch"
-          onClick={() =>
-            updateSettings.mutate({ autoCaptureMode: switchOn ? 'notify' : 'per-case' })
-          }
-          className={[
-            'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors',
-            switchOn ? 'bg-accent' : 'bg-text-faint',
-            modeIsAuto ? 'cursor-not-allowed opacity-60' : ''
-          ].join(' ')}
+          onClick={() => navigate({ to: '/settings' })}
+          data-testid="exclusions-settings-link"
+          className="inline-flex shrink-0 items-center gap-1 border-none bg-transparent p-0 text-[11px] text-text-muted hover:text-accent"
         >
-          <span
-            className={[
-              'inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform',
-              switchOn ? 'translate-x-[18px]' : 'translate-x-[2px]'
-            ].join(' ')}
-          />
+          Capture settings
+          <ChevronRight className="h-[11px] w-[11px]" strokeWidth={2} />
         </button>
       </div>
 
-      <p className="mt-2 text-[10px] text-text-faint" data-testid="auto-capture-suspended">
-        {AUTO_CAPTURE_SUSPENDED}
-      </p>
-
-      {modeIsAuto && (
-        <p className="mt-2 text-[10px] text-text-faint" data-testid="auto-capture-locked">
-          Locked: auto-capture is set to capture every page.
-        </p>
-      )}
-
       {open && (
-        <div className="mt-3 border-t border-border pt-3">
+        <div className="mt-2.5 border-t border-border pt-3">
           <div className="flex items-center gap-2">
             <span className="text-[10px] font-semibold uppercase tracking-[.05em] text-text-faint">
               Never capture in this case

@@ -2,13 +2,13 @@ import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import type { KnownEgress, LaunchedBrowserOption } from '@shared/types'
-import { refusalCode } from '@shared/ipc'
-import { Button, Dialog, DialogContent, DialogTitle } from '@renderer/components/ui'
+import { refusalCode, type VpnWarningCheck } from '@shared/ipc'
+import { Button, Dialog, DialogContent, DialogTitle, Input } from '@renderer/components/ui'
 import { casesQueryOptions } from '@renderer/lib/api/cases'
 import { useSessionMutations } from '@renderer/lib/api/session'
-import { settingsQueryOptions } from '@renderer/lib/api/settings'
+import { settingsQueryOptions, useSettingsMutations } from '@renderer/lib/api/settings'
 import { vpnStatusQueryOptions } from '@renderer/lib/api/egress'
-import { confirmContact } from '@renderer/lib/vpnWarning'
+import { birdbrain } from '@renderer/lib/birdbrain'
 import { VPN_SESSION_CAVEAT } from '@renderer/components/status/VpnWarningDialog'
 import {
   cancelBrowserLaunch,
@@ -18,7 +18,6 @@ import {
 } from '@renderer/lib/api/launchedBrowser'
 import { useAppStore } from '@renderer/stores/appStore'
 import { cn } from '@renderer/lib/utils'
-import { InfoTip } from '@renderer/components/launchedBrowser/InfoTip'
 import {
   NO_BROWSER_REFUSAL,
   CASES_UNREAD_REFUSAL,
@@ -33,11 +32,26 @@ import {
   type StepProgress
 } from '@renderer/components/launchedBrowser/startDialogModel'
 
-const TITLE_TIP =
-  'The browser runs on a browser profile of its own. Pages in this browser can tell that ' +
-  'software drives it.'
+// A session warning main says is due for a Case (ADR-0032 VPN rule 3), with the Operator's
+// choice to stop warning on this network. The choice starts unmade, and it is a choice about
+// `network`, the one the form was drawn for.
+interface SessionWarning {
+  caseId: string
+  canMute: boolean
+  mute: boolean
+  network: string | undefined
+}
 
-const OPERATOR_TIP = 'Every Capture carries an operator name, so Birdbrain asks for it first.'
+function sessionWarning(caseId: string, check: VpnWarningCheck): SessionWarning | null {
+  const { warn, canMute, network } = check
+  return warn ? { caseId, canMute, mute: false, network } : null
+}
+
+// Whether a later check saw the network the form was drawn for. A network that could not be
+// read matches nothing.
+function sameNetwork(shown: SessionWarning, { network }: VpnWarningCheck): boolean {
+  return shown.network !== undefined && shown.network === network
+}
 
 const STEP_MARKS: Readonly<Record<StepProgress, { mark: string; className: string }>> = {
   done: { mark: '✓', className: 'text-success-fg' },
@@ -92,6 +106,7 @@ export function StartDialog() {
   const { data: status } = useQuery(launchedBrowserStatusQueryOptions)
   const { data: browsers } = useQuery({ ...launchedBrowsersQueryOptions, enabled: open })
   const { activateCase } = useSessionMutations()
+  const { update } = useSettingsMutations()
 
   const [selectedPath, setSelectedPath] = useState('')
   // The browser being launched and the Egress it was launched with.
@@ -103,6 +118,11 @@ export function StartDialog() {
   const [cancelling, setCancelling] = useState(false)
   const [cancelError, setCancelError] = useState('')
   const cancelled = useRef(false)
+  const [typedName, setTypedName] = useState('')
+  const [nameError, setNameError] = useState('')
+  const [warning, setWarning] = useState<SessionWarning | null>(null)
+  // Counts the questions put to main, so an answer that arrives after a later question is dropped.
+  const lastAsk = useRef(0)
 
   // Every way out of the dialog comes here, so the next opening starts clean.
   function dismiss() {
@@ -111,6 +131,10 @@ export function StartDialog() {
     setCancelling(false)
     setCancelError('')
     setPickedCaseId('')
+    setTypedName('')
+    setNameError('')
+    setWarning(null)
+    lastAsk.current += 1
     cancelled.current = false
     close()
   }
@@ -121,13 +145,30 @@ export function StartDialog() {
   const egress = settings?.egress
   const knownEgress: KnownEgress | null = egress && egress.kind !== 'unavailable' ? egress : null
   const operatorName = settings?.operatorName?.trim() ?? ''
+  // No operator name is saved, so the dialog asks for one and saves it on Launch.
+  const askName = settings !== undefined && operatorName === ''
   // The no-VPN line (`1b`), under a Direct Egress only: the indicator's words with the session
   // warning's caveat, since Birdbrain sees this computer's route and not the browser's.
   const direct = knownEgress?.kind === 'direct'
   const { data: vpn } = useQuery({ ...vpnStatusQueryOptions, enabled: open && direct })
   const noVpnSeen = direct && vpn?.vpnSeen === false
 
-  // A refusal known before the launch starts. A missing operator name shows in its own row.
+  // Main is asked when the dialog opens for a Case, so the form says a warning is due before
+  // Launch is pressed. A check that fails here shows no warning; Launch asks again.
+  useEffect(() => {
+    if (!open || caseId === null) return
+    lastAsk.current += 1
+    const ask = lastAsk.current
+    birdbrain.egress.checkVpnWarning({ caseId }, 'session').then(
+      (check) => {
+        if (ask === lastAsk.current) setWarning(sessionWarning(caseId, check))
+      },
+      () => undefined
+    )
+  }, [open, caseId])
+  const dueWarning = warning?.caseId === caseId ? warning : null
+
+  // A refusal known before the launch starts. A missing operator name is asked for in its row.
   const blocked =
     unavailableRefusal(status) ??
     busyRefusal(status) ??
@@ -144,38 +185,121 @@ export function StartDialog() {
     caseId !== null &&
     browser !== undefined &&
     knownEgress !== null &&
-    operatorName !== ''
+    (askName ? typedName.trim() !== '' : operatorName !== '')
+
+  // One browser found has no select to take the focus. The name field takes it while the
+  // dialog asks for a name, and otherwise Launch does once it can be pressed.
+  const loneBrowser = browsers?.length === 1
+  const nameField = useRef<HTMLInputElement>(null)
+  const launchButton = useRef<HTMLButtonElement>(null)
+  const unclaimedFocus = open && !picking && !launching && loneBrowser
+  const focusName = unclaimedFocus && askName
+  const focusLaunch = unclaimedFocus && !askName && canLaunch
+  useEffect(() => {
+    if (focusName) nameField.current?.focus()
+  }, [focusName])
+  useEffect(() => {
+    if (focusLaunch) launchButton.current?.focus()
+  }, [focusLaunch])
+
+  // Saved as typed, as the Operator tab saves it: the name is trimmed only to test for a blank.
+  async function nameSaved(): Promise<boolean> {
+    if (!askName) return true
+    try {
+      await update.mutateAsync({ operatorName: typedName })
+      return true
+    } catch {
+      setNameError('The name could not be saved.')
+      return false
+    }
+  }
+
+  // Asked again on the press: the network can change while the dialog is open. A tick the
+  // Operator made stays only while the press finds the network it was made for, so a held
+  // launch does not undo it and a changed network does not inherit it.
+  async function askVpnWarningAgain(forCase: string): Promise<VpnWarningCheck> {
+    lastAsk.current += 1
+    const check = await birdbrain.egress.checkVpnWarning({ caseId: forCase }, 'session')
+    const next = sessionWarning(forCase, check)
+    const keepTick = dueWarning !== null && dueWarning.mute && sameNetwork(dueWarning, check)
+    setWarning(next && { ...next, mute: keepTick && next.canMute })
+    return check
+  }
+
+  const cameDue = ({ warn }: VpnWarningCheck) => warn && dueWarning === null
+
+  // Tells main the Operator went ahead, which is what marks the Case warned and mutes a network.
+  // Main mutes the network of its latest check, so the tick counts only where that is the
+  // network the form showed, and the answer names that network for main to compare.
+  async function answerVpnWarning(forCase: string, check: VpnWarningCheck): Promise<void> {
+    const mute =
+      dueWarning !== null && dueWarning.mute && check.canMute && sameNetwork(dueWarning, check)
+    await birdbrain.egress.answerVpnWarning({
+      caseId: forCase,
+      occasion: 'session',
+      ...(mute ? { choice: 'mute-network', network: check.network } : { choice: 'continue' })
+    })
+    setWarning(null)
+  }
+
+  // Back to the form with nothing launched. A cancel pressed meanwhile still closes the dialog.
+  function holdLaunch() {
+    if (cancelled.current) dismiss()
+    else setLaunching(null)
+  }
 
   async function launch() {
     if (!caseId || !browser || !knownEgress) return
     cancelled.current = false
     setRefusal(null)
     setLaunching({ browser, egress: knownEgress })
+    let launchSent = false
     try {
       // A launch starts or joins a Capture Session, so it passes the VPN warning first
-      // (ADR-0032 rule 3), as the capture menu's session start does.
-      if (!(await confirmContact({ caseId }, 'session'))) {
+      // (ADR-0032 VPN rule 3). A warning the pressed form did not show holds the launch: the
+      // form shows it now, and the Operator presses the button that names it.
+      const check = await askVpnWarningAgain(caseId)
+      // A cancel pressed during the question stops here, before a name is saved or main is told
+      // the Operator went ahead.
+      if (cancelled.current) {
+        dismiss()
+        return
+      }
+      if (cameDue(check)) {
         setLaunching(null)
         return
       }
+      if (!(await nameSaved())) {
+        holdLaunch()
+        return
+      }
+      if (cancelled.current) {
+        dismiss()
+        return
+      }
+      if (check.warn) await answerVpnWarning(caseId, check)
       await activateCase.mutateAsync(caseId)
       // A cancel while the Case was activating reached main before any launch it could stop.
       if (cancelled.current) {
         dismiss()
         return
       }
+      launchSent = true
       await launchBrowser(browser.executablePath)
       dismiss()
     } catch (error) {
+      // A cancelled attempt closes the dialog: when main says the launch was cancelled, and
+      // when a step before the launch failed, which left main nothing to cancel.
       if (
         cancelled.current &&
-        refusalCode(error, 'launchedBrowser:launch') === 'BROWSER_LAUNCH_CANCELLED'
+        (!launchSent || refusalCode(error, 'launchedBrowser:launch') === 'BROWSER_LAUNCH_CANCELLED')
       ) {
         dismiss()
         return
       }
       setRefusal(refusalFor(error, browser.label, knownEgress))
       setLaunching(null)
+      setCancelling(false)
     }
   }
 
@@ -192,6 +316,13 @@ export function StartDialog() {
     }
   }
 
+  // Opens the Egress setting, as the VPN warning's own "Set up a proxy" does. Nothing is launched
+  // and main is told nothing, so the warning is still due.
+  function setUpProxy() {
+    dismiss()
+    void navigate({ to: '/settings', search: { section: 'egress' } })
+  }
+
   // State 4's Show panel: the panel sits on the Case screens of the browser's Case.
   const browserCaseId = status && status.state !== 'none' ? status.browser.caseId : null
   function showPanel() {
@@ -202,12 +333,6 @@ export function StartDialog() {
     void navigate({ to: '/cases/$caseId/captures', params: { caseId: browserCaseId } })
   }
 
-  // Lands on the operator name in the Operator tab (`1b`'s Set operator name).
-  function setOperatorName() {
-    dismiss()
-    void navigate({ to: '/settings', search: { section: 'operator' } })
-  }
-
   return (
     <Dialog open={open} onOpenChange={(next) => !next && !launching && dismiss()}>
       {open && (
@@ -216,12 +341,9 @@ export function StartDialog() {
           className="max-w-[440px] rounded-md p-4 text-xs"
           data-testid="launch-start-dialog"
         >
-          <div className="flex items-center gap-1.5">
-            <DialogTitle>
-              {picking ? 'Launch a browser' : `Launch a browser for ${caseName}`}
-            </DialogTitle>
-            <InfoTip text={TITLE_TIP} />
-          </div>
+          <DialogTitle>
+            {picking ? 'Launch a browser' : `Launch a browser for ${caseName}`}
+          </DialogTitle>
           {launching ? (
             <LaunchChecklist
               browser={launching.browser}
@@ -240,8 +362,7 @@ export function StartDialog() {
           ) : (
             <>
               <p className="mt-1 text-text-muted">
-                Birdbrain opens the browser for a Capture Session and closes it when the Capture
-                Session ends.
+                Sites can tell that software drives this browser.
               </p>
               <dl className="mt-3 grid grid-cols-[96px_minmax(0,1fr)] items-start gap-x-3 gap-y-2">
                 {picking && (
@@ -273,25 +394,31 @@ export function StartDialog() {
                     </dd>
                   </>
                 )}
-                <dt className="pt-1.5 text-text-muted">
-                  <label htmlFor="launch-browser-select">Browser</label>
+                <dt className={cn('text-text-muted', !loneBrowser && 'pt-1.5')}>
+                  {loneBrowser ? 'Browser' : <label htmlFor="launch-browser-select">Browser</label>}
                 </dt>
                 <dd>
                   {browsers && browser ? (
                     <>
-                      <select
-                        id="launch-browser-select"
-                        autoFocus={!picking}
-                        value={browser.executablePath}
-                        onChange={(e) => setSelectedPath(e.target.value)}
-                        className="h-7 w-full rounded border border-border-strong bg-surface px-2 text-xs text-text-primary"
-                      >
-                        {browsers.map((option) => (
-                          <option key={option.executablePath} value={option.executablePath}>
-                            {optionText(option)}
-                          </option>
-                        ))}
-                      </select>
+                      {loneBrowser ? (
+                        <span data-testid="launch-browser-only" className="text-text-primary">
+                          {optionText(browser)}
+                        </span>
+                      ) : (
+                        <select
+                          id="launch-browser-select"
+                          autoFocus={!picking}
+                          value={browser.executablePath}
+                          onChange={(e) => setSelectedPath(e.target.value)}
+                          className="h-7 w-full rounded border border-border-strong bg-surface px-2 text-xs text-text-primary"
+                        >
+                          {browsers.map((option) => (
+                            <option key={option.executablePath} value={option.executablePath}>
+                              {optionText(option)}
+                            </option>
+                          ))}
+                        </select>
+                      )}
                       <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-text-muted">
                         {browser.lastVersion && (
                           <span className="font-mono">{browser.lastVersion}</span>
@@ -306,9 +433,7 @@ export function StartDialog() {
                   )}
                 </dd>
                 <dt className="text-text-muted">Profile</dt>
-                <dd className="text-text-secondary">
-                  A new browser profile, which Birdbrain deletes when the browser closes.
-                </dd>
+                <dd className="text-text-secondary">New profile, deleted on close</dd>
                 <dt className="text-text-muted">Egress</dt>
                 <dd>
                   {knownEgress ? (
@@ -316,24 +441,79 @@ export function StartDialog() {
                   ) : (
                     <span className="text-danger-fg">Not readable</span>
                   )}
-                  {noVpnSeen && (
-                    <p data-testid="launch-no-vpn" className="mt-0.5 text-[11px] text-warning-fg">
-                      VPN not seen. {VPN_SESSION_CAVEAT}
+                  {(noVpnSeen || dueWarning) && (
+                    <p className="mt-0.5 text-[11px]">
+                      <span data-testid="launch-no-vpn" className="text-warning-fg">
+                        VPN not seen. {VPN_SESSION_CAVEAT}
+                      </span>
+                      {dueWarning && (
+                        <>
+                          {' '}
+                          <Button
+                            variant="link"
+                            className="h-auto px-0 text-[11px] underline"
+                            onClick={setUpProxy}
+                          >
+                            Set up a proxy
+                          </Button>
+                        </>
+                      )}
                     </p>
                   )}
+                  {dueWarning?.canMute && (
+                    <label className="mt-1 flex items-center gap-1.5 text-[11px] text-text-secondary">
+                      <input
+                        type="checkbox"
+                        checked={dueWarning.mute}
+                        onChange={(e) => setWarning({ ...dueWarning, mute: e.target.checked })}
+                      />
+                      Do not warn on this network
+                    </label>
+                  )}
                 </dd>
-                <dt className="text-text-muted">Operator</dt>
-                <dd>
-                  {operatorName ? (
-                    <span className="text-text-primary">{operatorName}</span>
+                <dt className={cn('text-text-muted', askName && 'pt-1.5')}>
+                  {askName ? (
+                    <label htmlFor="launch-operator-name">Operator Name</label>
                   ) : (
+                    'Operator'
+                  )}
+                </dt>
+                <dd>
+                  {askName ? (
                     <>
-                      <span className="font-semibold text-danger-fg">Not set</span>
-                      <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-text-muted">
-                        <span>Set your name before launching.</span>
-                        <InfoTip text={OPERATOR_TIP} />
-                      </div>
+                      <Input
+                        ref={nameField}
+                        id="launch-operator-name"
+                        type="text"
+                        value={typedName}
+                        onChange={(e) => {
+                          setTypedName(e.target.value)
+                          setNameError('')
+                        }}
+                        placeholder="e.g. Alex Smith"
+                        aria-invalid={nameError ? true : undefined}
+                        aria-describedby="launch-operator-name-note"
+                        className="h-7 bg-surface"
+                      />
+                      {nameError ? (
+                        <p
+                          id="launch-operator-name-note"
+                          role="alert"
+                          className="mt-0.5 text-[11px] text-danger-fg"
+                        >
+                          {nameError}
+                        </p>
+                      ) : (
+                        <p
+                          id="launch-operator-name-note"
+                          className="mt-0.5 text-[11px] text-text-muted"
+                        >
+                          Every Capture carries an operator name.
+                        </p>
+                      )}
                     </>
+                  ) : (
+                    <span className="text-text-primary">{operatorName}</span>
                   )}
                 </dd>
               </dl>
@@ -343,31 +523,17 @@ export function StartDialog() {
                   onShowPanel={shownRefusal.state === 4 && browserCaseId ? showPanel : undefined}
                 />
               )}
-              <div className="mt-3 flex items-center gap-2 border-t border-border pt-2.5">
-                <span className="min-w-0 flex-1 text-[11px] text-text-muted">
-                  {caseId !== null &&
-                    (sessionActive
-                      ? `Joins the running Capture Session in ${caseName}.`
-                      : `Starts a Capture Session in ${caseName}.`)}
-                </span>
+              <div className="mt-3 flex items-center justify-end gap-2 border-t border-border pt-2.5">
                 <Button variant="outline" className="shrink-0 whitespace-nowrap" onClick={dismiss}>
                   Cancel
                 </Button>
-                {settings && !operatorName && (
-                  <Button
-                    variant="outline"
-                    className="shrink-0 whitespace-nowrap"
-                    onClick={setOperatorName}
-                  >
-                    Set operator name
-                  </Button>
-                )}
                 <Button
+                  ref={launchButton}
                   className="shrink-0 whitespace-nowrap font-semibold text-accent-foreground"
                   disabled={!canLaunch}
                   onClick={() => void launch()}
                 >
-                  {sessionActive ? 'Launch and join' : 'Launch'}
+                  {dueWarning ? 'Launch without VPN' : sessionActive ? 'Launch and join' : 'Launch'}
                 </Button>
               </div>
             </>
@@ -385,23 +551,11 @@ function optionText({ label, chosen, executablePath }: LaunchedBrowserOption): s
 }
 
 function EgressValue({ egress }: { egress: KnownEgress }) {
-  const routed = egress.kind !== 'direct'
-  const tip =
-    'Change it in Settings → Operator before launching.' +
-    (routed ? ' The Egress hides where you are, not which browser is looking.' : '')
   return (
-    <>
-      <div className="flex items-center gap-1.5">
-        <span>
-          <span className="font-semibold">{egressKindName(egress)}</span>
-          {routed && ` · ${egress.label}`}
-        </span>
-        <InfoTip text={tip} />
-      </div>
-      <p className="text-[11px] text-text-muted">
-        Fixed while the browser is open. Changing it ends the Capture Session.
-      </p>
-    </>
+    <span>
+      <span className="font-semibold">{egressKindName(egress)}</span>
+      {egress.kind !== 'direct' && ` · ${egress.label}`}
+    </span>
   )
 }
 
@@ -425,7 +579,7 @@ function RefusalCard({
     >
       <div className="min-w-0 flex-1">
         <div className="font-semibold text-text-primary">{title}</div>
-        <div className="text-text-muted">{detail}</div>
+        {detail && <div className="text-text-muted">{detail}</div>}
       </div>
       {onShowPanel && (
         <Button variant="outline" onClick={onShowPanel}>

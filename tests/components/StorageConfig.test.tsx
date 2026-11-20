@@ -70,6 +70,7 @@ const settings = {
   lastActiveSection: 'overview',
   hasCompletedOnboarding: true,
   detailsPanelCollapsed: false,
+  custodySectionOpen: false,
   tooltipsSeen: {},
   onboardingChapters: {},
   isFreshInstall: false,

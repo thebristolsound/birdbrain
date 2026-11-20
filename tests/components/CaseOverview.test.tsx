@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import type { Capture, Case, Note, Selector, Tag } from '@shared/types'
@@ -236,16 +236,52 @@ describe('CaseOverview', () => {
     )
   })
 
-  it('sends both Manage buttons to the signals screen', async () => {
+  /** The card a block sits in: its heading, its link and the block. */
+  function cardOf(blockTestId: string) {
+    return within(screen.getByTestId(blockTestId).parentElement as HTMLElement)
+  }
+
+  it.each(['overview-selectors-block', 'overview-tags-block'])(
+    'opens Signals from the one link on the %s card',
+    async (blockTestId) => {
+      renderOverview()
+      await waitFor(() => expect(screen.getByTestId(blockTestId)).toBeTruthy())
+
+      expect(cardOf(blockTestId).getAllByRole('button')).toHaveLength(1)
+      fireEvent.click(cardOf(blockTestId).getByRole('button', { name: 'Edit in Signals' }))
+
+      expect(navigate).toHaveBeenCalledTimes(1)
+      expect(navigate).toHaveBeenCalledWith({
+        to: '/cases/$caseId/signals',
+        params: { caseId: 'case1' }
+      })
+    }
+  )
+
+  it('puts the Selectors card above the Tags card, with no count in its heading', async () => {
+    renderOverview()
+    await waitFor(() => expect(screen.getByTestId('overview-tags-block')).toBeTruthy())
+
+    const selectorsCard = screen.getByTestId('overview-selectors-block')
+      .parentElement as HTMLElement
+    const tagsCard = screen.getByTestId('overview-tags-block').parentElement as HTMLElement
+    expect(
+      selectorsCard.compareDocumentPosition(tagsCard) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
+    // The heading row is the title and the link: the count is on each row and in the stat tile.
+    const heading = selectorsCard.firstElementChild as HTMLElement
+    expect(heading.textContent).toBe('SelectorsEdit in Signals')
+  })
+
+  it('shows each Selector with its Captures and each Tag with its count', async () => {
     renderOverview()
 
-    await waitFor(() => expect(screen.getAllByText('Manage')).toHaveLength(2))
-    for (const button of screen.getAllByText('Manage')) fireEvent.click(button)
-
-    expect(navigate).toHaveBeenCalledTimes(2)
-    for (const call of navigate.mock.calls) {
-      expect(call[0]).toEqual({ to: '/cases/$caseId/signals', params: { caseId: 'case1' } })
-    }
+    await waitFor(() =>
+      expect(screen.getByTestId('overview-selector-row').textContent).toBe('acme4 Captures')
+    )
+    await waitFor(() =>
+      expect(screen.getByTestId('overview-tag-chip').textContent).toBe('evidence3')
+    )
   })
 
   it('opens a mapped note on double-click', async () => {
@@ -295,13 +331,19 @@ describe('CaseOverview', () => {
     expect(strip.className).not.toContain('gap-4')
   })
 
-  it('writes a selector toggle back through the mutation', async () => {
+  it('adds and toggles nothing on the Selectors and Tags cards, and keeps the quick note', async () => {
     renderOverview()
+    await waitFor(() => expect(screen.getByTestId('overview-selector-row')).toBeTruthy())
+    await waitFor(() => expect(screen.getByTestId('overview-tag-chip')).toBeTruthy())
 
-    await waitFor(() => expect(screen.getByTestId('overview-selectors-block')).toBeTruthy())
-    fireEvent.click(screen.getByRole('switch'))
-
-    await waitFor(() => expect(updateSelector).toHaveBeenCalledWith({ id: 'sel1', enabled: false }))
+    expect(screen.queryAllByRole('switch')).toHaveLength(0)
+    for (const blockTestId of ['overview-selectors-block', 'overview-tags-block']) {
+      expect(cardOf(blockTestId).queryAllByRole('textbox')).toHaveLength(0)
+    }
+    expect(screen.getAllByRole('textbox')).toEqual([
+      screen.getByTestId('overview-quick-note-input')
+    ])
+    expect(updateSelector).not.toHaveBeenCalled()
   })
 
   it('routes the map header and the quick-notes header to the notes screen', async () => {

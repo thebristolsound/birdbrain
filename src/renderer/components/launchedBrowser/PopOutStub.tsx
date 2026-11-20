@@ -2,8 +2,8 @@ import { Button } from '@renderer/components/ui'
 import { dockPanel, showPopOutWindow } from '@renderer/lib/api/launchedBrowser'
 
 // What the top bar's popover on the dashboard, in Settings and on the new-Case wizard shows while
-// the panel is popped out (`1g`). A Case screen keeps the 40-pixel strip instead
-// (CaptureSessionDock).
+// the panel is popped out (`1g`), and the Capture Session tab on Captures. The other Case screens
+// keep the 40-pixel strip instead (CaptureSessionDock).
 export function PopOutStub({ onDone }: { onDone?: () => void }) {
   return (
     <div className="px-3 py-2.5 text-[11px] leading-[1.45]">

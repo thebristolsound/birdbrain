@@ -466,6 +466,12 @@ test.describe('README screenshots', () => {
     }, caseId)
     await page.getByTestId('capture-item').first().waitFor({ timeout: 10000 })
 
+    // Chain of custody starts closed. The tour shows it open, and the choice
+    // holds for every capture selected after this one.
+    await page.getByTestId('capture-item').first().click()
+    await page.getByTestId('custody-section-toggle').click()
+    await expect(page.getByTestId('custody-section-body')).toBeVisible()
+
     // Verify every capture first so status chips read "Verified" everywhere.
     const itemCount = await page.getByTestId('capture-item').count()
     for (let i = 0; i < itemCount; i++) {
@@ -595,7 +601,7 @@ test.describe('README screenshots', () => {
 
     // --- 4f. Export dialog ---------------------------------------------------
     await page.getByTestId('topbar-case-name').click()
-    await page.getByRole('menuitem', { name: /export evidence report/i }).click()
+    await page.getByRole('menuitem', { name: 'Export…', exact: true }).click()
     await page.waitForTimeout(800)
     const purposeInput = page.getByPlaceholder(/Disclosure under/i)
     if (await purposeInput.isVisible().catch(() => false)) {

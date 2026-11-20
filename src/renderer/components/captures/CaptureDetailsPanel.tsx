@@ -40,6 +40,7 @@ import {
   useRecaptureMutations,
   useVerifyCapture
 } from '@renderer/lib/queries'
+import { settingsQueryOptions, useSettingsMutations } from '@renderer/lib/api/settings'
 import { useAppStore } from '@renderer/stores/appStore'
 import { ContactStoppedError } from '@renderer/lib/vpnWarning'
 import { useFavorites } from '@renderer/hooks/useFavorites'
@@ -94,6 +95,8 @@ export function CaptureDetailsPanel({
   const { tags } = useCaptureTagEditor(capture.id)
   const verify = useVerifyCapture(capture.id, caseId)
   const { enqueue } = useRecaptureMutations(caseId)
+  const { data: settings } = useQuery(settingsQueryOptions)
+  const { update: updateSettings } = useSettingsMutations()
 
   const [tagPopoverOpen, setTagPopoverOpen] = useState(false)
   const tagAnchorRef = useRef<HTMLButtonElement>(null)
@@ -103,7 +106,10 @@ export function CaptureDetailsPanel({
     message: string
   } | null>(null)
 
-  const [custodyOpen, setCustodyOpen] = useState(true)
+  // The section opens and closes on the click. The settings write remembers the choice for the
+  // next mount and the next launch, and a write that fails must not keep the section shut.
+  const [custodyChoice, setCustodyChoice] = useState<boolean | null>(null)
+  const custodyOpen = custodyChoice ?? settings?.custodySectionOpen ?? false
 
   // A background recapture emits a 'received' event at the start of its job and a
   // terminal 'stored'/'failed' event when it finishes; the store keeps the
@@ -192,6 +198,12 @@ export function CaptureDetailsPanel({
       await inline.flush()
     }
     onOpenAddNote()
+  }
+
+  function toggleCustody() {
+    const open = !custodyOpen
+    setCustodyChoice(open)
+    updateSettings.mutate({ custodySectionOpen: open })
   }
 
   function handleRecapture() {
@@ -377,7 +389,7 @@ export function CaptureDetailsPanel({
       <section className="border-b border-border [&:last-child]:border-b-0">
         <div className="flex items-center gap-2 px-5 py-3.5">
           <button
-            onClick={() => setCustodyOpen((v) => !v)}
+            onClick={toggleCustody}
             aria-expanded={custodyOpen}
             data-testid="custody-section-toggle"
             className="flex min-w-0 flex-1 items-center gap-2 text-left"
@@ -397,7 +409,7 @@ export function CaptureDetailsPanel({
             {verify.isPending ? 'Verifying…' : 'Re-verify'}
           </button>
           <button
-            onClick={() => setCustodyOpen((v) => !v)}
+            onClick={toggleCustody}
             aria-label={custodyOpen ? 'Collapse chain of custody' : 'Expand chain of custody'}
             className="text-text-muted hover:text-text-secondary"
           >

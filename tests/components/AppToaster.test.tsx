@@ -35,7 +35,7 @@ describe('AppToaster', () => {
   it('renders a title, a truncated subtitle, a check medallion and a Dismiss control', async () => {
     render(<AppToaster />)
     act(() => {
-      notify.success('Export written', { description: 'Evidence package · /tmp/case.zip' })
+      notify.success('Export written', { description: 'Evidence Package · /tmp/case.zip' })
     })
 
     const title = await screen.findByText('Export written')
@@ -44,7 +44,7 @@ describe('AppToaster', () => {
     expect(item.dataset.styled).toBe('false')
     expect(item.className).toContain('max-w-[520px]')
     expect(item.className).toContain('bg-card')
-    expect(screen.getByText('Evidence package · /tmp/case.zip').className).toContain('truncate')
+    expect(screen.getByText('Evidence Package · /tmp/case.zip').className).toContain('truncate')
     const medallion = item.querySelector('[data-testid="toast-medallion"]') as HTMLElement
     expect(medallion.className).toContain('text-success-fg')
 
@@ -59,7 +59,7 @@ describe('AppToaster', () => {
     const onClick = vi.fn()
     render(<AppToaster />)
     act(() => {
-      notify.success('Archive saved', {
+      notify.success('Case Archive saved', {
         description: '/tmp/case.bbcase',
         action: { label: 'Show in folder', onClick }
       })
@@ -78,19 +78,19 @@ describe('AppToaster', () => {
     render(<AppToaster />)
     act(() => {
       notify.success('Export written', {
-        description: 'Evidence package · /tmp/a.zip',
+        description: 'Evidence Package · /tmp/a.zip',
         action: { label: 'Show in folder', onClick: first }
       })
       notify.success('Export written', {
-        description: 'Evidence package · /tmp/b.zip',
+        description: 'Evidence Package · /tmp/b.zip',
         action: { label: 'Show in folder', onClick: second }
       })
     })
 
-    await screen.findByText('Evidence package · /tmp/b.zip')
-    expect(screen.getByText('Evidence package · /tmp/a.zip')).toBeTruthy()
+    await screen.findByText('Evidence Package · /tmp/b.zip')
+    expect(screen.getByText('Evidence Package · /tmp/a.zip')).toBeTruthy()
     const firstItem = screen
-      .getByText('Evidence package · /tmp/a.zip')
+      .getByText('Evidence Package · /tmp/a.zip')
       .closest('[data-sonner-toast]') as HTMLElement
     const firstAction = Array.from(firstItem.querySelectorAll('button')).find(
       (b) => b.textContent === 'Show in folder'

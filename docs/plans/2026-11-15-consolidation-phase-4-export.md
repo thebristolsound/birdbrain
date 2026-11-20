@@ -185,14 +185,19 @@ Finding U3. No longer waits: decision 7 of the parent plan ruled on the bundle.
 The maintainer ruled on the bundle on 2026-11-17, and answer 7 of decision 7 in the parent
 plan gives the verdicts on both issues.
 
-- [ ] #1555: for each of its rows, write on the issue whether the bundle keeps, changes or
-  supersedes it. The row "Menu: which item opens the dialog" is superseded by 4.2. The rows on
-  the primary button's label, the dialog's width and the chain-of-custody preview card depend
-  on frame G: one entry supersedes the export menu row, the preview card is not drawn, and the
-  dialog keeps its width.
-- [ ] #1547: the same, for the Overview's tag cards, against frame I, which supersedes the
-  Selectors and Tags cards and keeps the heading, sources and capture strip rows.
-- [ ] #846: the dialog hardcodes zip while two other formats are unreachable. Decide with the
-  bundle whether those formats become choices or are removed from the main side.
-- [ ] #841: closed by 4.2.
-- [ ] #1524: closed by slice 1.2 of the parent plan.
+- [x] #1555: for each of its rows, write on the issue whether the bundle keeps, changes or
+  supersedes it. Done as a comment on the issue on 2026-11-19. The row "Menu: which item opens
+  the dialog" is superseded by 4.2. One entry supersedes the export menu row, the preview card
+  is not drawn, and the dialog keeps its width.
+- [x] #1547: the same, for the Overview's tag cards, against frame I, which supersedes the
+  Selectors and Tags cards and keeps the heading, sources and capture strip rows. Done as a
+  comment on the issue on 2026-11-19.
+- [ ] #846: the dialog hardcodes zip while two other formats are unreachable. The new dialog
+  offers no other format, and a comment on the issue of 2026-11-19 asks the maintainer whether
+  the unreachable formats are removed from the main side, which is an `evidence-affecting`
+  change of its own.
+- [ ] #841: #2232 deleted `ExportMenu.tsx` and its tests, so nothing is left to move. A comment
+  on the issue of 2026-11-19 asks the maintainer whether to close it.
+- [ ] #1524: slice 1.2 makes the Trusted Time line readable in both themes and the copy cut
+  removes the Working Copy notice, but not with the tokens the issue's brief names. A comment
+  on the issue of 2026-11-19 asks the maintainer whether to close it.

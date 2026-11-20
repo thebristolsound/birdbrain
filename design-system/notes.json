@@ -38,7 +38,7 @@
   "color-danger-fg": "Danger text and icon on `color-danger-surface`; the `danger` context-menu item. 6.3:1 on canvas light, 7.4:1 dark.",
   "color-warning-surface": "Warning status fill (10% step). Warning badge, warning toast medallion.",
   "color-warning-line": "Warning status border (20% step).",
-  "color-warning-fg": "Warning words, where a warning must be words; advisory words otherwise take `color-text-secondary`. 6.9:1 on canvas light, 9.4:1 dark.",
+  "color-warning-fg": "Warning words, where a warning must be words; advisory words otherwise take `color-text-secondary`. The app does not follow that yet: its `text-warning-fg` call sites still carry advisory words. 6.9:1 on canvas light, 9.4:1 dark.",
   "color-hue-orange-fg": "Categorical hue: the crypto case-type pill, orange in both themes. Light uses the 800 step because 700 landed at 4.28:1 on its tint over surface; 7:1 on canvas.",
   "color-hue-sky-fg": "Categorical hue: case-type pills and the NEW badge. 5.7:1 on canvas light, 8.5:1 dark.",
   "color-hue-pink-fg": "Categorical hue: case-type pills. 5.8:1 on canvas light, 7.1:1 dark.",

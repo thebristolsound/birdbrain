@@ -183,7 +183,7 @@ describe('filled controls', () => {
   // the accent raises its file's count here, even when its white check sits on another line.
   // Opacity of 50% or more counts as solid; the tints that stay are 40% or less.
   const solidAccent =
-    /(^|[\s'"`:!{}(])bg-(accent(-hover)?(\/[5-9]\d|\/100)?|ring|\[var\(--color-(accent|ring)\)\])(?![-\w/[])/g
+    /(^|[\s'"`:!{}(])bg-(accent(-hover)?(\/[5-9]\d|\/100)?|ring|\[var\(--color-(accent|ring)\)\]|\(--color-(accent|ring)\))(?![-\w/[])/g
   const marks: Record<string, number> = {
     'components/captures/CaptureItem.tsx': 1,
     'components/dashboard/caseTypeStyle.ts': 1,

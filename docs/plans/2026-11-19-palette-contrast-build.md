@@ -45,15 +45,19 @@ its own. Every pull request carries before and after screenshots in both themes.
    `border-border`. Starts from the 101 `border-border-strong` hits in 55 files.
 4. **Hover tint.** `hover:bg-elevated` (100 hits in 52 files), the keyboard highlight and the open
    pill take `bg-hover`.
-5. **Status tiers.** The nominal dot draws in `--color-control` and the advisory mark is a hollow
-   ring in `--color-warning-mark`. Advisory words take secondary text, and problem words take
-   `text-danger-fg` with the triangle. Classify each of the 42 `text-warning-fg` hits in 31 files.
-   Connected becomes nominal. The Export dialog's demonstration notice moves to advisory.
+5. **Status tiers.** The nominal dot draws in `--color-control`, and the hollow advisory ring,
+   already on main, moves to `--color-warning-mark`. Advisory words take secondary text, and
+   problem words take `text-danger-fg` with the triangle, the status bar's problem word included.
+   Classify each of the 42 `text-warning-fg` hits in 31 files. Connected is already nominal. The
+   Export dialog's demonstration notice moves to advisory.
 6. **Categorical hues.** Tag, case-type and link-map glyphs carry the hue; their words stay
    neutral. Link-map Captures take teal and Selectors violet.
 7. **Overlays.** Dialog backdrops take `--color-scrim`, menus and popovers `--shadow-menu`.
 
 ## Still open
 
-The spec's two open items stay open: the design system artifact needs the same values, and the
-nonzero "Missing" integrity count needs its own mark.
+The spec's open items stay open: the design system artifact needs the same values, the nonzero
+"Missing" integrity count needs its own mark, and dark faint text on a hovered item over
+`--color-elevated` measures 4.49:1, which waits for the maintainer. Slice 4 is the one that puts
+the hover tint under faint text, so it keeps faint text off hovered items on that surface until
+the maintainer rules.

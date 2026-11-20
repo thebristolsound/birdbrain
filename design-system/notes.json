@@ -99,7 +99,7 @@
   "tracking-label": "Uppercase eyebrow section labels (`tracking-label`).",
   "color-accent-fill": "Background of a filled control: the default Button and Badge, count badges, checked checkboxes, an on switch track. One per view. White on it: 5.8:1 light, 5.4:1 dark.",
   "color-accent-fill-hover": "Hover fill of a `color-accent-fill` control. White on it: 6.9:1 light, 6.3:1 dark.",
-  "color-control": "Boundaries of inputs, search fields, checkboxes, radios, the switch track and icon-only outline buttons, and the nominal status dot. 3:1 or more on every surface, hovered or not: 3.8:1 on surface light, 3.8:1 on elevated dark. Inputs, search fields, custom checkboxes and switch tracks use it; native checkboxes and radios keep the browser's drawing, and the status dot does not use it yet.",
+  "color-control": "Control boundaries, and the nominal status dot. 3:1 or more on every surface, hovered or not: 3.8:1 on surface light, 3.8:1 on elevated dark. Inputs, search fields, custom checkboxes and switch tracks use it; native checkboxes and radios keep the browser's drawing, and the status dot does not use it yet.",
   "color-hover": "Hover, keyboard highlight and an open pill: an ink tint (6%) that shows on every surface in both themes, white cards included. No component uses it yet.",
   "color-scrim": "Behind a dialog: dims the page without blacking it out. No dialog uses it yet.",
   "color-warning-mark": "The advisory mark: a hollow ring, icon or bar. 3.7:1 on surface light, 7.8:1 on elevated dark. No component uses it yet.",

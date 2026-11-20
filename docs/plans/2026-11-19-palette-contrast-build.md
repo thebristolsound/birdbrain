@@ -30,10 +30,12 @@ Each slice is one pull request with before and after screenshots in both themes.
    `--color-input` points at `--color-control`. The shared button's `default` variant takes the
    fill tokens. `tests/renderer/themeContrast.test.ts` measures text, control, fill and
    advisory-mark ratios in both themes.
-2. **Accent split.** Move every filled `bg-accent` and `hover:bg-accent-hover` call site (142
-   `bg-accent` hits in 71 files, the `-subtle` tints included) to the fill tokens where the
-   element is a filled control. Then set `--color-accent` to `#9497ff` dark and `#4346d1` light,
-   with the bundle's hover and subtle values. Over ten files, so it needs plan approval.
+2. **Accent split.** Move every filled control off the solid accent onto the fill tokens: 32 of
+   the 55 lines with a solid `bg-accent` (buttons, count badges, checked checkboxes, switch
+   tracks). The other 23 are dots, bars, selection marks and tints, which keep the accent. Then
+   set `--color-accent` to `#9497ff` dark and `#4346d1` light, with the bundle's hover and subtle
+   values. A test fails any line that puts `text-white` on a solid `bg-accent`. The maintainer
+   approved this slice on 2026-11-19, in the Claude Code session that built it.
 3. **Control boundaries.** Inputs, search fields, checkboxes, radios, the switch track and
    icon-only outline buttons take `border-control`. Hairlines between regions stay on
    `border-border`. Starts from the 101 `border-border-strong` hits in 55 files.

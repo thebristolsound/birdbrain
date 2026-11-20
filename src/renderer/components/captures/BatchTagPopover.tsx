@@ -20,7 +20,7 @@ const CHECKBOX_BASE =
   'flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[2px] border transition-colors'
 
 function checkboxClass(state: BatchTagState): string {
-  if (state === 'all') return `${CHECKBOX_BASE} border-accent bg-accent`
+  if (state === 'all') return `${CHECKBOX_BASE} border-accent-fill bg-accent-fill`
   if (state === 'partial') return `${CHECKBOX_BASE} border-accent bg-transparent`
   return `${CHECKBOX_BASE} border-border-strong bg-transparent`
 }

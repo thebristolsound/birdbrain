@@ -347,7 +347,7 @@ export function WaybackPanel({ capture, onClose }: Props) {
                     aria-label={`${monthLabel(month.year, month.month)} ${cell.day}`}
                     className={`grid h-7 place-items-center rounded-md text-xs ${
                       cell.isEndpoint || cell.isCaptureDay
-                        ? 'bg-accent font-bold text-white'
+                        ? 'bg-accent-fill font-bold text-white'
                         : cell.inRange
                           ? 'bg-accent-subtle text-text-primary'
                           : 'text-text-faint'
@@ -499,7 +499,7 @@ function SnapshotRow({
           <span className="shrink-0 text-xs font-medium text-text-primary">{row.date}</span>
           <span className="shrink-0 text-[11px] tabular-nums text-text-muted">{row.time} UTC</span>
           {row.isClosest && (
-            <span className="shrink-0 rounded bg-accent px-1.5 py-px text-[10px] font-semibold text-white">
+            <span className="shrink-0 rounded bg-accent-fill px-1.5 py-px text-[10px] font-semibold text-white">
               closest
             </span>
           )}

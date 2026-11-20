@@ -17,10 +17,11 @@
   --color-text-muted: #52525b;
   --color-text-faint: #63636c;
 
-  /* Accent tokens — light darkens the indigo vs dark's #6467f2 for WCAG AA on zinc-50 */
-  --color-accent: #4f52e0;
-  --color-accent-hover: #4346d1;
-  --color-accent-subtle: rgba(100,103,242,0.10);
+  /* Accent tokens — text, strokes, focus and selection. A filled control takes
+     --color-accent-fill below, since no one indigo serves as both text and fill. */
+  --color-accent: #4346d1;
+  --color-accent-hover: #3a3dc0;
+  --color-accent-subtle: rgba(79,82,224,0.09);
   /* The background of a filled control, with white text on it (5.8:1). */
   --color-accent-fill: #4f52e0;
   --color-accent-fill-hover: #4346d1;
@@ -161,9 +162,9 @@ html.dark {
   --color-text-secondary: #d4d4d8;
   --color-text-muted: #a8a8b2;
   --color-text-faint: #92939d;
-  --color-accent: #6467f2;
-  --color-accent-hover: #7a7cf5;
-  --color-accent-subtle: rgba(100,103,242,0.16);
+  --color-accent: #9497ff;
+  --color-accent-hover: #a7aaff;
+  --color-accent-subtle: rgba(120,124,255,0.14);
   --color-accent-fill: #5457e6;
   --color-accent-fill-hover: #4a4dd6;
   --color-border: #2a2a30;

@@ -72,7 +72,7 @@ function RouteErrorComponent({ error, reset }: { error: unknown; reset: () => vo
       <div className="flex gap-2">
         <button
           onClick={reset}
-          className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent/90"
+          className="rounded-lg bg-accent-fill px-4 py-2 text-sm font-medium text-white hover:bg-accent-fill-hover"
         >
           Try Again
         </button>
@@ -182,7 +182,7 @@ const rootRoute = createRootRoute({
         <p className="text-text-muted">The page you're looking for doesn't exist.</p>
         <button
           onClick={() => navigate({ to: '/' })}
-          className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent/90"
+          className="rounded-lg bg-accent-fill px-4 py-2 text-sm font-medium text-white hover:bg-accent-fill-hover"
         >
           Go to Dashboard
         </button>

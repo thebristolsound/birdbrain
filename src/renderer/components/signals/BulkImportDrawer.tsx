@@ -96,7 +96,7 @@ export function BulkImportDrawer({ caseId, existingSelectors, onClose }: BulkImp
             data-testid="bulk-add-submit"
             onClick={handleImport}
             disabled={parsed.unique.length === 0 || submitting}
-            className="h-7 rounded bg-accent px-[11px] text-xs font-medium text-white disabled:opacity-50"
+            className="h-7 rounded bg-accent-fill px-[11px] text-xs font-medium text-white disabled:opacity-50"
           >
             {submitting ? 'Importing…' : 'Import'}
           </button>

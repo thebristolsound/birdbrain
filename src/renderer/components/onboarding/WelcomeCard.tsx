@@ -53,7 +53,7 @@ export function WelcomeCard({ onStart, onSkip }: WelcomeCardProps) {
           <button
             data-testid="tour-next"
             onClick={onStart}
-            className="h-7 shrink-0 whitespace-nowrap rounded border-none bg-accent px-3 text-xs font-medium text-white hover:bg-accent-hover"
+            className="h-7 shrink-0 whitespace-nowrap rounded border-none bg-accent-fill px-3 text-xs font-medium text-white hover:bg-accent-fill-hover"
           >
             Start tour
           </button>

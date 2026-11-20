@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 const css = readFileSync(join(process.cwd(), 'src/renderer/styles/globals.css'), 'utf-8')
@@ -98,6 +98,10 @@ describe.each(themes)('the %s palette', (theme) => {
     expect(contrast('#ffffff', token(theme, fill))).toBeGreaterThanOrEqual(4.5)
   })
 
+  it.each(planes)('accent text is at least 4.5:1 on %s', (plane) => {
+    expect(contrast(token(theme, 'accent'), token(theme, plane))).toBeGreaterThanOrEqual(4.5)
+  })
+
   it.each(['surface', 'card', 'elevated'])('the advisory mark is at least 3:1 on %s', (plane) => {
     expect(contrast(token(theme, 'warning-mark'), token(theme, plane))).toBeGreaterThanOrEqual(3)
   })
@@ -107,6 +111,31 @@ describe.each(themes)('the %s palette', (theme) => {
     expect(token(theme, 'surface')).not.toBe(token(theme, 'canvas'))
     expect(luminance(token(theme, 'surface'))).toBeLessThan(luminance(token(theme, 'canvas')))
     expect(luminance(token(theme, 'canvas'))).toBeLessThan(luminance(token(theme, 'card')))
+  })
+})
+
+describe('filled controls', () => {
+  // White text on the dark accent text colour measures under 3:1, so a filled
+  // control must take the fill token instead.
+  const solidAccent = /(^|[\s'"`:])bg-accent(-hover)?(?![-\w/[])/
+  const root = join(process.cwd(), 'src/renderer')
+  const sources = readdirSync(root, { recursive: true, encoding: 'utf-8' }).filter((path) =>
+    /\.tsx?$/.test(path)
+  )
+
+  it('reads the renderer sources', () => {
+    expect(sources.length).toBeGreaterThan(100)
+  })
+
+  it('never puts white text on the accent text colour', () => {
+    const offenders = sources.flatMap((path) =>
+      readFileSync(join(root, path), 'utf-8')
+        .split('\n')
+        .map((line, i) => ({ line, at: `${path}:${i + 1}` }))
+        .filter(({ line }) => solidAccent.test(line) && /\btext-white\b/.test(line))
+        .map(({ at }) => at)
+    )
+    expect(offenders).toEqual([])
   })
 })
 

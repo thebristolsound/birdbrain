@@ -16,7 +16,7 @@ function DevModeToggle({ glow }: { glow?: boolean }) {
     <div className="flex items-center gap-2">
       <span className="text-[11px] text-text-secondary">Developer mode</span>
       <div
-        className={`relative h-[18px] w-[34px] rounded-full bg-accent ${glow ? 'shadow-[var(--shadow-glow)]' : ''}`}
+        className={`relative h-[18px] w-[34px] rounded-full bg-accent-fill ${glow ? 'shadow-[var(--shadow-glow)]' : ''}`}
       >
         <div className="absolute right-0.5 top-0.5 h-3.5 w-3.5 rounded-full bg-white" />
       </div>
@@ -63,7 +63,7 @@ function LoadUnpackedVisual() {
         <ExtensionsPageHeader />
       </div>
       <div className="relative flex gap-2 px-4 py-3.5">
-        <div className="flex items-center gap-1.5 rounded-[10px] bg-accent px-3.5 py-2 font-display text-xs font-semibold text-white shadow-[var(--shadow-btn)]">
+        <div className="flex items-center gap-1.5 rounded-[10px] bg-accent-fill px-3.5 py-2 font-display text-xs font-semibold text-white shadow-[var(--shadow-btn)]">
           <FolderUp className="h-[13px] w-[13px]" />
           Load unpacked
         </div>
@@ -114,7 +114,7 @@ function SelectFolderVisual() {
           <div className="rounded-lg border border-border-strong px-3 py-1.5 font-display text-[11px] font-medium text-text-muted">
             Cancel
           </div>
-          <div className="rounded-lg bg-accent px-3 py-1.5 font-display text-[11px] font-semibold text-white shadow-[var(--shadow-btn)]">
+          <div className="rounded-lg bg-accent-fill px-3 py-1.5 font-display text-[11px] font-semibold text-white shadow-[var(--shadow-btn)]">
             Select
           </div>
         </div>

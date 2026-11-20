@@ -76,7 +76,9 @@ omitted.
 | `--shadow-card` | Cards, cells, frames | `none` | `none` | `0 1px 2px rgba(0,0,0,0.04)` | `0 1px 2px rgba(24,24,40,0.06)` |
 | `--shadow-overlay`, `--shadow-menu` (new) | Dialogs, popovers, menus | | unchanged | | cool two-layer shadows; values in the bundle's `palette.css` |
 
-The bundle's `palette.css` holds the full set, with the ratio of each in a comment.
+The bundle's `palette.css` holds the full set, with the ratio of each in a comment. A text copy,
+extracted from the bundle, sits beside it as
+[`palette.css`](../design-handoff/2026-11-17-one-row-chrome/palette.css).
 
 ### Rules
 

@@ -379,6 +379,74 @@ describe('received evidence (#1811)', () => {
     expect(listCaptures(CASE_ID).map((c) => c.id)).toEqual([capture.captureId])
   })
 
+  it('writes no row while its Transaction Record or PDF is missing or fails its hash (#2206)', async () => {
+    await activate(A)
+    const record = Buffer.from('invented warc.gz bytes of a background capture')
+    const pdf = Buffer.from('%PDF-1.4 invented print of a background capture')
+    const capture = await addCapture(CASE_ID, A, 1, { transactionRecord: record, pdf })
+    const source = recordSource(CASE_ID, A)
+    // Resolved under the receiver's storage root.
+    await activate(B)
+    const recordFile = defaultCaptureStore.artifactPaths(CASE_ID, capture.captureId, 'warc.gz')
+    const pdfFile = defaultCaptureStore.artifactPaths(CASE_ID, capture.captureId, 'pdf')
+    const noRow = (): void => {
+      expect(getCapture(capture.captureId)).toBeUndefined()
+      expect(getExhibit(capture.captureId)).toBeUndefined()
+    }
+    const mismatch = (rel: string, hash: string | undefined) =>
+      expect.objectContaining({
+        kind: 'hash-mismatch',
+        installationId: A.installationId,
+        detail: expect.stringContaining(`${rel}: expected ${hash}`)
+      })
+
+    // The peer does not hold the Transaction Record: every other file lands, and no row.
+    source.files.delete(recordFile.rel)
+    const absent = await pull(CASE_ID, source)
+    expect(absent.errors).toEqual([])
+    expect(absent.capturesApplied).toBe(0)
+    expect(existsSync(artifact(capture.captureId, 'mhtml').abs)).toBe(true)
+    expect(existsSync(pdfFile.abs)).toBe(true)
+    expect(existsSync(recordFile.abs)).toBe(false)
+    noRow()
+
+    // A record altered in transit is refused on arrival, so the row step still finds none.
+    source.files.set(recordFile.rel, Buffer.from('a record altered in transit'))
+    const altered = await pull(CASE_ID, source)
+    expect(altered.errors).toEqual([
+      expect.objectContaining({
+        kind: 'hash-mismatch',
+        detail: expect.stringContaining(recordFile.rel)
+      })
+    ])
+    expect(existsSync(recordFile.abs)).toBe(false)
+    noRow()
+
+    // A record already at the path is never fetched again; the row step hashes it itself.
+    writeFileSync(recordFile.abs, 'a record written here, not by the author')
+    const local = await pull(CASE_ID, source)
+    expect(local.errors).toEqual([mismatch(recordFile.rel, capture.transactionRecordHash)])
+    noRow()
+
+    // The same for the PDF, once the record is the author's.
+    writeFileSync(recordFile.abs, record)
+    writeFileSync(pdfFile.abs, 'a PDF written here, not by the author')
+    const localPdf = await pull(CASE_ID, source)
+    expect(localPdf.errors).toEqual([mismatch(pdfFile.rel, capture.pdfHash)])
+    noRow()
+
+    rmSync(pdfFile.abs)
+    source.files.set(recordFile.rel, record)
+    const landed = await pull(CASE_ID, source)
+    expect(landed.errors).toEqual([])
+    expect(landed.capturesApplied).toBe(1)
+    expect(getCapture(capture.captureId)).toMatchObject({
+      transactionRecordHash: capture.transactionRecordHash,
+      pdfHash: capture.pdfHash
+    })
+    expect((await verifyCapture(capture.captureId)).status).toBe('verified')
+  })
+
   it('refuses entries naming a held id or a taken number, and deletions of the receiver own', async () => {
     await activate(B)
     const bobs = await addCapture(CASE_ID, B, 1)

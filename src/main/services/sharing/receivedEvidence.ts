@@ -237,12 +237,17 @@ export async function applyReceivedEvidence(
     const mhtml = artifact('mhtml', entry.contentHash)
     const png = entry.screenshotHash ? artifact('png', entry.screenshotHash) : undefined
     const txt = entry.textHash ? artifact('txt', entry.textHash) : undefined
-    const files = [mhtml, ...(png ? [png] : []), ...(txt ? [txt] : [])]
+    // Read for their hash only: the row holds neither file's bytes.
+    const record = entry.transactionRecordHash
+      ? artifact('warc.gz', entry.transactionRecordHash)
+      : undefined
+    const pdf = entry.pdfHash ? artifact('pdf', entry.pdfHash) : undefined
+    const files = [mhtml, png, txt, record, pdf].filter((file) => file !== undefined)
     const bytes = await readAnchored(files, author, index)
     if (!Array.isArray(bytes)) return null
     const [page] = bytes
     const title = readMhtmlTitle(page) ?? entry.url
-    const textContent = txt ? bytes[bytes.length - 1].toString('utf-8') : undefined
+    const textContent = txt ? bytes[files.indexOf(txt)].toString('utf-8') : undefined
     claim(id, author, n)
     return {
       textContent,

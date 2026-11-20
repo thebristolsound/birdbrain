@@ -305,7 +305,7 @@ export const COPY = {
   shareMarkTitle: 'New: share a Case with teammates',
   shareMarkBody:
     'Other people who run Birdbrain, each with a full copy that stays in sync. You approve ' +
-    'every join.',
+    'every join. Share this Case… is in the menu on the Case name.',
   showMe: 'Show me',
   gotIt: 'Got it'
 } as const
@@ -843,10 +843,11 @@ export function syncPillModel(state: SyncState | undefined): SyncPill | null {
 
 // --- Share pill ------------------------------------------------------------------
 
-// The top bar's one sharing control on a Case (docs/design-handoff/2026-10-28-share-a-case/,
-// frame B): "Share" on a Case nobody has shared, what it waits on once an
-// invite is out, the shipped sync pill from the first approved join, and a
-// dashed form where sharing is unavailable. Every state opens Members.
+// How sharing stands on a Case, as the Case menu's label and its sharing item's title say it.
+// The states come from the pill that sat in the top bar
+// (docs/design-handoff/2026-10-28-share-a-case/, frame B): "Share" on a Case nobody has
+// shared, what it waits on once an invite is out, the sync state from the first approved join,
+// and a form of its own where sharing is unavailable.
 export type SharePillState = 'share' | 'invite' | 'approve' | 'synced' | 'unavailable'
 
 export interface SharePill {
@@ -883,7 +884,7 @@ export function inviteExpires(expiresAt: string, nowMs: number): string {
   return `Invite expires ${expiryPhrase(expiresAt, nowMs)}`
 }
 
-// The breadcrumb's tooltip tail: "You are AR in this Case".
+// The tail of the Case name's tooltip: "You are AR in this Case".
 export function youAreLine(code: string): string {
   return `You are ${code} in this Case`
 }

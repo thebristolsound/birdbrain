@@ -119,8 +119,8 @@ const caseSteps = (demoCase: boolean): TourStep[] => [
     route: 'captures',
     title: 'You’re inside a case',
     body:
-      'Everything you see is scoped to this case. Click the name to switch cases or ' +
-      'start a new one.',
+      'Everything you see is scoped to this case. Click the name for its menu, where ' +
+      'Switch Case… changes cases.',
     kbd: accelerator('K', { join: ' ' }),
     kbdNote: 'opens the switcher anywhere'
   },
@@ -136,9 +136,7 @@ const caseSteps = (demoCase: boolean): TourStep[] => [
     target: 'selectors',
     route: 'signals',
     title: 'Selectors watch for patterns',
-    body:
-      'Emails, wallets, panel IPs — matches are highlighted across every capture, and ' +
-      'auto-capture can log pages that hit.'
+    body: 'Emails, wallets, panel IPs — matches are highlighted across every capture.'
   },
   {
     screen: 'Notes',
@@ -176,15 +174,16 @@ const caseSteps = (demoCase: boolean): TourStep[] => [
       'jump to it.'
   },
   {
-    target: 'export',
+    // Export is an item of the Case menu, so the step rings the Case name and names the item.
+    target: 'caseswitcher',
     route: 'overview',
     title: 'Export the case',
     body: demoCase
       ? 'Every artifact is hashed on capture and sealed in a signed manifest — and a package ' +
         'built from this demo case says so on its cover sheet. Delete it when you are done, or ' +
-        'keep it and carry on.'
+        'keep it and carry on. Export is in the menu on the Case name.'
       : 'Every artifact is hashed on capture and sealed in a signed manifest — export the whole ' +
-        'case or just a selection, cover sheet included.',
+        'case or just a selection, cover sheet included. Export is in the menu on the Case name.',
     final: true
   }
 ]

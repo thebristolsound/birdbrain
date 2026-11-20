@@ -155,6 +155,7 @@ function OlderCaseRow({
         </button>
       )}
       <CaseMenu
+        place="card"
         caseData={caseData}
         alwaysVisible
         className="relative"

@@ -85,16 +85,15 @@ describe('the Older Cases list', () => {
     const trigger = within(row).getByRole('button', { name: 'Actions for Investigation 3' })
     expect(trigger.className).not.toContain('opacity-0')
     fireEvent.click(trigger)
-    const items = within(row)
-      .getAllByRole('menuitem')
-      .map((item) => item.textContent)
+    // The open menu is drawn outside its row, so its items are found on the screen.
+    const items = screen.getAllByRole('menuitem').map((item) => item.textContent)
     expect(items).toEqual(['Rename', 'Share this Case…', 'Delete'])
-    fireEvent.click(within(row).getByRole('menuitem', { name: 'Share this Case…' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Share this Case…' }))
     expect(navigate).toHaveBeenCalledWith({
       to: '/cases/$caseId/settings',
       params: { caseId: 'case-3' }
     })
-    expect(within(row).queryByRole('menu')).toBeNull()
+    expect(screen.queryByRole('menu')).toBeNull()
     // The menu item never reaches the row's own click.
     expect(handlers.onSelectCase).toHaveBeenCalledTimes(1)
   })
@@ -115,14 +114,14 @@ describe('the Older Cases list', () => {
     renderList(CASES)
     const [, row] = screen.getAllByTestId('older-case-row')
     fireEvent.click(within(row).getByRole('button', { name: 'Actions for Investigation 4' }))
-    expect(within(row).getByRole('menuitem', { name: 'Members' })).toBeTruthy()
+    expect(screen.getByRole('menuitem', { name: 'Members' })).toBeTruthy()
   })
 
   it('renames inline from the menu', () => {
     renderList(CASES)
     const [row] = screen.getAllByTestId('older-case-row')
     fireEvent.click(within(row).getByRole('button', { name: 'Actions for Investigation 3' }))
-    fireEvent.click(within(row).getByRole('menuitem', { name: 'Rename' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename' }))
     const input = within(row).getByTestId('case-rename-input') as HTMLInputElement
     expect(input.value).toBe('Investigation 3')
     fireEvent.change(input, { target: { value: 'Renamed' } })
@@ -135,7 +134,7 @@ describe('the Older Cases list', () => {
     renderList(CASES)
     const [row] = screen.getAllByTestId('older-case-row')
     fireEvent.click(within(row).getByRole('button', { name: 'Actions for Investigation 3' }))
-    fireEvent.click(within(row).getByRole('menuitem', { name: 'Rename' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename' }))
     const input = within(row).getByTestId('case-rename-input')
     fireEvent.change(input, { target: { value: 'Discarded' } })
     fireEvent.keyDown(input, { key: 'Escape' })
@@ -148,8 +147,8 @@ describe('the Older Cases list', () => {
     renderList(CASES)
     const [row] = screen.getAllByTestId('older-case-row')
     fireEvent.click(within(row).getByRole('button', { name: 'Actions for Investigation 3' }))
-    fireEvent.click(within(row).getByTestId('case-card-delete-btn'))
-    fireEvent.click(within(row).getByTestId('case-card-delete-confirm-btn'))
+    fireEvent.click(screen.getByTestId('case-card-delete-btn'))
+    fireEvent.click(screen.getByTestId('case-card-delete-confirm-btn'))
     expect(handlers.onDeleteCase).toHaveBeenCalledWith('case-3')
   })
 })

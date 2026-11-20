@@ -40,7 +40,14 @@ async function walkToFinalStep(page: Page) {
   await advance(page)
   // Anchored only because the step selected a capture (#405, Q2).
   await expectAnchoredMark(page, '1 of 6')
-  for (let i = 0; i < 5; i += 1) await advance(page)
+  for (let i = 0; i < 3; i += 1) await advance(page)
+  // The Selectors step rings the card that holds the Selectors, and says nothing of auto-capture.
+  await expectAnchoredMark(page, '3 of 6')
+  await expect(
+    page.locator('[data-tour="selectors"]').getByTestId('add-selector-input')
+  ).toBeVisible()
+  await expect(page.locator('[data-testid="tour-mark"]')).not.toContainText(/auto-capture/i)
+  for (let i = 0; i < 2; i += 1) await advance(page)
   // Anchored only because the step asked Notes to open its composer.
   await expectAnchoredMark(page, '4 of 6')
   for (let i = 0; i < 3; i += 1) await advance(page)
@@ -71,7 +78,7 @@ test.describe('The demonstration case and its tour', () => {
     await walkToFinalStep(page)
 
     // The mark on the final step is anchored, not the centred fallback: the
-    // Export button it rings is on screen.
+    // Case name it rings, whose menu holds Export, is on screen.
     await expect(page.locator('[data-testid="tour-mark"]')).toHaveAttribute('data-anchored', 'true')
     await expect(page.locator('[data-testid="tour-delete-demo"]')).toBeVisible()
     await expect(page.locator('[data-testid="tour-next"]')).toHaveText('Keep exploring')

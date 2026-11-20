@@ -75,7 +75,7 @@ describe('SettingsView on the Egress section', () => {
     expect(onSectionShown).toHaveBeenCalledOnce()
   })
 
-  // The launch start dialog's "Set operator name" opens Settings on the operator name.
+  // `section=operator` opens Settings on the operator name.
   it('opens the Operator tab and focuses the operator name, then reports it shown', async () => {
     const onSectionShown = vi.fn()
     renderView({ section: 'operator', onSectionShown })

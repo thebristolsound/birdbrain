@@ -19,14 +19,16 @@ import {
 import { COPY } from '@renderer/components/sharing/memberModel'
 
 // The one-time Share mark (docs/design-handoff/2026-10-28-share-a-case/,
-// frame A): a card under the top bar's Share pill the first time a Case is
-// opened after the pill arrives. A feature mark, not a tour chapter: no
-// counter, no skip link, no spotlight, and the rest of the screen stays
-// usable. The pill wears a ring while it shows (SharePill reads the store
-// flag), and any dismissal is recorded once under `onboardingChapters.share`.
-const ANCHOR = 'share'
-// The pill mounts once its reads land, which is later than a route change, so
-// this looks longer than the tour engine does before giving up.
+// frame A): a card under the Case name in the top bar, whose menu holds the
+// sharing item, the first time a Case is opened after sharing arrives. Its text
+// names the item; the menu is not opened for it. A feature mark, not a tour
+// chapter: no counter, no skip link, no spotlight, and the rest of the screen
+// stays usable. The Case name wears a ring while it shows (CaseMenu reads the
+// store flag), and any dismissal is recorded once under
+// `onboardingChapters.share`.
+const ANCHOR = 'caseswitcher'
+// The Case name can mount later than a route change, so this looks longer than
+// the tour engine does before giving up.
 const ANCHOR_RETRY_MS = 60
 const ANCHOR_RETRY_LIMIT = 20
 
@@ -57,7 +59,7 @@ export function ShareCoachMark() {
   // Dismissed for this window before the settings write lands.
   const [dismissed, setDismissed] = useState(false)
 
-  // Inside a Case, where the pill is, and not while a tour chapter runs; never
+  // Inside a Case, where the Case name is, and not while a tour chapter runs; never
   // where sharing is unavailable, and never once a Case on the case list is
   // shared or joined. That list leaves out archived Cases (`listCases`), so an
   // installation whose every shared Case is archived can still see the mark.
@@ -124,16 +126,22 @@ export function ShareCoachMark() {
     })
   }, [settings?.onboardingChapters, update])
 
-  // Clicking the pill itself is a dismissal too: the pill opens Members, which
-  // is what Show me does.
+  // Opening the Case name's menu is a dismissal too: the menu holds the sharing item, and the
+  // mark would otherwise sit over it. A pointer opens it with a click. The keyboard opens it
+  // with Enter, Space or the down arrow, and the menu's trigger lets no click through for those.
   useEffect(() => {
     if (!open) return
-    function onClick(e: MouseEvent): void {
+    function onAnchor(e: MouseEvent | KeyboardEvent): void {
+      if (e instanceof KeyboardEvent && !['Enter', ' ', 'ArrowDown'].includes(e.key)) return
       const target = e.target as Element | null
       if (target?.closest?.(`[data-tour="${ANCHOR}"]`)) dismiss()
     }
-    document.addEventListener('click', onClick, true)
-    return () => document.removeEventListener('click', onClick, true)
+    document.addEventListener('click', onAnchor, true)
+    document.addEventListener('keydown', onAnchor, true)
+    return () => {
+      document.removeEventListener('click', onAnchor, true)
+      document.removeEventListener('keydown', onAnchor, true)
+    }
   }, [dismiss, open])
 
   if (!open || !rect || !caseId) return null

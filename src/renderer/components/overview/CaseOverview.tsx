@@ -12,7 +12,6 @@ import {
   Tags
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import type { Selector } from '@shared/types'
 import {
   caseQueryOptions,
   capturesQueryOptions,
@@ -21,8 +20,7 @@ import {
   selectorsQueryOptions,
   tagCountForCaseQueryOptions,
   tagsQueryOptions,
-  tagUsageCountsForCaseQueryOptions,
-  useSelectorsMutations
+  tagUsageCountsForCaseQueryOptions
 } from '@renderer/lib/queries'
 import { noteReferenceEdgesQueryOptions } from '@renderer/lib/api/notes'
 import { useLastVisit } from '@renderer/hooks/useLastVisit'
@@ -47,7 +45,6 @@ interface SectionCardProps {
   title: string
   action?: string
   onAction?: () => void
-  badge?: ReactNode
   className?: string
   children: ReactNode
 }
@@ -57,7 +54,6 @@ function SectionCard({
   title,
   action,
   onAction,
-  badge,
   className,
   children
 }: SectionCardProps) {
@@ -68,7 +64,6 @@ function SectionCard({
         <span className="font-display text-[10px] font-semibold uppercase tracking-[0.06em] text-text-faint">
           {title}
         </span>
-        {badge}
         <span className="flex-1" />
         {action ? (
           <button
@@ -103,8 +98,6 @@ export function CaseOverview() {
   const { data: notes = [] } = useQuery(notesQueryOptions(caseId ?? ''))
   const { data: referenceEdges = [] } = useQuery(noteReferenceEdgesQueryOptions(caseId ?? ''))
 
-  const { update: updateSelector } = useSelectorsMutations(caseId ?? '')
-
   const derived = useMemo(
     () => computeOverview({ captures, selectors, notes, lastVisitAt }),
     [captures, selectors, notes, lastVisitAt]
@@ -133,13 +126,6 @@ export function CaseOverview() {
       navigate({ to: '/cases/$caseId/notes', params: { caseId } })
     },
     [caseId, navigate]
-  )
-
-  const toggleSelector = useCallback(
-    (selector: Selector, enabled: boolean) => {
-      updateSelector.mutate({ id: selector.id, enabled })
-    },
-    [updateSelector]
   )
 
   if (!caseId) return null
@@ -205,26 +191,16 @@ export function CaseOverview() {
               onReview={goToCaptures}
             />
           ) : null}
-          <SectionCard icon={Tags} title="Tags" action="Manage" onAction={goToSignals}>
-            <OverviewTagsBlock caseId={caseId} tags={tags} usageCounts={tagUsage} />
-          </SectionCard>
           <SectionCard
             icon={Crosshair}
             title="Selectors"
-            action="Manage"
+            action="Edit in Signals"
             onAction={goToSignals}
-            badge={
-              <span className="rounded-md bg-accent-subtle px-1.5 py-px font-mono text-[10px] font-semibold text-accent">
-                {selectors.length}
-              </span>
-            }
           >
-            <OverviewSelectorsBlock
-              caseId={caseId}
-              selectors={selectors}
-              matchCounts={matchCounts}
-              onToggle={toggleSelector}
-            />
+            <OverviewSelectorsBlock selectors={selectors} matchCounts={matchCounts} />
+          </SectionCard>
+          <SectionCard icon={Tags} title="Tags" action="Edit in Signals" onAction={goToSignals}>
+            <OverviewTagsBlock tags={tags} usageCounts={tagUsage} />
           </SectionCard>
         </div>
       </div>

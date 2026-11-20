@@ -745,6 +745,9 @@ export interface BirdbrainSettings {
     'overview' | 'captures' | 'selectors' | 'notes' | 'tags' | 'signals' | 'data' | 'settings'
   hasCompletedOnboarding: boolean
   detailsPanelCollapsed: boolean
+  // Whether the Chain of custody section of the Capture details panel is open. A display
+  // preference: it changes nothing a Capture, a hash or an export holds.
+  custodySectionOpen: boolean
   tooltipsSeen: Record<string, boolean>
   // Coach-mark tour state (#404). Chapter keys are 'intro' | 'ext' | 'case'.
   onboardingChapters: Record<string, boolean>

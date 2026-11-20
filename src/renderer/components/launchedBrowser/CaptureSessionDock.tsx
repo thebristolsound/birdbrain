@@ -1,4 +1,4 @@
-import { createContext, useContext, useRef, useState, type ReactNode } from 'react'
+import { createContext, useContext, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { AlertTriangle, AppWindow, ArrowLeftToLine, ChevronLeft } from 'lucide-react'
 import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from '@renderer/components/ui'
@@ -21,31 +21,46 @@ import {
   type PanelView
 } from '@renderer/components/launchedBrowser/captureSessionPanelModel'
 
-const RailDockedContext = createContext(false)
+type ShownView = Exclude<PanelView, { kind: 'none' }>
 
-// Whether the Capture Session rail is docked beside this screen, so the Captures screen can keep
-// its viewer at 480 pixels while it is (design review of 2026-11-04, answer 1).
-export function useCaptureSessionRailDocked(): boolean {
-  return useContext(RailDockedContext)
+interface DockState {
+  // What the panel has to show: null with no launched browser and no notice, and while the top
+  // bar's mark hides a browser's panel.
+  view: ShownView | null
+  setScreenHosts: (hosts: boolean) => void
+}
+
+const DockContext = createContext<DockState>({ view: null, setScreenHosts: () => {} })
+
+// For a screen that shows the panel in a place of its own, as Captures does in a tab of its right
+// panel. While the screen is mounted the dock adds no rail and no strip beside it.
+export function useHostedCaptureSessionPanel(): ShownView | null {
+  const { view, setScreenHosts } = useContext(DockContext)
+  // Before paint, so the rail never shows beside a screen that hosts the panel.
+  useLayoutEffect(() => {
+    setScreenHosts(true)
+    return () => setScreenHosts(false)
+  }, [setScreenHosts])
+  return view
 }
 
 // Where the Capture Session panel sits on a Case screen (`1f`, `2a`): a 320-pixel rail at the right
-// edge under the Case action bar where the screen keeps its minimums beside it, else a 40-pixel
+// edge under the top bar where the screen keeps its minimums beside it, else a 40-pixel
 // strip whose expand control opens the panel as an overlay over the screen, with no reflow. The
 // row is measured as a whole, so docking the rail does not change the width that decides it.
-// While the panel is popped out the strip stands in at any width (`1g`).
-export function CaptureSessionDock({
-  waybackTab,
-  children
-}: {
-  waybackTab: boolean
-  children: ReactNode
-}) {
+// While the panel is popped out the strip stands in at any width (`1g`). The top bar's recording
+// mark hides and shows a launched browser's panel. A notice is not a browser's panel, so it is
+// not hidden: the rail shows it in full and the strip marks it, and the capture control marks it
+// too and shows it in full in its menu. A screen that hosts the panel itself gets neither.
+export function CaptureSessionDock({ children }: { children: ReactNode }) {
   const rowRef = useRef<HTMLDivElement>(null)
   const room = useViewWidth(rowRef, window.innerWidth - SIDE_RAIL_PX)
   const view = useCaptureSessionView()
+  const hidden = useAppStore((s) => s.captureSessionPanelHidden) && 'browser' in view
+  const shown = view.kind === 'none' || hidden ? null : view
+  const [screenHosts, setScreenHosts] = useState(false)
   const { data: poppedOut = false } = useQuery(launchedBrowserPopOutQueryOptions)
-  const fits = captureSessionRailFits(room, waybackTab)
+  const fits = captureSessionRailFits(room)
   const [overlayOpen, setOverlayOpen] = useState(false)
   // An overlay left open as the rail docked would come back the next time the strip shows.
   const [fitted, setFitted] = useState(fits)
@@ -57,8 +72,8 @@ export function CaptureSessionDock({
   const away = poppedOut && view.kind !== 'closed'
 
   let side: ReactNode = null
-  if (view.kind !== 'none') {
-    if (away) side = <PoppedOutStrip view={view} />
+  if (shown && !screenHosts) {
+    if (away) side = <PoppedOutStrip view={shown} />
     else if (fits) {
       side = (
         <aside
@@ -69,16 +84,16 @@ export function CaptureSessionDock({
           <CaptureSessionPanel form="rail" />
         </aside>
       )
-    } else side = <Strip view={view} open={overlayOpen} onOpenChange={setOverlayOpen} />
+    } else side = <Strip view={shown} open={overlayOpen} onOpenChange={setOverlayOpen} />
   }
 
   return (
-    <RailDockedContext.Provider value={view.kind !== 'none' && fits && !away}>
+    <DockContext.Provider value={{ view: shown, setScreenHosts }}>
       <div ref={rowRef} className="flex min-h-0 flex-1">
         {children}
         {side}
       </div>
-    </RailDockedContext.Provider>
+    </DockContext.Provider>
   )
 }
 
@@ -89,7 +104,7 @@ const STRIP_BUTTON_CLASS =
   'inline-flex h-7 w-7 items-center justify-center rounded text-text-muted transition-colors hover:bg-elevated hover:text-text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring'
 
 // The REC dot, or a notice's warning glyph, as the strip shows it.
-function StripMark({ view }: { view: Exclude<PanelView, { kind: 'none' }> }) {
+function StripMark({ view }: { view: ShownView }) {
   const sessionActive = useAppStore((s) => s.sessionActive)
   if (view.kind === 'notice') {
     return (
@@ -104,17 +119,31 @@ function StripMark({ view }: { view: Exclude<PanelView, { kind: 'none' }> }) {
   return <span title={recTitle} className="mt-1 h-2 w-2 rounded-full bg-danger-fg" />
 }
 
+// The mark and, while the browser is open, its tab count: what a 40-pixel strip says of the
+// Capture Session. The Captures screen shows them on its own folded right panel.
+export function CaptureSessionStripMarks({ view }: { view: ShownView }) {
+  const count = view.kind === 'notice' || view.kind === 'closed' ? null : view.browser.tabs.length
+  return (
+    <>
+      <StripMark view={view} />
+      {count !== null && (
+        <span title={tabCount(count)} className="mt-1.5 font-mono text-[10px] text-text-muted">
+          {count}
+        </span>
+      )}
+    </>
+  )
+}
+
 function Strip({
   view,
   open,
   onOpenChange
 }: {
-  view: Exclude<PanelView, { kind: 'none' }>
+  view: ShownView
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
-  const count = view.kind === 'notice' || view.kind === 'closed' ? null : view.browser.tabs.length
-
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverAnchor asChild>
@@ -133,12 +162,7 @@ function Strip({
               <ChevronLeft className="h-3.5 w-3.5" />
             </button>
           </PopoverTrigger>
-          <StripMark view={view} />
-          {count !== null && (
-            <span title={tabCount(count)} className="mt-1.5 font-mono text-[10px] text-text-muted">
-              {count}
-            </span>
-          )}
+          <CaptureSessionStripMarks view={view} />
         </aside>
       </PopoverAnchor>
       <PopoverContent
@@ -157,7 +181,7 @@ function Strip({
 
 // The main window while the panel is in its own window (`1g`, revised 2026-11-04): the strip's 40
 // pixels in place of an empty rail, so the screen takes the width back.
-function PoppedOutStrip({ view }: { view: Exclude<PanelView, { kind: 'none' }> }) {
+function PoppedOutStrip({ view }: { view: ShownView }) {
   return (
     <aside
       data-testid="capture-session-popped-out"

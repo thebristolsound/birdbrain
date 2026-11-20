@@ -3,14 +3,16 @@ import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, cleanup, within, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
-import type { Capture } from '@shared/types'
+import type { Capture, LaunchedBrowserSummary } from '@shared/types'
+import type { PanelView } from '@renderer/components/launchedBrowser/captureSessionPanelModel'
 
 // Hoisted: the factories run while the route's import graph is still loading,
 // which is before a plain top-level const would be initialised.
 const notifyError = vi.hoisted(() => vi.fn())
 const notifyWarn = vi.hoisted(() => vi.fn())
-// Whether the Capture Session rail is docked beside the screen, which CaptureSessionDock tells it.
-const railDocked = vi.hoisted(() => ({ value: false }))
+// The Capture Session view the screen shows as a tab of its right panel, which CaptureSessionDock
+// gives it: null with no launched browser, and while the top bar's mark hides the panel.
+const hosted = vi.hoisted(() => ({ view: null as unknown }))
 // The minimum each resizable column is given, by panel id.
 const panelMinSizes = vi.hoisted(() => new Map<string, unknown>())
 
@@ -23,7 +25,19 @@ vi.mock('@tanstack/react-router', () => ({
 }))
 
 vi.mock('@renderer/components/launchedBrowser/CaptureSessionDock', () => ({
-  useCaptureSessionRailDocked: () => railDocked.value
+  useHostedCaptureSessionPanel: () => hosted.view,
+  CaptureSessionStripMarks: ({ view }: { view: { kind: string } }) => (
+    <span>strip marks: {view.kind}</span>
+  )
+}))
+// The panel has tests of its own. Here it says which form the route's right panel gave it.
+vi.mock('@renderer/components/launchedBrowser/CaptureSessionPanel', () => ({
+  CaptureSessionPanel: ({ form, tabbed }: { form: string; tabbed?: boolean }) => (
+    <div>
+      session panel: {form}
+      {tabbed ? ', tabbed' : ''}
+    </div>
+  )
 }))
 
 vi.mock('react-resizable-panels', async (importOriginal) => {
@@ -124,7 +138,7 @@ const duplicateOf: Capture = {
   duplicateOfCaptureId: 'cap1'
 }
 
-// jsdom's viewport is 1024px wide, under the route's 1100px collapse
+// jsdom's viewport is 1024px wide, under the route's 1124px collapse
 // threshold, so the rail is the variant that mounts here.
 const OPEN_CONTROL = 'rail: open externally'
 // Delete lives only on the full details panel, and at this viewport the rail is
@@ -144,6 +158,19 @@ let writeText: ReturnType<typeof vi.fn>
 let cause: Error
 
 const BATCH_CONTROL = 'list: delete selection'
+const SESSION_PANEL = 'session panel: rail, tabbed'
+const SESSION_OVERLAY = 'session panel: overlay, tabbed'
+
+const BROWSER: LaunchedBrowserSummary = {
+  family: 'chrome',
+  label: 'Google Chrome',
+  caseId: 'case1',
+  version: '149.0.7827.55',
+  extensionWarnings: [],
+  sessionStartedAt: null,
+  tabs: [{ targetId: 't1', title: 'Tuesday sailings', url: 'https://ferry.test/routes/tue' }]
+}
+const OPEN_SESSION: PanelView = { kind: 'open', browser: BROWSER }
 
 function cleanDeleteResult(ids: string[]): BatchDeleteResult {
   return {
@@ -170,12 +197,18 @@ function renderRoute() {
   function Wrapper({ children }: { children: ReactNode }) {
     return <QueryClientProvider client={client}>{children}</QueryClientProvider>
   }
-  return render(<CapturesRoute />, { wrapper: Wrapper })
+  const result = render(<CapturesRoute />, { wrapper: Wrapper })
+  // What CaptureSessionDock gives the screen changes, as when a launched browser opens or closes.
+  const showSession = (view: PanelView | null) => {
+    hosted.view = view
+    result.rerender(<CapturesRoute />)
+  }
+  return { ...result, showSession }
 }
 
 const NARROW_WIDTH = window.innerWidth
 
-// jsdom is 1024px wide, under the 1100px threshold, so the details column is
+// jsdom is 1024px wide, under the 1124px threshold, so the details column is
 // forced to its rail. Widening first is the only way to reach the docked panel.
 function renderRouteWide() {
   window.innerWidth = 1400
@@ -196,14 +229,15 @@ beforeEach(() => {
   Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
   fakeBridge({
     captures: { list: vi.fn(async () => [capture]), openExternal, deleteMany, duplicate },
-    settings: { get: vi.fn(async () => ({ detailsPanelCollapsed: false })) }
+    settings: { get: vi.fn(async () => ({ detailsPanelCollapsed: false })) },
+    launchedBrowser: { popOutState: vi.fn(async () => false) }
   })
   useAppStore.getState().setSelectedCaptureId(capture.id)
 })
 
 afterEach(() => {
   cleanup()
-  railDocked.value = false
+  hosted.view = null
   panelMinSizes.clear()
   window.innerWidth = NARROW_WIDTH
   notifyError.mockReset()
@@ -664,10 +698,9 @@ describe('CapturesRoute', () => {
     })
   })
 
-  // #1831: the fold reads the screen's own width, so the Capture Session rail beside it folds
-  // the details panel where the window alone would not. Before the first measurement it reads
-  // the window less the 48-pixel side rail, which is what the tests above run on.
-  describe('the details fold beside the Capture Session rail', () => {
+  // The fold reads the screen's own width. Before the first measurement it reads the window less
+  // the 72-pixel side rail, which is what the tests above run on.
+  describe('the details fold', () => {
     let reportWidth: (width: number) => void
 
     beforeEach(() => {
@@ -689,38 +722,222 @@ describe('CapturesRoute', () => {
       expect(await screen.findByText('panel: open externally')).toBeDefined()
     })
   })
-  // Design review of 2026-11-04, answer 1: while the rail is docked the viewer keeps 480 pixels,
-  // the list and the details panel give way toward their minimums first, and the details panel
-  // folds when that is not enough.
-  describe('the viewer beside the docked Capture Session rail', () => {
+
+  // The details and the Capture Session are two tabs of one right panel, so the screen keeps to
+  // four columns.
+  describe('the right panel while a Capture Session shows', () => {
     let reportWidth: (width: number) => void
+    const tab = (name: string) => screen.getByRole('tab', { name })
+    const selected = (name: string) => tab(name).getAttribute('aria-selected')
 
     beforeEach(() => {
       reportWidth = stubResizeObserverWithWidth()
     })
 
-    it('keeps the viewer at 480 pixels while the rail is docked, and at 360 otherwise', async () => {
+    it('is the details panel alone, with no tab row, while none shows', async () => {
       renderRouteWide()
+      await screen.findByText('panel: open externally')
+      expect(screen.queryByRole('tablist')).toBeNull()
+      expect(screen.queryByRole('tab')).toBeNull()
+    })
+
+    it('shows the Capture Session tab when a session starts', async () => {
+      const { showSession } = renderRouteWide()
+      await screen.findByText('panel: open externally')
+      showSession(OPEN_SESSION)
+      expect(await screen.findByText(SESSION_PANEL)).toBeDefined()
+      expect(selected('Capture Session')).toBe('true')
+      expect(selected('Details')).toBe('false')
+      // One column for both: the details wait in the same panel, behind their tab.
+      const column = screen.getByTestId('capture-details-aside')
+      expect(within(column).getByRole('tablist')).toBeDefined()
+      expect(within(column).getByText('panel: open externally').closest('[hidden]')).not.toBeNull()
+    })
+
+    it('shows the Details tab when a Capture is selected', async () => {
+      const second: Capture = { ...capture, id: 'cap2', url: 'https://example.com/second' }
+      fakeBridge({
+        captures: { list: vi.fn(async () => [capture, second]), openExternal, deleteMany },
+        settings: { get: vi.fn(async () => ({ detailsPanelCollapsed: false })) },
+        launchedBrowser: { popOutState: vi.fn(async () => false) }
+      })
+      const { showSession } = renderRouteWide()
+      await screen.findByText('panel: open externally')
+      showSession(OPEN_SESSION)
+      await screen.findByText(SESSION_PANEL)
+      expect(selected('Capture Session')).toBe('true')
+
+      act(() => useAppStore.getState().selectCapture('cap2'))
+      expect(selected('Details')).toBe('true')
+      expect(screen.queryByText(SESSION_PANEL)).toBeNull()
+      expect(screen.getByText('panel: open externally').closest('[hidden]')).toBeNull()
+    })
+
+    it('opens on Details when the screen is reached with a Capture selected', async () => {
+      hosted.view = OPEN_SESSION
+      renderRouteWide()
+      await screen.findByText('panel: open externally')
+      expect(selected('Details')).toBe('true')
+      expect(screen.queryByText(SESSION_PANEL)).toBeNull()
+    })
+
+    it('shows the panel with no Capture selected, on the Capture Session tab', async () => {
+      useAppStore.getState().setSelectedCaptureId(null)
+      hosted.view = OPEN_SESSION
+      renderRouteWide()
+      expect(await screen.findByText(SESSION_PANEL)).toBeDefined()
+      expect(selected('Capture Session')).toBe('true')
+      fireEvent.mouseDown(tab('Details'))
+      expect(selected('Details')).toBe('true')
+      expect(screen.getByText('Select a Capture to see its details.')).toBeDefined()
+    })
+
+    it('is the details panel alone again once the session has gone', async () => {
+      hosted.view = OPEN_SESSION
+      const { showSession } = renderRouteWide()
+      await screen.findByText('panel: open externally')
+      expect(screen.getByRole('tablist')).toBeDefined()
+      showSession(null)
+      expect(screen.queryByRole('tablist')).toBeNull()
+      expect(screen.getByText('panel: open externally')).toBeDefined()
+    })
+
+    // The viewer's 480 pixels are the point where the one right panel folds to its strip.
+    it('keeps the viewer at 480 pixels while the panel is docked, and at 360 otherwise', async () => {
+      const { showSession } = renderRouteWide()
       await screen.findByText('panel: open externally')
       expect(panelMinSizes.get('capture-viewer')).toBe(360)
-      cleanup()
-      railDocked.value = true
-      renderRouteWide()
-      await screen.findByText('panel: open externally')
+      showSession(OPEN_SESSION)
+      await screen.findByText(SESSION_PANEL)
       expect(panelMinSizes.get('capture-viewer')).toBe(480)
       expect(panelMinSizes.get('capture-list')).toBe(240)
       expect(panelMinSizes.get('capture-details')).toBe(320)
+      // Folded to its strip, the panel no longer holds the viewer to 480.
+      act(() => reportWidth(1_053))
+      await screen.findByText('strip marks: open')
+      expect(panelMinSizes.get('capture-viewer')).toBe(360)
     })
 
-    it('folds the details panel below 1,054 pixels while the rail is docked', async () => {
-      railDocked.value = true
+    it('folds to one strip below 1,054 pixels, which says what the session strip says', async () => {
+      hosted.view = OPEN_SESSION
+      renderRouteWide()
+      await screen.findByText('panel: open externally')
+      act(() => reportWidth(1_054))
+      expect(screen.getByRole('tablist')).toBeDefined()
+      act(() => reportWidth(1_053))
+      const strip = await screen.findByTestId('capture-details-aside')
+      expect(strip.className).toContain('w-10')
+      expect(within(strip).getByText('strip marks: open')).toBeDefined()
+      expect(within(strip).getByText(OPEN_CONTROL)).toBeDefined()
+      expect(screen.queryByRole('tablist')).toBeNull()
+      expect(screen.getAllByTestId('capture-details-aside')).toHaveLength(1)
+    })
+
+    it('opens the overlay on the Capture Session tab from the strip, and closes it', async () => {
+      hosted.view = OPEN_SESSION
       renderRouteWide()
       await screen.findByText('panel: open externally')
       act(() => reportWidth(1_053))
-      expect(await screen.findByText(OPEN_CONTROL)).toBeDefined()
-      expect(screen.queryByText('panel: open externally')).toBeNull()
-      act(() => reportWidth(1_054))
-      expect(await screen.findByText('panel: open externally')).toBeDefined()
+      await screen.findByText('strip marks: open')
+      expect(screen.queryByTestId('capture-details-overlay')).toBeNull()
+
+      fireEvent.click(screen.getByRole('button', { name: 'Expand the Capture Session panel' }))
+      const overlay = screen.getByTestId('capture-details-overlay')
+      expect(within(overlay).getByText(SESSION_OVERLAY)).toBeDefined()
+      expect(within(overlay).getByRole('tab', { name: 'Capture Session' })).toBeDefined()
+      expect(selected('Capture Session')).toBe('true')
+
+      fireEvent.click(within(overlay).getByRole('button', { name: 'Collapse panel' }))
+      expect(screen.queryByTestId('capture-details-overlay')).toBeNull()
+      // The details rail's own control opens the same overlay on the Details tab.
+      fireEvent.click(screen.getByText(EXPAND_CONTROL))
+      expect(selected('Details')).toBe('true')
+      expect(screen.queryByText(SESSION_OVERLAY)).toBeNull()
+    })
+
+    it('shows the strip with no Capture selected, when the panel is folded', async () => {
+      useAppStore.getState().setSelectedCaptureId(null)
+      hosted.view = OPEN_SESSION
+      renderRouteWide()
+      await screen.findByText(SESSION_PANEL)
+      act(() => reportWidth(1_053))
+      const strip = await screen.findByTestId('capture-details-aside')
+      expect(within(strip).getByText('strip marks: open')).toBeDefined()
+      expect(within(strip).queryByText(OPEN_CONTROL)).toBeNull()
+      fireEvent.click(screen.getByRole('button', { name: 'Expand the Capture Session panel' }))
+      expect(screen.getByText(SESSION_OVERLAY)).toBeDefined()
+    })
+
+    // The saved preference folds the details alone. A starting session shows its panel over it,
+    // so its Capture control is on screen, and the Operator's fold of that panel is not saved.
+    it('opens over a collapsed details panel, and leaves the saved preference alone', async () => {
+      const update = vi.fn(async () => ({ detailsPanelCollapsed: true }))
+      fakeBridge({
+        captures: { list: vi.fn(async () => [capture]), openExternal, deleteMany },
+        settings: { get: vi.fn(async () => ({ detailsPanelCollapsed: true })), update },
+        launchedBrowser: { popOutState: vi.fn(async () => false) }
+      })
+      const { showSession } = renderRouteWide()
+      // Collapsed by the preference: the rail, on a window wide enough to dock the panel.
+      expect((await screen.findByTestId('capture-details-aside')).className).toContain('w-10')
+      await screen.findByText(OPEN_CONTROL)
+
+      showSession(OPEN_SESSION)
+      expect(await screen.findByText(SESSION_PANEL)).toBeDefined()
+      expect(selected('Capture Session')).toBe('true')
+
+      fireEvent.click(screen.getByRole('button', { name: 'Collapse panel' }))
+      expect(screen.queryByText(SESSION_PANEL)).toBeNull()
+      expect(screen.getByText('strip marks: open')).toBeDefined()
+      // One click from the stop control: the strip opens the docked panel on its tab.
+      fireEvent.click(screen.getByRole('button', { name: 'Expand the Capture Session panel' }))
+      expect(screen.getByText(SESSION_PANEL)).toBeDefined()
+      expect(screen.queryByTestId('capture-details-overlay')).toBeNull()
+
+      showSession(null)
+      expect(screen.getByTestId('capture-details-aside').className).toContain('w-10')
+      expect(screen.getByText(OPEN_CONTROL)).toBeDefined()
+      expect(update).not.toHaveBeenCalled()
+    })
+
+    it('opens again for the next session after the Operator folded it', async () => {
+      hosted.view = OPEN_SESSION
+      const { showSession } = renderRouteWide()
+      await screen.findByText('panel: open externally')
+      fireEvent.mouseDown(tab('Capture Session'))
+      fireEvent.click(screen.getByRole('button', { name: 'Collapse panel' }))
+      expect(screen.getByText('strip marks: open')).toBeDefined()
+      showSession(null)
+      showSession(OPEN_SESSION)
+      expect(await screen.findByText(SESSION_PANEL)).toBeDefined()
+    })
+
+    it('keeps the strip on the Wayback tab, and opens the overlay from it', async () => {
+      hosted.view = OPEN_SESSION
+      renderRouteWide()
+      await screen.findByText('panel: open externally')
+
+      act(() => useAppStore.getState().setActiveViewerTab('wayback'))
+      const strip = screen.getByTestId('capture-details-aside')
+      expect(strip.className).toContain('w-10')
+      expect(within(strip).getByText('strip marks: open')).toBeDefined()
+      expect(screen.queryByRole('tablist')).toBeNull()
+
+      fireEvent.click(screen.getByRole('button', { name: 'Expand the Capture Session panel' }))
+      expect(screen.getByText(SESSION_OVERLAY)).toBeDefined()
+    })
+
+    it('closes an overlay left open as the Wayback tab takes the width', async () => {
+      hosted.view = OPEN_SESSION
+      renderRouteWide()
+      await screen.findByText('panel: open externally')
+      act(() => reportWidth(1_053))
+      fireEvent.click(await screen.findByText(EXPAND_CONTROL))
+      expect(screen.getByTestId('capture-details-overlay')).toBeDefined()
+
+      act(() => useAppStore.getState().setActiveViewerTab('wayback'))
+      expect(screen.queryByTestId('capture-details-overlay')).toBeNull()
+      expect(screen.getByText('strip marks: open')).toBeDefined()
     })
   })
 })

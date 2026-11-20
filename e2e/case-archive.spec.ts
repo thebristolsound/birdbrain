@@ -119,9 +119,14 @@ test.describe('Case archive export/import round-trip', () => {
       await page.waitForURL(/#\/cases\/.+\/overview/)
 
       await stubSaveDialog(electronApp, archivePath)
-      await page.getByRole('button', { name: 'Export' }).click()
-      await page.getByRole('menuitem', { name: 'Export case file' }).click()
-      await expect(page.getByText('Archive saved')).toBeVisible({ timeout: 15000 })
+      // The Case Archive is a choice of the one export dialog, with nothing to set but itself.
+      await page.getByTestId('topbar-case-name').click()
+      await page.getByRole('menuitem', { name: 'Export…', exact: true }).click()
+      await page.getByRole('radio', { name: /^Case Archive/ }).check()
+      await expect(page.getByRole('button', { name: 'Customise contents' })).toHaveCount(0)
+      await page.getByTestId('export-submit').click()
+      await expect(page.getByText('Case Archive saved')).toBeVisible({ timeout: 15000 })
+      await expect(page.getByRole('dialog', { name: /^Export / })).toHaveCount(0)
 
       // Navigate to the dashboard to trigger the import flow.
       await page.evaluate(() => {
@@ -133,7 +138,9 @@ test.describe('Case archive export/import round-trip', () => {
       await page.getByTestId('import-case-btn').click()
 
       // The import dialog shows the verification report before committing.
-      await expect(page.getByText('Import Case Archive')).toBeVisible({ timeout: 10000 })
+      await expect(page.getByRole('heading', { name: 'Import Case Archive' })).toBeVisible({
+        timeout: 10000
+      })
       await expect(page.getByTestId('archive-checks-passed')).toBeVisible()
       await expect(
         page.getByRole('paragraph').filter({ hasText: 'Archive Roundtrip Case' })

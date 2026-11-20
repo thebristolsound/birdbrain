@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Download, ListPlus } from 'lucide-react'
+import { ListPlus } from 'lucide-react'
 import { ExportDialog } from '@renderer/components/export/ExportDialog'
+import { ExportIcon } from '@renderer/components/export/exportIcon'
 import { caseQueryOptions } from '@renderer/lib/api/cases'
 import { duplicateTagName, tagCapturesMarkdown } from '@renderer/components/signals/tagMenuActions'
 import { SIGNAL_COVERAGE_CAPTURES } from '@shared/constants'
@@ -383,9 +384,10 @@ export function SignalsOverview() {
       <div className="flex min-h-0 flex-1">
         <div className="min-w-0 flex-1 overflow-y-auto p-[var(--d-pad)]">
           <div className="flex flex-col gap-[var(--d-gap)]">
-            <AutoCaptureCard caseId={caseId} />
-
-            <section className="flex flex-col rounded-md border border-border bg-card p-[var(--d-card)]">
+            <section
+              data-tour="selectors"
+              className="flex flex-col rounded-md border border-border bg-card p-[var(--d-card)]"
+            >
               <div className="mb-2.5 flex items-center gap-2">
                 <span className={SECTION_HEADING}>Selectors</span>
                 <button
@@ -410,8 +412,8 @@ export function SignalsOverview() {
                   }
                   className="inline-flex items-center gap-1 text-[10px] font-semibold text-text-muted hover:text-accent disabled:opacity-50"
                 >
-                  <Download className="h-[11px] w-[11px]" strokeWidth={2} />
-                  {exporting ? 'Exporting…' : 'Export all'}
+                  <ExportIcon className="h-[11px] w-[11px]" strokeWidth={2} />
+                  {exporting ? 'Exporting…' : 'Export all matches (CSV)'}
                 </button>
                 <span className="text-[10px] text-text-faint">{COVERAGE_CAPTION}</span>
               </div>
@@ -455,6 +457,8 @@ export function SignalsOverview() {
                 ))}
               </div>
             </section>
+
+            <AutoCaptureCard caseId={caseId} />
 
             <section className="flex flex-col rounded-md border border-border bg-card p-[var(--d-card)]">
               <div className="mb-2.5 flex items-center gap-2">

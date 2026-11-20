@@ -4,10 +4,8 @@
   "src/renderer/components/captures/CaptureList.tsx",
   "src/renderer/components/captures/CaptureViewer.tsx",
   "src/renderer/components/captures/useInlineNoteEditor.ts",
-  "src/renderer/components/dashboard/CaseMenu.tsx",
   "src/renderer/components/dashboard/cases/NewCaseWizard.tsx",
   "src/renderer/components/diagnostics/ReportProblemDialog.tsx",
-  "src/renderer/components/export/ExportMenu.tsx",
   "src/renderer/components/launchedBrowser/CaptureSessionPanel.tsx",
   "src/renderer/components/launchedBrowser/FoundBrowsers.tsx",
   "src/renderer/components/launchedBrowser/StopSessionDialog.tsx",
@@ -27,7 +25,6 @@
   "src/renderer/components/signals/SignalDetailRail.tsx",
   "src/renderer/components/signals/SignalsOverview.tsx",
   "src/renderer/components/status/CaptureHealth.tsx",
-  "src/renderer/components/status/SessionControls.tsx",
   "src/renderer/hooks/useSessionRestore.ts",
   "src/renderer/hooks/useTheater.ts",
   "src/renderer/hooks/useTheme.ts"

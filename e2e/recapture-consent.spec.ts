@@ -79,9 +79,8 @@ test.describe('Recapture through a consent wall', () => {
     await page.evaluate((id) => {
       window.location.hash = `/cases/${id}/captures`
     }, caseId)
-    // The paste-URLs box now lives in the top-bar Capture menu dialog.
+    // The add button above the capture list opens the paste-URLs dialog.
     await page.click('[data-testid="capture-menu-btn"]')
-    await page.click('[data-testid="capture-menu-paste-urls"]')
     await page.waitForSelector('[data-testid="add-urls-input"]', { timeout: 10000 })
     await page.fill('[data-testid="add-urls-input"]', `${baseUrl}/page`)
     await page.click('[data-testid="add-urls-submit"]')

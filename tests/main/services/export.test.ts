@@ -3543,9 +3543,9 @@ describe('export', () => {
       )
     })
 
-    // AC 5: the Court exhibit excludes Notes — proven at the byte level, as
+    // AC 5: an Evidence Package without Operator notes excludes them, proven on the zip, as
     // the exact zip entry-list difference between the two evidence presets.
-    it('Court exhibit differs from the Full bundle by exactly notes.md', async () => {
+    it('an Evidence Package without Operator notes differs from one with them by exactly notes.md', async () => {
       await ingest(caseId, '<html><body>Content</body></html>')
       createNote({ caseId, title: 'Kept out of court exhibit', body: 'note body' })
 

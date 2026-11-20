@@ -627,8 +627,7 @@ describe('the seeded demo case', () => {
       'nav-notes',
       'noteeditor',
       'nav-overview',
-      'linkmap',
-      'export'
+      'linkmap'
     ]) {
       anchor(name)
     }
@@ -650,6 +649,26 @@ describe('the seeded demo case', () => {
 
     expect(screen.getByTestId('tour-delete-demo')).toBeTruthy()
     expect(screen.getByTestId('tour-next').textContent).toBe('Keep exploring')
+  })
+
+  it('shows the Selectors step without a claim about auto-capture', async () => {
+    installWithCases(
+      [ownCase],
+      settingsFixture({ isFreshInstall: true, onboardingChapters: { intro: true } })
+    )
+    anchorWholeChapter()
+    const { rerender } = renderTour()
+    await screen.findByTestId('tour-screen')
+    for (let i = 0; i < 4; i += 1) await clickNext(() => rerender(<OnboardingTour />))
+
+    const marks = () =>
+      screen
+        .getAllByTestId('tour-mark')
+        .map((mark) => mark.textContent)
+        .join(' ')
+    await waitFor(() => expect(marks()).toContain('Selectors watch for patterns'))
+    expect(marks()).toContain('matches are highlighted across every capture.')
+    expect(marks()).not.toMatch(/auto-capture/i)
   })
 
   it('withholds the delete ending on a case the operator made', async () => {

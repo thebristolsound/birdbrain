@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import type { Capture, Selector, Tag } from '@shared/types'
 import { fakeBridge } from '../renderer/fakeBridge'
+import { exportIconSelector } from './exportIcon'
 import { useAppStore } from '@renderer/stores/appStore'
 
 // One spy for the whole file, so a test can assert where a menu action sent
@@ -145,6 +146,28 @@ describe('SignalsOverview', () => {
     expect(screen.getByTestId('signal-row-s2')).toBeTruthy()
     expect(screen.getByTestId('signal-row-t1')).toBeTruthy()
     expect(screen.getByTestId('auto-capture-card')).toBeTruthy()
+  })
+
+  it('puts the tour anchor on the Selectors card, not on the exclusions row', async () => {
+    renderScreen()
+    await screen.findByTestId('signal-row-s1')
+
+    const anchors = document.querySelectorAll('[data-tour="selectors"]')
+    expect(anchors).toHaveLength(1)
+    expect(anchors[0].contains(screen.getByTestId('add-selector-input'))).toBe(true)
+    expect(anchors[0].contains(screen.getByTestId('signal-row-s1'))).toBe(true)
+    expect(anchors[0].contains(screen.getByTestId('auto-capture-card'))).toBe(false)
+  })
+
+  it('keeps the exclusions row under the Selectors, above the Tags', async () => {
+    renderScreen()
+    await screen.findByTestId('signal-row-s1')
+
+    const row = screen.getByTestId('auto-capture-card')
+    const follows = (earlier: Element) =>
+      Boolean(earlier.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING)
+    expect(follows(screen.getByTestId('signal-row-s2'))).toBe(true)
+    expect(follows(screen.getByTestId('signals-tag-list'))).toBe(false)
   })
 
   it('selects the first signal by default and follows a click', async () => {
@@ -331,6 +354,12 @@ describe('SignalsOverview', () => {
     await waitFor(() =>
       expect(screen.getByTestId('export-matches-btn')).toHaveProperty('disabled', false)
     )
+
+    // The label says what the file holds and its type, under the one export icon.
+    expect(screen.getByTestId('export-matches-btn').textContent).toBe('Export all matches (CSV)')
+    expect(
+      screen.getByTestId('export-matches-btn').querySelector(exportIconSelector())
+    ).not.toBeNull()
 
     fireEvent.click(screen.getByTestId('export-matches-btn'))
 
@@ -868,7 +897,7 @@ describe('tag menu additions', () => {
     renderScreen()
     await openTagMenu()
     fireEvent.click(screen.getByTestId('context-menu-item-tag-export'))
-    fireEvent.click(screen.getByRole('menuitem', { name: 'ZIP + manifest' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Evidence Package…' }))
     const dialog = await screen.findByTestId('tag-export-dialog')
     expect(capturesWithAnyTag).toHaveBeenCalledWith('case-1', ['t1'])
     expect(dialog.textContent).toContain(ids.join(','))
@@ -895,7 +924,7 @@ describe('tag menu additions', () => {
     renderScreen()
     await openTagMenu()
     fireEvent.click(screen.getByTestId('context-menu-item-tag-export'))
-    fireEvent.click(screen.getByRole('menuitem', { name: 'ZIP + manifest' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Evidence Package…' }))
     await waitFor(() => expect(screen.queryByRole('menu')).toBeNull())
     expect(screen.queryByTestId('tag-export-dialog')).toBeNull()
   })
@@ -907,7 +936,7 @@ describe('tag menu additions', () => {
     renderScreen()
     await openTagMenu()
     fireEvent.click(screen.getByTestId('context-menu-item-tag-export'))
-    fireEvent.click(screen.getByRole('menuitem', { name: 'ZIP + manifest' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Evidence Package…' }))
     await waitFor(() => expect(notifyError).toHaveBeenCalled())
     expect(screen.queryByTestId('tag-export-dialog')).toBeNull()
   })

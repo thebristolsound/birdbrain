@@ -494,6 +494,9 @@ export interface VpnWarningCheck {
   caseId: string
   warn: boolean
   canMute: boolean
+  // An opaque reference to the network a warning was raised on, absent where it could not be
+  // read. Two checks that give the same reference saw the same network.
+  network?: string
 }
 
 export type VpnWarningChoice = 'continue' | 'mute-network'
@@ -502,6 +505,9 @@ export interface VpnWarningAnswer {
   caseId: string
   occasion: VpnWarningOccasion
   choice: VpnWarningChoice
+  // The reference of the network the Operator was shown. Where it is given, main mutes only
+  // when the warning it holds for this Case and occasion was raised on that network.
+  network?: string
 }
 
 // A subframe of an evidence guest committed a second document (#1708). Chromium

@@ -23,7 +23,6 @@ import {
 const EMITTED_ANCHORS = new Set([
   'browser',
   'caseswitcher',
-  'export',
   'linkmap',
   'newcase',
   'noteeditor',
@@ -56,6 +55,20 @@ describe('tourSteps', () => {
     expect(kase[kase.length - 1].final).toBe(true)
   })
 
+  // The Case name opens a menu now, and Export is an item of it, so two steps say so.
+  it('says the Case name opens a menu, and that Export is in it', () => {
+    const onName = (demo: boolean) =>
+      tourSteps('case', { demoCase: demo }).filter((step) => step.target === 'caseswitcher')
+    for (const demo of [false, true]) {
+      const [inside, exportStep] = onName(demo)
+      expect(inside.body).toContain(
+        'Click the name for its menu, where Switch Case… changes cases.'
+      )
+      expect(exportStep.final).toBe(true)
+      expect(exportStep.body).toMatch(/Export is in the menu on the Case name\.$/)
+    }
+  })
+
   it('targets only anchors the app actually emits', () => {
     for (const chapter of ALL_CHAPTERS) {
       for (const step of tourSteps(chapter)) {
@@ -69,6 +82,16 @@ describe('tourSteps', () => {
     const targets = ALL_CHAPTERS.flatMap((c) => tourSteps(c).map((s) => s.target))
     expect(targets).not.toContain('nav-selectors')
     expect(targets).not.toContain('nav-tags')
+  })
+
+  // Passive capture is off in this build, so the step may not say a match logs a page.
+  it('describes Selectors without a claim about auto-capture', () => {
+    for (const demoCase of [false, true]) {
+      const step = tourSteps('case', { demoCase }).find((s) => s.target === 'selectors')
+      expect(step?.body).toBe(
+        'Emails, wallets, panel IPs — matches are highlighted across every capture.'
+      )
+    }
   })
 
   it('walks the case chapter through the four screens in order', () => {

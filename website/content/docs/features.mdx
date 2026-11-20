@@ -107,7 +107,12 @@ prove and what they do not.
   MiB, printing fails or runs out of time, or the page navigates again after it is saved, even to
   the same address, Birdbrain still saves the capture, and its entry says the PDF is missing. The
   capture keeps the address and title of the page it saved.
-- In a browser you start from a Case with **Launch browser**, capture a tab with **Capture** in
+- **Launch browser** is the filled button in the top bar, on every screen, while no Capture
+  Session runs. On a screen with no case open, the launch dialog asks which case the browser
+  captures into. If no operator name is saved, the dialog asks for it and saves it when you
+  launch. When Birdbrain sees no VPN on a Direct Egress and a warning is due, the dialog carries
+  the warning, and its button reads **Launch without VPN**.
+- In a browser you start with **Launch browser**, capture a tab with **Capture** in
   the Capture Session panel, which names the tab's title and address before you click, or with
   the shortcut Ctrl+Shift+F9 while the browser has focus. When the shortcut finds more than one
   tab in front, or none, Birdbrain asks which tab to capture. Your desktop may not pass the
@@ -149,7 +154,8 @@ prove and what they do not.
 - Create a case with a wizard that offers starter selectors for email addresses, crypto
   addresses, IP addresses, domains, phone numbers, and usernames.
 - The case overview shows changes since your last visit, recent captures, an activity timeline,
-  an integrity summary, top sources, quick notes, tags, selectors, and a link map.
+  an integrity summary, top sources, quick notes, tags, selectors, and a link map. The overview
+  lists selectors and tags with their counts; you add and edit them on the Signals screen.
 - Filter the capture list by text, format, date, tag, or favourite, and act on a selection in
   bulk: tag, favourite, recapture, export, or delete.
 - View each capture as a screenshot, as the archived page with scripts turned off, as extracted
@@ -250,7 +256,10 @@ prove and what they do not.
 
 ## Export
 
-- Export an evidence package as a full bundle or as a court exhibit without notes. Each preset
+- **Export…** in the menu on the case name opens one dialog with three choices: an evidence
+  package, a working copy, or a case archive. Each choice shows its file type. A case archive
+  holds the whole case, so it is not offered for a selection of captures.
+- Export an evidence package with or without operator notes. Its contents
   can be adjusted, and an export can cover only selected captures.
 - An evidence package contains an HTML report, the captures, their screenshots, Transaction
   Records, and PDFs, the signed manifest, the public key, the timestamp tokens and authority
@@ -270,6 +279,22 @@ prove and what they do not.
   one.
 - The command palette (`Ctrl+K`) switches and creates cases, replays the walkthrough, and opens
   a problem report.
+- A case screen has one row of controls above it, the top bar. The case's name there opens a
+  menu: **Switch Case…**, sharing, **Export…**,
+  **Import Case Archive…** and **Case settings**. The rail on the left names each section of the
+  case and holds **Settings** at its foot.
+- At the right of the top bar, a status control shows the Egress, the extension connection and
+  Capture Health. The menu beside **Launch browser** holds **Paste URLs to capture…** and
+  **Start Capture Session in Chrome**, which needs the extension connected and a case open.
+- While a Capture Session runs, a recording mark takes the place of **Launch browser**. For a
+  launched browser, the mark shows or hides the Capture Session panel on a case screen and opens the
+  panel on any other screen. For a session the extension started, the mark opens a menu that holds
+  **Stop Capture Session** and **Launch browser…**. On a case screen, the mark names the case that
+  captures go into when it is another case.
+- On the Captures section, the Capture Session panel is a tab of the right panel, beside
+  **Details**. The **Capture Session** tab shows when a launched browser opens, and selecting a capture
+  shows **Details**. On the other sections of a case, the panel sits at the right edge of the
+  screen.
 - Choose a dark or light theme, one of three density settings, and reduced motion.
 - First launch opens a guided tour, an extension setup guide, and a demo case. Exports from the
   demo case are marked as demo material.
@@ -325,7 +350,7 @@ Birdbrain makes these outbound connections:
   port-mapping requests to your router. Sync does not use the Egress setting, so the relay and
   your teammates see your IP address, and a teammate can learn every interface address on your
   machine, not only the public one
-- a browser you start from a Case with **Launch browser**: the pages you open in it, and the
+- a browser you start with **Launch browser**: the pages you open in it, and the
   browser's own background connections, such as Chrome's to Google. Under Direct, all of it
   leaves from your connection. The browser follows the Egress setting and fails closed: under a
   proxy or Tor, Birdbrain does not start it when the proxy accepts no connection, and closes it

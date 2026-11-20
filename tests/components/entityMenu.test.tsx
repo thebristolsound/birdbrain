@@ -26,6 +26,7 @@ import {
   type SelectorMenuTarget,
   type TagMenuTarget
 } from '@renderer/components/contextmenu/entityMenu'
+import { ExportIcon } from '@renderer/components/export/exportIcon'
 import { captureLinkBlockReason } from '@shared/localAddress'
 import { isWebHref } from '@renderer/components/captures/linksTabModel'
 
@@ -353,6 +354,17 @@ describe('note, selector and tag menus', () => {
       'Export…',
       'Delete tag…'
     ])
+  })
+
+  it('names the Evidence Package under Export, and draws every export row with one icon', () => {
+    const tagExport = tagMenuEntries(tagTarget).find((entry) => entry.id === 'tag-export')
+    if (!tagExport || !isSubmenu(tagExport)) throw new Error('no export submenu')
+    const evidence = actionById(tagExport.items, 'tag-export-evidence')
+
+    expect(labels(tagExport.items)).toEqual(['Evidence Package…', 'Copy as markdown'])
+    expect(tagExport.icon).toBe(ExportIcon)
+    expect(evidence.icon).toBe(ExportIcon)
+    expect(actionById(selectorMenuEntries(selectorTarget), 'selector-export').icon).toBe(ExportIcon)
   })
 
   it('runs the tag filter action from the first item', () => {

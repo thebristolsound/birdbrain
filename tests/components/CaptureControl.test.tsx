@@ -11,7 +11,10 @@ import type {
 import { useAppStore } from '@renderer/stores/appStore'
 import { fakeBridge } from '../renderer/fakeBridge'
 
-vi.mock('@tanstack/react-router', () => ({ useNavigate: () => vi.fn() }))
+vi.mock('@tanstack/react-router', () => ({
+  useNavigate: () => vi.fn(),
+  useParams: () => ({ caseId: 'case-1' })
+}))
 
 import { CaptureSessionPanel } from '@renderer/components/launchedBrowser/CaptureSessionPanel'
 import { TabPicker } from '@renderer/components/launchedBrowser/TabPicker'

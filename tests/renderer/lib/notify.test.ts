@@ -52,13 +52,13 @@ describe('notify', () => {
   it('passes a success subtitle and action through to the toast', async () => {
     const { notify } = await import('@renderer/lib/notify')
     const onClick = vi.fn()
-    notify.success('Archive saved', {
+    notify.success('Case Archive saved', {
       description: '/tmp/case.bbcase',
       action: { label: 'Show in folder', onClick }
     })
 
     expect(toastFns.success).toHaveBeenCalledWith(
-      'Archive saved',
+      'Case Archive saved',
       expect.objectContaining({
         description: '/tmp/case.bbcase',
         action: { label: 'Show in folder', onClick }
@@ -68,9 +68,9 @@ describe('notify', () => {
 
   it('keys a success toast on its subtitle as well as its title', async () => {
     const { notify } = await import('@renderer/lib/notify')
-    notify.success('Export written', { description: 'Working copy · /tmp/a.zip' })
-    notify.success('Export written', { description: 'Working copy · /tmp/b.zip' })
-    notify.success('Export written', { description: 'Working copy · /tmp/b.zip' })
+    notify.success('Export written', { description: 'Working Copy · /tmp/a.zip' })
+    notify.success('Export written', { description: 'Working Copy · /tmp/b.zip' })
+    notify.success('Export written', { description: 'Working Copy · /tmp/b.zip' })
 
     const [a, b, bAgain] = toastFns.success.mock.calls.map((c) => c[1]?.id)
     expect(a).not.toBe(b)

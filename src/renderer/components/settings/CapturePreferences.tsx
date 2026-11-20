@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Check } from 'lucide-react'
 import type { BirdbrainSettings } from '@shared/types'
 import { validateIgnorePattern, validateIgnorePatternAsStored } from '@shared/urlPatterns'
+import { cn } from '@renderer/lib/utils'
 import { Card, CardContent, Input, Button, Label } from '@renderer/components/ui'
 import { FoundBrowsers } from '@renderer/components/launchedBrowser/FoundBrowsers'
 
@@ -13,7 +14,11 @@ interface CapturePreferencesProps {
 export function CapturePreferences({ settings, onUpdate }: CapturePreferencesProps) {
   const [newPattern, setNewPattern] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const { ignoredUrlPatterns } = settings
+  const { ignoredUrlPatterns, autoCaptureMode } = settings
+  // 'auto' captures every page, not only selector matches. A two-state switch cannot say
+  // that, so it reads on and refuses to move rather than narrowing the stored mode.
+  const modeIsAuto = autoCaptureMode === 'auto'
+  const switchOn = autoCaptureMode !== 'notify'
 
   const savePatterns = (next: string[]) => {
     setError(null)
@@ -132,7 +137,44 @@ export function CapturePreferences({ settings, onUpdate }: CapturePreferencesPro
               out behind HOTFIX markers (#211), so every mode behaves as 'notify' — selector
               matches update the extension badge and nothing is captured. The stored setting
               and its schema are left untouched, so restoring the control is a revert rather
-              than a migration. See #570; #571 tracks whether auto-capture returns at all. */}
+              than a migration. See #570; #571 tracks whether auto-capture returns at all.
+              The switch writes that setting between 'notify' and 'per-case'. */}
+          <div>
+            <div className="flex items-center justify-between">
+              <span id="auto-capture-label" className="text-sm text-text-secondary">
+                Auto-capture
+              </span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={switchOn}
+                aria-labelledby="auto-capture-label"
+                disabled={modeIsAuto}
+                data-testid="auto-capture-switch"
+                onClick={() => onUpdate({ autoCaptureMode: switchOn ? 'notify' : 'per-case' })}
+                className={cn(
+                  'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors',
+                  switchOn ? 'bg-accent' : 'bg-text-faint',
+                  modeIsAuto && 'cursor-not-allowed opacity-60'
+                )}
+              >
+                <span
+                  className={cn(
+                    'inline-block h-3.5 w-3.5 rounded-full bg-accent-foreground transition-transform',
+                    switchOn ? 'translate-x-[18px]' : 'translate-x-0.5'
+                  )}
+                />
+              </button>
+            </div>
+            <p className="text-xs text-text-muted" data-testid="auto-capture-suspended">
+              Passive capture is off in this build.
+            </p>
+            {modeIsAuto && (
+              <p className="mt-1 text-xs text-text-muted" data-testid="auto-capture-locked">
+                Locked: auto-capture is set to capture every page.
+              </p>
+            )}
+          </div>
 
           <FoundBrowsers />
         </div>

@@ -16,8 +16,9 @@ export const VPN_SESSION_CAVEAT =
   'Birdbrain sees this computer’s network path, not your browser’s. A VPN set up only in ' +
   'your browser is not seen.'
 
-// The one VPN warning (ADR-0032 rules 2 and 3), mounted once at the root. It never blocks:
-// Continue always lets the contact go ahead.
+// The VPN warning before a contact (ADR-0032 rules 2 and 3), mounted once at the root. A launch
+// carries the warning in the launch dialog instead. It never blocks: Continue always lets the
+// contact go ahead.
 export function VpnWarningDialog() {
   const open = useVpnWarningStore((s) => s.open)
   const request = useVpnWarningStore((s) => s.request)
@@ -47,9 +48,8 @@ export function VpnWarningDialog() {
         <DialogHeader>
           <DialogTitle>Birdbrain did not see a VPN</DialogTitle>
           <DialogDescription>
-            The Egress is Direct, so Birdbrain contacts sites from this computer&rsquo;s own
-            connection. Birdbrain looks for a VPN on this computer&rsquo;s route only, so a VPN on
-            your router or network is not seen.
+            Sites will see this computer&rsquo;s own connection. A VPN on your router or network
+            does not show here.
           </DialogDescription>
           {request?.occasion === 'session' && (
             <DialogDescription data-testid="vpn-warning-session">
@@ -58,8 +58,7 @@ export function VpnWarningDialog() {
           )}
           {request && !request.canMute && (
             <DialogDescription data-testid="vpn-warning-no-network">
-              Birdbrain could not read this network&rsquo;s router address, so it cannot stop
-              warning on this network.
+              This network cannot be identified, so it cannot be muted.
             </DialogDescription>
           )}
         </DialogHeader>

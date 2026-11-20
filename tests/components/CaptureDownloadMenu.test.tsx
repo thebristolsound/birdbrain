@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
+import { act, render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
 import type { Capture } from '@shared/types'
+import { isDisabledItem, nextTurn, press } from './menuKeys'
 
 const downloadCapture = vi.hoisted(() => vi.fn(async () => '/tmp/cap1.mhtml'))
 const downloadCapturePdf = vi.hoisted(() => vi.fn(async () => '/tmp/cap1.pdf'))
@@ -94,7 +95,7 @@ describe('CaptureDownloadMenu items', () => {
 
     fireEvent.click(screen.getByTestId('capture-download-menu-btn'))
     expect(screen.getByTestId('download-archive-btn').textContent).toContain('HTML page')
-    expect(screen.getByTestId('download-screenshot-btn').hasAttribute('disabled')).toBe(true)
+    expect(isDisabledItem(screen.getByTestId('download-screenshot-btn'))).toBe(true)
   })
 
   it('surfaces a failed download beside the trigger', async () => {
@@ -128,16 +129,97 @@ describe('CaptureDownloadMenu items', () => {
     expect(error.className).toContain('break-words')
   })
 
-  it('closes on Escape and on a click outside', async () => {
+  it('closes on a press outside it', async () => {
     render(<CaptureDownloadMenu capture={capture} />)
 
     fireEvent.click(screen.getByTestId('capture-download-menu-btn'))
     expect(screen.getByRole('menu')).toBeDefined()
-    fireEvent.keyDown(document, { key: 'Escape' })
-    await waitFor(() => expect(screen.queryByRole('menu')).toBeNull())
+    // Radix starts listening for a press outside on the turn after it opens.
+    await nextTurn()
+    act(() => {
+      fireEvent.pointerDown(document.body)
+    })
+    expect(screen.queryByRole('menu')).toBeNull()
+  })
+})
 
-    fireEvent.click(screen.getByTestId('capture-download-menu-btn'))
-    fireEvent.mouseDown(document.body)
-    await waitFor(() => expect(screen.queryByRole('menu')).toBeNull())
+describe('CaptureDownloadMenu from the keyboard', () => {
+  function trigger(): HTMLElement {
+    return screen.getByTestId('capture-download-menu-btn')
+  }
+
+  it('says it opens a menu, and whether the menu is open', () => {
+    render(<CaptureDownloadMenu capture={capture} />)
+    expect(trigger().getAttribute('aria-haspopup')).toBe('menu')
+    expect(trigger().getAttribute('aria-expanded')).toBe('false')
+
+    fireEvent.click(trigger())
+    expect(trigger().getAttribute('aria-expanded')).toBe('true')
+  })
+
+  it('opens on its first item and walks its items with the arrow keys, Home and End', async () => {
+    render(<CaptureDownloadMenu capture={capture} />)
+    trigger().focus()
+    await press('Enter')
+    const archive = screen.getByTestId('download-archive-btn')
+    const pdf = screen.getByTestId('download-pdf-btn')
+    const screenshot = screen.getByTestId('download-screenshot-btn')
+    await waitFor(() => expect(document.activeElement).toBe(archive))
+
+    await press('ArrowDown', pdf)
+    await press('ArrowDown', screenshot)
+    // Past the last item the arrow comes back round to the first.
+    await press('ArrowDown', archive)
+    await press('ArrowUp', screenshot)
+    await press('Home', archive)
+    await press('End', screenshot)
+  })
+
+  it('passes over the Screenshot item for a Capture that has none', async () => {
+    render(<CaptureDownloadMenu capture={{ ...capture, screenshotPath: undefined }} />)
+    trigger().focus()
+    await press('Enter')
+    const archive = screen.getByTestId('download-archive-btn')
+    const pdf = screen.getByTestId('download-pdf-btn')
+    await waitFor(() => expect(document.activeElement).toBe(archive))
+
+    await press('End', pdf)
+    await press('ArrowDown', archive)
+  })
+
+  it('runs the focused item on Enter, closes, and leaves focus on the trigger', async () => {
+    render(<CaptureDownloadMenu capture={capture} />)
+    trigger().focus()
+    await press('Enter')
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByTestId('download-archive-btn'))
+    )
+    await press('ArrowDown', screen.getByTestId('download-pdf-btn'))
+
+    await press('Enter')
+
+    await waitFor(() => expect(downloadCapturePdf).toHaveBeenCalledWith('cap1'))
+    expect(downloadCapturePdf).toHaveBeenCalledOnce()
+    expect(downloadCapture).not.toHaveBeenCalled()
+    expect(downloadCaptureScreenshot).not.toHaveBeenCalled()
+    expect(screen.queryByRole('menu')).toBeNull()
+    await waitFor(() => expect(document.activeElement).toBe(trigger()))
+  })
+
+  it('closes on Escape and returns focus to the trigger, and hands nothing over', async () => {
+    render(<CaptureDownloadMenu capture={capture} />)
+    trigger().focus()
+    await press('Enter')
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByTestId('download-archive-btn'))
+    )
+
+    await press('Escape')
+
+    expect(screen.queryByRole('menu')).toBeNull()
+    await waitFor(() => expect(document.activeElement).toBe(trigger()))
+    expect(downloadCapture).not.toHaveBeenCalled()
+    expect(downloadCapturePdf).not.toHaveBeenCalled()
+    expect(downloadCaptureScreenshot).not.toHaveBeenCalled()
   })
 })

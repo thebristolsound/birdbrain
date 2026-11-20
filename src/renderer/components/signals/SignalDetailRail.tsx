@@ -6,6 +6,7 @@ import { useAppStore } from '@renderer/stores/appStore'
 import { formatRelativeTime } from '@renderer/lib/formatRelativeTime'
 import { exportSelectorMatches } from '@renderer/lib/api/selectors'
 import { notify } from '@renderer/lib/notify'
+import { ExportIcon } from '@renderer/components/export/exportIcon'
 import { useForegroundMatchPreview } from '@renderer/components/selectors/useForegroundMatchPreview'
 import { ORIGIN_ICON, ORIGIN_LABEL } from '@renderer/components/selectors/selectorOrigin'
 import { useTagsMutations } from '@renderer/lib/api/tags'
@@ -316,8 +317,9 @@ export function SignalDetailRail({
                 ? undefined
                 : 'CSV export is for selectors. Right-click the tag to export its captures.'
             }
-            className="h-7 flex-1 rounded border border-border-strong text-xs font-medium text-text-primary hover:bg-elevated disabled:opacity-50"
+            className="inline-flex h-7 flex-1 items-center justify-center gap-1.5 rounded border border-border-strong text-xs font-medium text-text-primary hover:bg-elevated disabled:opacity-50"
           >
+            <ExportIcon className="h-3 w-3 shrink-0" strokeWidth={1.8} />
             {exporting ? 'Exporting…' : 'Export CSV'}
           </button>
         </div>

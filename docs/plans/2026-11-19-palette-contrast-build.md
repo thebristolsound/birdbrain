@@ -38,7 +38,7 @@ its own. Every pull request carries before and after screenshots in both themes.
    and this slice the other 32: buttons, count badges, checked checkboxes and switch tracks. The
    23 that keep the accent are 16 solid dots, bars and progress fills and 7 tints, none with
    white text on it. Then set `--color-accent` to `#9497ff` dark and `#4346d1` light, with the
-   bundle's hover and subtle values, and point `--color-primary` at the fill. A test counts the
+   spec's hover and subtle values, and point `--color-primary` at the fill. A test counts the
    solid accent backgrounds in each file against those marks, so a control moved back fails it.
 3. **Control boundaries.** Text fields, selects and the two search-field wrappers that drew
    their own border in `border-border` or `border-border-strong` take `border-input`, which

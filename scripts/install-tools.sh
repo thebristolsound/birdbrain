@@ -252,6 +252,7 @@ if [ -z "$node_dir" ] && [ "$install" = 1 ]; then
   node_dir="$(resolve_node || true)"
 fi
 if [ -n "$node_dir" ]; then
+  [ "$node_dir" = "$(path_dir node || true)" ] || dirs+=("$node_dir")
   # A cache-installed Node has no pnpm; corepack ships with it and reads packageManager. pnpm
   # must run, not only resolve: a mise pnpm shim with no pinned version is on PATH and exits 1.
   # Offline, so an uncached pin is fetched by `corepack install` below, not by this silent check.
@@ -267,11 +268,6 @@ if [ -n "$node_dir" ]; then
     fi
   fi
   pnpm_runs "${COREPACK_ENABLE_NETWORK:-1}" || missing+=("pnpm")
-  # The check above put $node_dir first, so the caller must too when its pnpm is not first.
-  if [ "$node_dir" != "$(path_dir node || true)" ] ||
-    { [ -x "$node_dir/pnpm" ] && [ "$node_dir" != "$(path_dir pnpm || true)" ]; }; then
-    dirs+=("$node_dir")
-  fi
 else
   missing+=("node $NODE_MAJOR")
 fi

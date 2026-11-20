@@ -17,7 +17,6 @@ const SCRIPT = resolve(__dirname, '../scripts/install-tools.sh')
 
 let home: string
 let root: string
-let early: string
 let bin: string
 let shims: string
 
@@ -35,16 +34,16 @@ const logOf = (name: string) => {
 const marker = (name: string) => existsSync(join(home, name))
 
 // The script runs from a checkout of its own, so the pins and the Google style are the test's.
-// Stand-ins come first on PATH for every tool it runs, so a mise or curl in /usr/bin is shadowed.
-// `bin` holds node, so it is the script's Node folder; `early` and `shims` stand for folders
-// before and after it on PATH, and are empty unless a test puts a pnpm there.
+// Stand-ins for node, vale, mise, curl, corepack and pnpm come before /usr/bin on PATH, so a mise
+// or curl there is shadowed. `bin` holds node, so it is the script's Node folder; `shims` stands
+// for a folder after it, and is empty unless a test puts a pnpm there.
 const run = (args: string[], input = '') =>
   spawnSync('bash', [join(root, 'scripts/install-tools.sh'), ...args], {
     cwd: home,
     encoding: 'utf8',
     input,
     env: {
-      PATH: `${early}:${bin}:${shims}:/usr/bin:/bin`,
+      PATH: `${bin}:${shims}:/usr/bin:/bin`,
       HOME: home,
       BIRDBRAIN_TOOLS_DIR: join(home, 'tools')
     }
@@ -63,10 +62,12 @@ const COREPACK_SHIM = [
 // unless the setting its major version reads turns the switch off.
 const OTHER_PNPM = {
   'pnpm 10': [
+    'touch "$HOME/pnpm-ran"',
     '[ "$npm_config_manage_package_manager_versions" = false ] || touch "$HOME/downloaded"',
     'echo 10.24.0'
   ].join('\n'),
   'pnpm 11': [
+    'touch "$HOME/pnpm-ran"',
     '[ "$pnpm_config_pm_on_fail" = ignore ] || touch "$HOME/downloaded"',
     'echo 11.20.0'
   ].join('\n')
@@ -76,12 +77,11 @@ const ENABLE = (dir: string) => `enable pnpm --install-directory ${dir}`
 beforeEach(() => {
   home = mkdtempSync(join(tmpdir(), 'install-tools-'))
   root = join(home, 'checkout')
-  early = join(home, 'early')
   bin = join(home, 'bin')
   shims = join(home, 'shims')
   mkdirSync(join(root, 'scripts'), { recursive: true })
   mkdirSync(join(root, '.vale/styles/Google'), { recursive: true })
-  for (const dir of [early, bin, shims]) mkdirSync(dir)
+  for (const dir of [bin, shims]) mkdirSync(dir)
   copyFileSync(SCRIPT, join(root, 'scripts/install-tools.sh'))
   writeFileSync(join(root, '.nvmrc'), '24\n')
   writeFileSync(join(root, '.mise.toml'), '[tools]\nvale = "3.24.0"\n')
@@ -134,13 +134,6 @@ describe('install-tools.sh pnpm check', () => {
     expect(logOf('corepack.log')).toBe(`install\n${ENABLE(bin)}\n`)
   })
 
-  it('puts the Node folder first when a pnpm that fails comes before it on PATH', () => {
-    tool('pnpm', MISE_SHIM, early)
-    const { status, stdout } = run([])
-    expect(status).toBe(0)
-    expect(stdout.trim().split(':')).toContain(bin)
-  })
-
   it('runs pnpm from the checkout root, with no stdin and no download question', () => {
     tool(
       'pnpm',
@@ -169,8 +162,10 @@ describe('install-tools.sh pnpm check', () => {
     it(`keeps a ${version} of another version from switching to the pin`, () => {
       tool('pnpm', body)
       for (const args of [['--no-install'], []]) {
+        rmSync(join(home, 'pnpm-ran'), { force: true })
         const { status } = run(args)
         expect(status).toBe(0)
+        expect(marker('pnpm-ran')).toBe(true)
         expect(marker('downloaded')).toBe(false)
       }
     })

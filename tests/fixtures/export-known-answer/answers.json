@@ -1,7 +1,7 @@
 {
   "dialog-evidence-with-notes": {
-    "zipSha256": "39cf109af787cc686f65d8c04c95776615e0bdaff5759655a0ce103768a9f805",
-    "packageHash": "6c98d34eee7ad47f3c78a8e38f7d44d635bd5e2d3b4154059e6bfb01c5e88716",
+    "zipSha256": "984d86fb93602ec4a8bda4e0caecb13bb721aaec963e9459184b1f5c3016f833",
+    "packageHash": "8a62f33165228031dd5d9933a85b97307fe589d7609f6ebddd0535e53c0623dc",
     "verification": {
       "outcome": "verified",
       "checks": [
@@ -39,15 +39,15 @@
       ]
     },
     "members": [
-      "04b7110489cad5f15ec0ff68a2f4acbddd1c4570f1c146e23e4a344e76304ff6 664 export-entry.json",
-      "d812c3d2c4aede58187e9d3c9102d4664525a9e2e8e7cdd15404714439fb92c6 12056 evidence.json",
+      "ec961318fea5f561af0a410544cec1636cd549beb1568a3804fe395d5ca67128 664 export-entry.json",
+      "832c5bde7af0ccaf4166bcce4c74bc5f701b2bc7e1a37741425d8c4bddfa62ec 12056 evidence.json",
       "a99b2e75b03daf45e5dcbe63d12ae3b6ff36d2d91e4c443aa094aa2ff096a299 154 timestamps/00000000-0000-4000-8000-000200000001.tst",
       "e7049feb6593b2582784449949f45771dba6e82cff8c46efd2af88f9cd91302e 154 timestamps/00000000-0000-4000-8000-000500000003.tst",
       "a3e7ca7e7d3021f84ee2ad00458afabdbd0ca9fcb91b0367b1f07a6d4095417a 8649 manifest.jsonl",
       "6a02b3147999319908e754f11a62fa56f7aca08b562474a662600d095b518a62 59164 report.html",
       "49797437c21c3add97a4b46955726e9b4c7024cbdf234394d7d7b64cd680beb2 17994 certification.html",
       "c1b596cdf432534ade61ffd4d1ae938478935dfa4eda099576cf7981d9fb5765 451 signing-public-key.pem",
-      "bf25b3f4f6106976a1a731896ee49731627e50aaf0e65786274137337836ec49 32568 VERIFY.md",
+      "d36139b2bfd9d2186471b0a193dd39f1dce386b11bb1707a53cfde2759636d11 33171 VERIFY.md",
       "e28c1e4031bda5a3d7de9f9e10eac29c70f470230f49de2c304b50a74e0d81f8 84184 verify.sh",
       "79fe050e0bea751a9a0d4e4f8fb92adefedc2bdc4a0e1531c788292fe927a961 717 notes.md",
       "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b 1 tsa-intermediates.pem",
@@ -66,8 +66,8 @@
     ]
   },
   "dialog-evidence-without-notes": {
-    "zipSha256": "8b895a332d691103fc504b47f086e3773da86fdc816ad81eb5bfef28ee430c09",
-    "packageHash": "9a1da4a360b613e9351b914a71f15d57c883af0187c3c50936b3059a4ebd89bb",
+    "zipSha256": "7b1a807fb38c4387b7030a9cbbadcc49b5fa06fbf7e320d82c9a240ad4f6d05e",
+    "packageHash": "2e97883162f5df28b6fe45d38e5d4b13e464ffabca17ef8e21d0381147ff6e71",
     "verification": {
       "outcome": "verified",
       "checks": [
@@ -105,15 +105,15 @@
       ]
     },
     "members": [
-      "97fa75adaa3e27e711efa98da6cad0bb638cebc59d023a2e6b29f04c43cb5d1c 664 export-entry.json",
-      "07219fa112062d886585560005a85776338e62d4bccf97098f607fcf5df6eb1d 11910 evidence.json",
+      "81a49bb80bd48475d1f266b65e66236def195da09a36049b13c7ab4f1c829251 664 export-entry.json",
+      "d1f001dd3c2fff82613c2558bc28442b48d0d4d3af0ee8bd59fd2b4349cbc847 11910 evidence.json",
       "a99b2e75b03daf45e5dcbe63d12ae3b6ff36d2d91e4c443aa094aa2ff096a299 154 timestamps/00000000-0000-4000-8000-000200000001.tst",
       "e7049feb6593b2582784449949f45771dba6e82cff8c46efd2af88f9cd91302e 154 timestamps/00000000-0000-4000-8000-000500000003.tst",
       "a3e7ca7e7d3021f84ee2ad00458afabdbd0ca9fcb91b0367b1f07a6d4095417a 8649 manifest.jsonl",
       "6a02b3147999319908e754f11a62fa56f7aca08b562474a662600d095b518a62 59164 report.html",
       "99fd136deb0d40bdde2775ddcdb7c4713ed42f4b846bc48cebe6cb1e3a33e24b 17994 certification.html",
       "c1b596cdf432534ade61ffd4d1ae938478935dfa4eda099576cf7981d9fb5765 451 signing-public-key.pem",
-      "bf25b3f4f6106976a1a731896ee49731627e50aaf0e65786274137337836ec49 32568 VERIFY.md",
+      "d36139b2bfd9d2186471b0a193dd39f1dce386b11bb1707a53cfde2759636d11 33171 VERIFY.md",
       "e28c1e4031bda5a3d7de9f9e10eac29c70f470230f49de2c304b50a74e0d81f8 84184 verify.sh",
       "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b 1 tsa-intermediates.pem",
       "ce7d6b44f5d510391be98c8d76b18709400a30cd87659bfebe1c6f97ff5181ee 1988 tsa-root.pem",
@@ -152,8 +152,8 @@
     ]
   },
   "evidence-minimal": {
-    "zipSha256": "7b3e54e47d99a3d825af7134f4a7e6d8a5817d5e846b0bfc67f59f52bdba2040",
-    "packageHash": "dc924c01391f4842b31cc0b423d8a8d670da9ec04a1b28e8ec2bb8211a05ba12",
+    "zipSha256": "806d01057703837cc3e4c23eab6bafdd721bb32d0cac4145fbe4385be88c2e15",
+    "packageHash": "bced7feeebda963e2ee0218bccbb340488170e42932cba7d1fa1bbba5adc78d4",
     "verification": {
       "outcome": "verified",
       "checks": [
@@ -191,15 +191,15 @@
       ]
     },
     "members": [
-      "c91476ccc5144b1ebaaab7f19482bbe7eaf9f7576dd8284aa8bab7a292e82ab8 665 export-entry.json",
-      "a746e441bfdc481ba82f6f859e5bc54af64629a88ab947bb2b2e8eaf7acccf68 11442 evidence.json",
+      "45afee6c1cabb9c949e883034d6abea2348e851144b038eb92b35dfbba543f19 665 export-entry.json",
+      "c66206909edc09746d3dc50754c977abcdf6aed9e7ad48a8252992941e68f2e3 11442 evidence.json",
       "a99b2e75b03daf45e5dcbe63d12ae3b6ff36d2d91e4c443aa094aa2ff096a299 154 timestamps/00000000-0000-4000-8000-000200000001.tst",
       "e7049feb6593b2582784449949f45771dba6e82cff8c46efd2af88f9cd91302e 154 timestamps/00000000-0000-4000-8000-000500000003.tst",
       "a3e7ca7e7d3021f84ee2ad00458afabdbd0ca9fcb91b0367b1f07a6d4095417a 8649 manifest.jsonl",
       "2c3a1ff84674742bc82f45d2d699337c4b7e5f61f775038102a8e28292767c81 38071 report.html",
       "ad208f68a3a145a9403c04702f7e919f45eb2745466f334f6891efc2449dfd72 17993 certification.html",
       "c1b596cdf432534ade61ffd4d1ae938478935dfa4eda099576cf7981d9fb5765 451 signing-public-key.pem",
-      "bf25b3f4f6106976a1a731896ee49731627e50aaf0e65786274137337836ec49 32568 VERIFY.md",
+      "d36139b2bfd9d2186471b0a193dd39f1dce386b11bb1707a53cfde2759636d11 33171 VERIFY.md",
       "e28c1e4031bda5a3d7de9f9e10eac29c70f470230f49de2c304b50a74e0d81f8 84184 verify.sh",
       "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b 1 tsa-intermediates.pem",
       "ce7d6b44f5d510391be98c8d76b18709400a30cd87659bfebe1c6f97ff5181ee 1988 tsa-root.pem",
@@ -216,8 +216,8 @@
     ]
   },
   "evidence-selection": {
-    "zipSha256": "a824d2fbea93dc89f947218c21a930d762816f2c94baee2756ff52ea10b16fcd",
-    "packageHash": "9bf34cc210ea1aa249a95c5b07066b2b6d21394bb1bd25022331805fc44a5aca",
+    "zipSha256": "8cc22a1e61d26c187e45bce9673b0ca9976594cf0fadf800f6b8f80501e834d7",
+    "packageHash": "59d8620370eb7cb2b96da067adec29650102a804fc965faab86b6c6a70afe239",
     "verification": {
       "outcome": "verified",
       "checks": [
@@ -251,15 +251,15 @@
       ]
     },
     "members": [
-      "f27c0e83d616db1a3d118f2ecc30a5f523503318de1a78b78157bc68e5868940 816 export-entry.json",
-      "1aa997f195edc76dc9ce5c4a49a88614038ae187e2cedbcb5a584d4bdd556e06 9420 evidence.json",
+      "eb14c12e80a088bfd6a72cf9df172144215f99e8eb2a3ad172a5d1690a39bec6 816 export-entry.json",
+      "8a5af8f8c34eec45cc935db133a81367c0d8be9bdb5b40af4babe8367b13c517 9420 evidence.json",
       "a99b2e75b03daf45e5dcbe63d12ae3b6ff36d2d91e4c443aa094aa2ff096a299 154 timestamps/00000000-0000-4000-8000-000200000001.tst",
       "e7049feb6593b2582784449949f45771dba6e82cff8c46efd2af88f9cd91302e 154 timestamps/00000000-0000-4000-8000-000500000003.tst",
       "a3e7ca7e7d3021f84ee2ad00458afabdbd0ca9fcb91b0367b1f07a6d4095417a 8649 manifest.jsonl",
       "cd27b55c5109e5d54279feb5e241cd77a617caed50c5070fa8ced752b7e473ec 51473 report.html",
       "4789398da3a671fcc97743961a6816c05588377044d333e8f7b5d31873a7f1d1 17416 certification.html",
       "c1b596cdf432534ade61ffd4d1ae938478935dfa4eda099576cf7981d9fb5765 451 signing-public-key.pem",
-      "bf25b3f4f6106976a1a731896ee49731627e50aaf0e65786274137337836ec49 32568 VERIFY.md",
+      "d36139b2bfd9d2186471b0a193dd39f1dce386b11bb1707a53cfde2759636d11 33171 VERIFY.md",
       "e28c1e4031bda5a3d7de9f9e10eac29c70f470230f49de2c304b50a74e0d81f8 84184 verify.sh",
       "64024b7f7b19233f9a868ad5bb30780e09db304844ba33cf90a0ffd2b37597e8 812 notes.md",
       "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b 1 tsa-intermediates.pem",
@@ -275,8 +275,8 @@
     ]
   },
   "evidence-with-screenshots": {
-    "zipSha256": "dae624495474ca8e2ae7fc6e3d8a9260195c33505d4a42cecf0125c85a896687",
-    "packageHash": "d87f45c1a62be68e2126ff84f10b93d3ca0c7f09a41f7fa82276a4a9924faf52",
+    "zipSha256": "22734520349198bd10e57b333c5b4c85fea8e82357f79edd9eb88ec245d4d2d4",
+    "packageHash": "1f22ae4c39f94b645d1ed60dd5c8bbf05465808d76f6aad3d2ac1e85a6f99ee3",
     "verification": {
       "outcome": "verified",
       "checks": [
@@ -314,15 +314,15 @@
       ]
     },
     "members": [
-      "6e118801d307e459a591f58ab986ffe8ba5f63390c8dd7f8cdd7d5a460b85604 664 export-entry.json",
-      "d055e893d301d127e7bd0046da1ece74284b201d48c2af342087d822bf10ed2b 12056 evidence.json",
+      "cede718cc88e0d1d75843453007c687fc66fcc79538016c4e587dced308401b0 664 export-entry.json",
+      "55fb65bb831a1d4ec0eec8b4a163aa76676b2a9252564c44e9bce2a91e833717 12056 evidence.json",
       "a99b2e75b03daf45e5dcbe63d12ae3b6ff36d2d91e4c443aa094aa2ff096a299 154 timestamps/00000000-0000-4000-8000-000200000001.tst",
       "e7049feb6593b2582784449949f45771dba6e82cff8c46efd2af88f9cd91302e 154 timestamps/00000000-0000-4000-8000-000500000003.tst",
       "a3e7ca7e7d3021f84ee2ad00458afabdbd0ca9fcb91b0367b1f07a6d4095417a 8649 manifest.jsonl",
       "6a02b3147999319908e754f11a62fa56f7aca08b562474a662600d095b518a62 59164 report.html",
       "101d33c44e8f9f96328b1ce3909146682afb50c1b24eae76fd875e7714d44795 18006 certification.html",
       "c1b596cdf432534ade61ffd4d1ae938478935dfa4eda099576cf7981d9fb5765 451 signing-public-key.pem",
-      "bf25b3f4f6106976a1a731896ee49731627e50aaf0e65786274137337836ec49 32568 VERIFY.md",
+      "d36139b2bfd9d2186471b0a193dd39f1dce386b11bb1707a53cfde2759636d11 33171 VERIFY.md",
       "e28c1e4031bda5a3d7de9f9e10eac29c70f470230f49de2c304b50a74e0d81f8 84184 verify.sh",
       "79fe050e0bea751a9a0d4e4f8fb92adefedc2bdc4a0e1531c788292fe927a961 717 notes.md",
       "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b 1 tsa-intermediates.pem",
@@ -341,8 +341,8 @@
     ]
   },
   "evidence-without-screenshots": {
-    "zipSha256": "2edf514c9f2f454ef6feacfd58df1d7322449e7b9cd028e993c786bd4c74d7a5",
-    "packageHash": "146ad7d694f1fe40f5a48e1e11173bc512f9eba4ca1e10f5ee386f365ad79640",
+    "zipSha256": "a777103a5a480c9a5d43eda3464f04661b131eb8f4e1c7935d847b1fa4e8807e",
+    "packageHash": "0a7dda97766a881c538f16b87b7392126c8846e4633ebe967e6b6757a3b97ac8",
     "verification": {
       "outcome": "verified",
       "checks": [
@@ -380,15 +380,15 @@
       ]
     },
     "members": [
-      "f9349f91a7979c6d5597eb297c1149e14b1ceefa012f99f9fe4e20e45a6cd15f 664 export-entry.json",
-      "c2004d4a3e00c10a8c36eca7916ff692cccb08af3e52b5c197138b47b5a0a3c9 11699 evidence.json",
+      "27c7e8c3cf0389715c485e192467706471f142466fa5a945b3942617829293af 664 export-entry.json",
+      "74500e71a09067a157db54746b997b5b10f9d65571021f351db3b242ba911ff0 11699 evidence.json",
       "a99b2e75b03daf45e5dcbe63d12ae3b6ff36d2d91e4c443aa094aa2ff096a299 154 timestamps/00000000-0000-4000-8000-000200000001.tst",
       "e7049feb6593b2582784449949f45771dba6e82cff8c46efd2af88f9cd91302e 154 timestamps/00000000-0000-4000-8000-000500000003.tst",
       "a3e7ca7e7d3021f84ee2ad00458afabdbd0ca9fcb91b0367b1f07a6d4095417a 8649 manifest.jsonl",
       "6e075cb6a89f1b461a11960ea2b8f91789b2098761eaf66bdea0583ae3816f5c 57841 report.html",
       "34fe059b00318d399f503af341325677664f4ef9c9997089eea24203bdd181a4 17993 certification.html",
       "c1b596cdf432534ade61ffd4d1ae938478935dfa4eda099576cf7981d9fb5765 451 signing-public-key.pem",
-      "bf25b3f4f6106976a1a731896ee49731627e50aaf0e65786274137337836ec49 32568 VERIFY.md",
+      "d36139b2bfd9d2186471b0a193dd39f1dce386b11bb1707a53cfde2759636d11 33171 VERIFY.md",
       "e28c1e4031bda5a3d7de9f9e10eac29c70f470230f49de2c304b50a74e0d81f8 84184 verify.sh",
       "79fe050e0bea751a9a0d4e4f8fb92adefedc2bdc4a0e1531c788292fe927a961 717 notes.md",
       "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b 1 tsa-intermediates.pem",
@@ -406,8 +406,8 @@
     ]
   },
   "renamed-rows": {
-    "zipSha256": "a5e0cd29c88e5ab45ffd1b999ca474e475a9333d615deca7d34715b50ce76cab",
-    "packageHash": "ab9396049dad4173470f1354ab9561f4a08522ad4d3de5ff49351fbaeac44f8b",
+    "zipSha256": "a073f4f29d5428de63d35b141df603305b0fa7005c9c5e317c5b455acbecc90e",
+    "packageHash": "79df9c5d8cd6d76c4858fa278d76d05b4ba8361fb6ab9eb3888206e6a66e2585",
     "verification": {
       "outcome": "verified",
       "checks": [
@@ -445,15 +445,15 @@
       ]
     },
     "members": [
-      "a29fcd31f1eeaf6fa89892807d8c8d529733de30865ce5ffcf2aa1f020b85285 665 export-entry.json",
-      "8034dd3e1bfb2f42cab06b4495be9189706e1bd4e5b94ac69a8ef1baaa6a3738 12057 evidence.json",
+      "65e614e70310b889bb84cfb56d6c517d8011c03060bd128a6312e9ec02e60e62 665 export-entry.json",
+      "469e3fc954ce703ae2282c4b2cba20fa79176757cdec229862e0a8dc9eca600e 12057 evidence.json",
       "a99b2e75b03daf45e5dcbe63d12ae3b6ff36d2d91e4c443aa094aa2ff096a299 154 timestamps/00000000-0000-4000-8000-000200000001.tst",
       "e7049feb6593b2582784449949f45771dba6e82cff8c46efd2af88f9cd91302e 154 timestamps/00000000-0000-4000-8000-000500000003.tst",
       "f6f4cd07bc1af1be990bed9bd04cf2fe0a295a6af1121e267890ff31faf64063 10026 manifest.jsonl",
       "9fd856593afa6621860d9df7c8c5eb75afda79e3f4ffd9cde32741a9bb0d888a 58886 report.html",
       "c73569243743764a8de82afd940819e30fb05b972475875f2e043d6ef7d233cb 18231 certification.html",
       "c1b596cdf432534ade61ffd4d1ae938478935dfa4eda099576cf7981d9fb5765 451 signing-public-key.pem",
-      "bf25b3f4f6106976a1a731896ee49731627e50aaf0e65786274137337836ec49 32568 VERIFY.md",
+      "d36139b2bfd9d2186471b0a193dd39f1dce386b11bb1707a53cfde2759636d11 33171 VERIFY.md",
       "e28c1e4031bda5a3d7de9f9e10eac29c70f470230f49de2c304b50a74e0d81f8 84184 verify.sh",
       "79fe050e0bea751a9a0d4e4f8fb92adefedc2bdc4a0e1531c788292fe927a961 717 notes.md",
       "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b 1 tsa-intermediates.pem",
@@ -476,8 +476,8 @@
     "bytes": 56837
   },
   "shared-case-exclude": {
-    "zipSha256": "446733ce401bd228643c7efb1759e73d07009d8ac052e77fae5e586e95567d07",
-    "packageHash": "5def72e8660d35db7534aa050b07713660cc8a2b2ef0b6dc12ae8e87d13b059b",
+    "zipSha256": "5516833c310e6dd002d9d0567c3e2bd16b3cce829401cd6877df0433dac0672f",
+    "packageHash": "fc2ac4c03b51693afed30adc446f3e083f08d415daedd998a44107d3c0ef1196",
     "verification": {
       "outcome": "verified",
       "checks": [
@@ -498,14 +498,14 @@
       ]
     },
     "members": [
-      "f5977d138e65de2de562375e1b91ffc641a5b432f6f4c7e200d3a2605420b628 665 export-entry.json",
-      "a5cebe5b40fc1ba4fd86b39c4fbbbc72904ce5602fa54d808a0659c53cc87bd2 5593 evidence.json",
+      "190483402c74dfe3f3bfb7a85a396b6c664e3086cd17bf8a7134a72a4f056386 665 export-entry.json",
+      "3f53aa902c267d34861e6f8895a6b622dcf23fc1df4019108745d5f215d0cec9 5593 evidence.json",
       "4467d0c6bd9b1f6caa2fae7c638633b71b8a4f31f720f1d4de7eda54a42b5cf8 4244 manifest.jsonl",
       "4e1ada3bd23e902efc8d7ce6663db8622a080d583ded15ca3139e30384d38dda 729 manifest.installation-known-answer-peer.jsonl",
       "e7a3a5b92373d75e9037685cabaa9eae20eb6cfaf00d322c4f8ee54f9e5b65de 37242 report.html",
       "cdc558fa70a30b8a9de281cf51586f27a8054f0229f9f0590cafe8a68342f632 17497 certification.html",
       "c1b596cdf432534ade61ffd4d1ae938478935dfa4eda099576cf7981d9fb5765 451 signing-public-key.pem",
-      "a6f0fc2998dccc02e921e4867fe81708009285134d696d37f36cfa824d9c85d5 32568 VERIFY.md",
+      "15ccda06c8a937e8b427940ad29c56e08b44a9aea791d834efdc99afc6edd8cf 33171 VERIFY.md",
       "e28c1e4031bda5a3d7de9f9e10eac29c70f470230f49de2c304b50a74e0d81f8 84184 verify.sh",
       "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b 1 tsa-intermediates.pem",
       "ce7d6b44f5d510391be98c8d76b18709400a30cd87659bfebe1c6f97ff5181ee 1988 tsa-root.pem",

@@ -171,7 +171,7 @@ describe('the capture control at rest', () => {
     const launch = launchButton()
     expect(launch.textContent).toBe('Launch browser')
     // The default variant is the filled one; the outline variant has no accent fill.
-    expect(launch.className).toContain('bg-accent')
+    expect(launch.className).toContain('bg-accent-fill')
     expect(launch.className).not.toContain('border-border-strong')
     fireEvent.click(launch)
     expect(useAppStore.getState().startDialogCaseId).toBe('case-1')

@@ -98,22 +98,25 @@ describe.each(themes)('the %s palette', (theme) => {
     expect(contrast(token(theme, text), token(theme, plane))).toBeGreaterThanOrEqual(4.5)
   })
 
-  it.each(planes)('a control boundary is at least 3:1 on %s, hovered or not', (plane) => {
-    const control = token(theme, 'control')
-    const base = token(theme, plane)
-    expect(contrast(control, base)).toBeGreaterThanOrEqual(3)
-    expect(contrast(control, over(rgbaToken(theme, 'hover'), base))).toBeGreaterThanOrEqual(3)
-  })
-
-  // `bg-primary text-primary-foreground` is the shadcn spelling of a filled control.
-  it.each(['accent-fill', 'accent-fill-hover', 'primary'])(
-    'white text is at least 4.5:1 on %s',
-    (fill) => {
-      expect(
-        contrast(token(theme, 'primary-foreground'), token(theme, fill))
-      ).toBeGreaterThanOrEqual(4.5)
+  it.each(planes.flatMap((plane) => ['control', 'input'].map((boundary) => [boundary, plane])))(
+    'the %s boundary is at least 3:1 on %s, hovered or not',
+    (boundary, plane) => {
+      const edge = token(theme, boundary)
+      const base = token(theme, plane)
+      expect(contrast(edge, base)).toBeGreaterThanOrEqual(3)
+      expect(contrast(edge, over(rgbaToken(theme, 'hover'), base))).toBeGreaterThanOrEqual(3)
     }
   )
+
+  // `bg-primary text-primary-foreground` is the shadcn spelling of a filled control, and switch
+  // thumbs and some buttons draw in `accent-foreground`.
+  it.each(
+    ['accent-fill', 'accent-fill-hover', 'primary'].flatMap((fill) =>
+      ['primary-foreground', 'accent-foreground'].map((text) => [text, fill])
+    )
+  )('%s is at least 4.5:1 on %s', (text, fill) => {
+    expect(contrast(token(theme, text), token(theme, fill))).toBeGreaterThanOrEqual(4.5)
+  })
 
   it.each(planes)('accent text, hovered or not, is at least 4.5:1 on %s', (plane) => {
     expect(contrast(token(theme, 'accent'), token(theme, plane))).toBeGreaterThanOrEqual(4.5)
@@ -146,21 +149,22 @@ describe.each(themes)('the %s palette', (theme) => {
   it.each(['surface', 'card', 'elevated'])('the advisory mark is at least 3:1 on %s', (plane) => {
     expect(contrast(token(theme, 'warning-mark'), token(theme, plane))).toBeGreaterThanOrEqual(3)
   })
+})
 
-  it('splits the three light planes so chrome, canvas and cards read apart', () => {
-    if (theme === 'dark') return
-    expect(token(theme, 'surface')).not.toBe(token(theme, 'canvas'))
-    expect(luminance(token(theme, 'surface'))).toBeLessThan(luminance(token(theme, 'canvas')))
-    expect(luminance(token(theme, 'canvas'))).toBeLessThan(luminance(token(theme, 'card')))
-  })
+it('splits the three light planes so chrome, canvas and cards read apart', () => {
+  expect(token('light', 'surface')).not.toBe(token('light', 'canvas'))
+  expect(luminance(token('light', 'surface'))).toBeLessThan(luminance(token('light', 'canvas')))
+  expect(luminance(token('light', 'canvas'))).toBeLessThan(luminance(token('light', 'card')))
 })
 
 describe('filled controls', () => {
   // White on the dark accent text colour measures under 3:1, so anything with text or a white
   // glyph on it takes the fill token. A solid accent background stays only on marks that hold
   // nothing: dots, bars, progress fills and the skeleton. A checkbox or button moved back to
-  // `bg-accent` raises its file's count here, even when its white check sits on another line.
-  const solidAccent = /(^|[\s'"`:])bg-accent(-hover)?(?![-\w/[])/g
+  // the accent raises its file's count here, even when its white check sits on another line.
+  // Opacity of 50% or more counts as solid; the tints that stay are 40% or less.
+  const solidAccent =
+    /(^|[\s'"`:!{}(])bg-(accent(-hover)?(\/[5-9]\d|\/100)?|ring|\[var\(--color-(accent|ring)\)\])(?![-\w/[])/g
   const marks: Record<string, number> = {
     'components/captures/CaptureItem.tsx': 1,
     'components/dashboard/caseTypeStyle.ts': 1,

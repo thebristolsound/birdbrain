@@ -102,6 +102,7 @@ describe('BatchTagPopover (#665)', () => {
     await screen.findByText('phishing')
     const box = (name: string) => row(name).querySelector('span[aria-hidden="true"]')?.className
     expect(box('benign')).toMatch(/(^|\s)border-control(\s|$)/)
+    expect(box('benign')).not.toMatch(/(^|\s)bg-accent-fill(\s|$)/)
     expect(box('phishing')).toMatch(/(^|\s)bg-accent-fill(\s|$)/)
   })
 

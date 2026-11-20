@@ -229,13 +229,16 @@ describe('control boundaries', () => {
   )
   // A checkbox or switch that fills when on draws its off state in the control colour, the
   // only boundary colour that holds 3:1 on every surface.
-  const toggle = /\?\s*'(?:border-accent-fill )?bg-accent-fill'\s*:\s*'([^']*)'/g
+  const toggle = /\?\s*'(border-accent-fill )?bg-accent-fill'\s*:\s*'([^']*)'/g
   // Matched over the whole file, so a ternary Prettier wraps is checked as well as counted.
   const toggles = sources.flatMap((path) => {
     const text = readFileSync(join(root, path), 'utf-8')
     return [...text.matchAll(toggle)].map((match) => ({
       at: `${path}:${text.slice(0, match.index).split('\n').length}`,
-      off: match[1]
+      off: match[2],
+      // A checkbox that fills its border when on draws its off edge as a border; a switch track
+      // is a fill.
+      want: match[1] ? 'border-control' : 'bg-control'
     }))
   })
 
@@ -245,7 +248,7 @@ describe('control boundaries', () => {
 
   it('draws every off toggle in the control colour', () => {
     const offenders = toggles
-      .filter(({ off }) => !/\b(bg|border)-control\b/.test(off))
+      .filter(({ off, want }) => !off.split(/\s+/).includes(want))
       .map(({ at }) => at)
     expect(offenders).toEqual([])
   })

@@ -40,7 +40,7 @@ export function RelayCard({ relayUrl, inputRef }: RelayCardProps) {
         id={id}
         ref={inputRef}
         type="text"
-        className="border-border-strong font-mono"
+        className="font-mono"
         placeholder="default relays"
         value={value}
         onChange={(e) => setValue(e.target.value)}

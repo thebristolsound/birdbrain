@@ -241,6 +241,7 @@ export function DbTables() {
               <Button
                 variant="outline"
                 size="icon-sm"
+                className="border-control"
                 aria-label="Previous page"
                 onClick={() => setPage((p) => Math.max(0, p - 1))}
                 disabled={page === 0}
@@ -250,6 +251,7 @@ export function DbTables() {
               <Button
                 variant="outline"
                 size="icon-sm"
+                className="border-control"
                 aria-label="Next page"
                 onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
                 disabled={page >= totalPages - 1}

@@ -228,6 +228,8 @@ describe('menu customisation and export drill-in', () => {
     const first = renderMenu(noteTarget({ remove }))
     await openMenu()
     fireEvent.click(screen.getByText('Customise this menu…'))
+    const box = screen.getByRole('menuitemcheckbox', { name: 'Delete note…' }).querySelector('span')
+    expect(box?.className.split(/\s+/)).toContain('border-control')
     fireEvent.click(screen.getByRole('menuitemcheckbox', { name: 'Delete note…' }))
     expect(remove).not.toHaveBeenCalled()
     expect(

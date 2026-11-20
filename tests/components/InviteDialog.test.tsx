@@ -88,6 +88,7 @@ describe('InviteDialog, invite created (mock 1c step 1)', () => {
     )
     expect(dialog().dataset.step).toBe('request')
     expect(screen.getByTestId('member-code-input').getAttribute('value')).toBe('JO')
+    expect(screen.getByTestId('member-code-input').className.split(/\s+/)).toContain('border-input')
     expect(within(dialog()).queryByText('Earlier peer')).toBeNull()
   })
 

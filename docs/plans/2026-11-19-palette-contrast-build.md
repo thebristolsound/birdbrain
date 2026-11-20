@@ -42,15 +42,18 @@ its own. Every pull request carries before and after screenshots in both themes.
    solid accent backgrounds in each file against those marks, so a control moved back fails it.
 3. **Control boundaries.** Text fields, selects and the two search-field wrappers that drew
    their own border in `border-border` or `border-border-strong` take `border-input`, which
-   already points at `--color-control`. Custom checkboxes take `border-control` when
-   unchecked, and switch tracks `bg-control` when off. Tests pin every off state this slice
-   moves: a source scan for the nine toggles written as an on-off ternary, and component tests
-   for the batch tag checkbox and the screenshots checkbox, which build their classes another
-   way. Native checkboxes and radios keep Chromium's own drawing, and no icon-only outline
-   button exists today. Dashed add-rows and inline edit fields that show no border at rest are
-   not boundaries and stay as they are. Two custom radio groups keep their borders for now:
-   `AutoCaptureCard`'s exclusion-mode segments and `AddSelectorRow`'s match-mode cards. Whether
-   their edges are control boundaries waits for the maintainer.
+   already points at `--color-control`; the relay URL and Member Code fields drop the border
+   colour they passed to `Input`, so they keep its edge. Custom checkboxes take
+   `border-control` when unchecked, the context menu's customise boxes included, and switch
+   tracks `bg-control` when off. The database pager's two icon-only outline buttons take
+   `border-control`. Tests pin every off state this slice moves: a source scan for the nine
+   toggles written as an on-off ternary, and component tests for the other checkboxes, the two
+   sharing fields and the pager buttons. Native checkboxes and radios keep Chromium's own
+   drawing. Dashed add-rows and inline edit fields that show no border at rest are not
+   boundaries and stay as they are. Two custom radio groups, `AutoCaptureCard`'s
+   exclusion-mode segments and `AddSelectorRow`'s match-mode cards, and the round "i" marks in
+   `InfoTip` and `ViewHeader` keep their borders for now. Whether those edges are control
+   boundaries waits for the maintainer.
 4. **Hover tint.** `hover:bg-elevated` (100 hits in 52 files), the keyboard highlight and the open
    pill take `bg-hover`.
 5. **Status tiers.** The nominal dot draws in `--color-control`, and the hollow advisory ring,

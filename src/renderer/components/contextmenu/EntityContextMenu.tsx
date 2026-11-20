@@ -203,7 +203,7 @@ export function EntityContextMenu({
                 onSelect={(event) => event.preventDefault()}
                 className={hidden.includes(keyFor(entry.id)) ? 'opacity-45' : undefined}
               >
-                <span className="flex h-3.5 w-3.5 items-center justify-center rounded-sm border border-border-strong">
+                <span className="flex h-3.5 w-3.5 items-center justify-center rounded-sm border border-control">
                   {!hidden.includes(keyFor(entry.id)) && <Check className="h-3 w-3 text-accent" />}
                 </span>
                 {entry.label}

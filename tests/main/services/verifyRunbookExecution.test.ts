@@ -65,6 +65,7 @@ import {
   ENGINE_SCROLL_TO_LOAD
 } from '../../helpers/captureEnginePackage'
 import {
+  lineageChainPath,
   memberChainPath,
   pdfPath,
   screenshotPath,
@@ -1996,6 +1997,7 @@ describe("the runbook's receipt block under a plain shell", () => {
   // having checked nothing. The package without a receipt passes, so in each case below the
   // status comes from the damaged input alone.
   const memberChain = memberChainPath(RECEIPT_MEMBER_ID)
+  const lineageChain = lineageChainPath('source-case', RECEIPT_MEMBER_ID)
   const UNREAD_CHAIN = [
     {
       name: 'the package manifest holds a line that is not JSON',
@@ -2006,6 +2008,14 @@ describe("the runbook's receipt block under a plain shell", () => {
       name: "a member's chain holds a line that is not JSON",
       damage: () => appendFileSync(join(dir, memberChain), 'not json\n'),
       says: `CHAIN UNREADABLE: ${memberChain}`
+    },
+    {
+      name: 'a lineage chain holds a line that is not JSON',
+      damage: () => {
+        mkdirSync(dirname(join(dir, lineageChain)), { recursive: true })
+        writeFileSync(join(dir, lineageChain), 'not json\n')
+      },
+      says: `CHAIN UNREADABLE: ${lineageChain}`
     },
     {
       name: 'the package holds no chain',

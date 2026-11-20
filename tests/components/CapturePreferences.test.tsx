@@ -71,7 +71,7 @@ describe('CapturePreferences screenshots toggle', () => {
 
   // The class list opts out of the UA outline, so the replacement ring carries
   // the whole keyboard indicator. Full-strength accent, not an alpha tint: over
-  // the dark card (#6467f2 on #131316) that is 4.21:1, past WCAG 2.4.11's 3:1,
+  // the dark card (#9497ff on #17171b) that is 6.9:1, past WCAG 2.4.11's 3:1,
   // where the /25 tint it replaces was 1.34:1. The offset is what keeps the ring
   // visible when the box is checked and already filled accent.
   it('keeps a visible keyboard focus indicator', () => {

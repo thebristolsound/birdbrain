@@ -99,10 +99,12 @@ resolve_node() {
 
 # Whether pnpm runs, from the root, where corepack reads packageManager, with
 # COREPACK_ENABLE_NETWORK set to $1. Corepack's pnpm shim asks before a download when stdin is a
-# terminal; stderr goes nowhere here, so the question is turned off and stdin closed.
+# terminal; stderr goes nowhere here, so the question is turned off and stdin closed. A pnpm 10
+# of another version switches to the pinned one, downloading it, before it reads --version.
 pnpm_runs() {
   (cd "$ROOT" && PATH="$node_dir:$PATH" COREPACK_ENABLE_NETWORK="$1" \
-    COREPACK_ENABLE_DOWNLOAD_PROMPT=0 pnpm --version) </dev/null >/dev/null 2>&1
+    COREPACK_ENABLE_DOWNLOAD_PROMPT=0 npm_config_manage_package_manager_versions=false \
+    pnpm --version) </dev/null >/dev/null 2>&1
 }
 
 # Pinned version only: mise, then PATH, then the cache.
@@ -255,12 +257,16 @@ if [ -n "$node_dir" ]; then
   # Offline, so an uncached pin is fetched by `corepack install` below, not by this silent check.
   if [ "$install" = 1 ] && ! pnpm_runs 0 &&
     [ -x "$node_dir/corepack" ] && [ -w "$node_dir" ]; then
+    # `enable` writes the shims before `install` fetches pnpm. When the install fails, the
+    # shims this run wrote go again; ones already here may serve another project's cached pin.
+    created=()
+    for shim in pnpm pnpx; do
+      [ -e "$node_dir/$shim" ] || [ -L "$node_dir/$shim" ] || created+=("$node_dir/$shim")
+    done
     if ! { PATH="$node_dir:$PATH" "$node_dir/corepack" enable pnpm --install-directory "$node_dir" &&
       (cd "$ROOT" && PATH="$node_dir:$PATH" COREPACK_ENABLE_DOWNLOAD_PROMPT=0 \
         "$node_dir/corepack" install >&2); }; then
-      # `enable` writes the shim before `install` fetches pnpm; a shim with nothing behind it
-      # would pass the check below.
-      rm -f "$node_dir/pnpm" "$node_dir/pnpx"
+      [ ${#created[@]} -eq 0 ] || rm -f "${created[@]}"
       log "corepack could not provide pnpm"
     fi
   fi

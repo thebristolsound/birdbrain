@@ -18,9 +18,10 @@ const SCRIPT = resolve(__dirname, '../scripts/install-tools.sh')
 let home: string
 let root: string
 let bin: string
+let shims: string
 
-const tool = (name: string, body: string) => {
-  const path = join(bin, name)
+const tool = (name: string, body: string, dir = bin) => {
+  const path = join(dir, name)
   writeFileSync(path, `#!/bin/sh\n${body}\n`)
   chmodSync(path, 0o755)
 }
@@ -30,51 +31,68 @@ const logOf = (name: string) => {
   return existsSync(path) ? readFileSync(path, 'utf8') : ''
 }
 
+const marker = (name: string) => existsSync(join(home, name))
+
 // The script runs from a checkout of its own, so the pins and the Google style are the test's.
 // Stand-ins come first on PATH for every tool it runs, so a mise or curl in /usr/bin is shadowed.
+// `bin` holds node, so it is the script's Node folder; `shims` stands for a folder after it.
 const run = (args: string[], input = '') =>
   spawnSync('bash', [join(root, 'scripts/install-tools.sh'), ...args], {
     cwd: home,
     encoding: 'utf8',
     input,
     env: {
-      PATH: `${bin}:/usr/bin:/bin`,
+      PATH: `${bin}:${shims}:/usr/bin:/bin`,
       HOME: home,
       BIRDBRAIN_TOOLS_DIR: join(home, 'tools')
     }
   })
 
 const MISE_SHIM = 'echo "mise ERROR No version is set for shim: pnpm" >&2; exit 1'
-// A corepack pnpm shim whose pinned version is not cached: it needs the network to run.
-const UNCACHED_SHIM = [
-  '[ "$COREPACK_ENABLE_NETWORK" = 0 ] && exit 1',
+// A corepack pnpm shim: it runs once `corepack install` has cached the pin, and otherwise needs
+// the network, which the `offline` marker takes away.
+const COREPACK_SHIM = [
+  '[ -e "$HOME/cached" ] && { echo 10.28.2; exit 0; }',
+  '{ [ "$COREPACK_ENABLE_NETWORK" = 0 ] || [ -e "$HOME/offline" ]; } && exit 1',
   'touch "$HOME/downloaded"',
   'echo 10.28.2'
+].join('\n')
+// A standalone pnpm 10 of another version than the pin: it switches to the pin, downloading
+// it, unless its version management is off.
+const OTHER_PNPM = [
+  '[ "$npm_config_manage_package_manager_versions" = false ] || touch "$HOME/downloaded"',
+  'echo 10.24.0'
 ].join('\n')
 
 beforeEach(() => {
   home = mkdtempSync(join(tmpdir(), 'install-tools-'))
   root = join(home, 'checkout')
   bin = join(home, 'bin')
+  shims = join(home, 'shims')
   mkdirSync(join(root, 'scripts'), { recursive: true })
   mkdirSync(join(root, '.vale/styles/Google'), { recursive: true })
   mkdirSync(bin)
+  mkdirSync(shims)
   copyFileSync(SCRIPT, join(root, 'scripts/install-tools.sh'))
   writeFileSync(join(root, '.nvmrc'), '24\n')
   writeFileSync(join(root, '.mise.toml'), '[tools]\nvale = "3.24.0"\n')
+  writeFileSync(join(home, 'shim'), `#!/bin/sh\n${COREPACK_SHIM}\n`)
   tool('node', 'echo v24.0.0')
   tool('vale', 'echo vale version v3.24.0')
   tool('mise', 'exit 1')
   tool('curl', 'exit 1')
-  // `enable` writes a pnpm that runs, as corepack's does once `install` has cached the pin.
+  // Like corepack's, `enable` writes only the shims that are absent and `install` caches the pin.
   tool(
     'corepack',
     [
       'echo "$*" >>"$HOME/corepack.log"',
-      'if [ "$1" = enable ]; then',
-      '  printf "#!/bin/sh\\necho 10.28.2\\n" >"$4/pnpm"',
-      '  chmod +x "$4/pnpm"',
-      'fi'
+      'case "$1" in',
+      '  enable)',
+      '    for f in pnpm pnpx; do',
+      '      [ -e "$4/$f" ] || { cp "$HOME/shim" "$4/$f"; chmod +x "$4/$f"; }',
+      '    done ;;',
+      '  install) [ -e "$HOME/offline" ] && exit 1; touch "$HOME/cached" ;;',
+      'esac'
     ].join('\n')
   )
 })
@@ -99,7 +117,7 @@ describe('install-tools.sh pnpm check', () => {
   })
 
   it('installs pnpm through corepack when the pnpm on PATH does not run', () => {
-    tool('pnpm', MISE_SHIM)
+    tool('pnpm', MISE_SHIM, shims)
     const { status, stderr } = run([])
     expect(stderr).not.toMatch(/missing:/)
     expect(status).toBe(0)
@@ -122,19 +140,58 @@ describe('install-tools.sh pnpm check', () => {
     expect(logOf('corepack.log')).toBe('')
   })
 
-  it('does not let a check-only run download pnpm', () => {
-    tool('pnpm', UNCACHED_SHIM)
+  it('does not let a check-only run download pnpm through corepack', () => {
+    tool('pnpm', COREPACK_SHIM)
     const { status, stderr } = run(['--no-install'])
     expect(stderr).toMatch(/missing: pnpm$/m)
     expect(status).toBe(1)
-    expect(existsSync(join(home, 'downloaded'))).toBe(false)
+    expect(marker('downloaded')).toBe(false)
+  })
+
+  it('keeps a pnpm of another version from switching to the pin', () => {
+    tool('pnpm', OTHER_PNPM)
+    for (const args of [['--no-install'], []]) {
+      const { status } = run(args)
+      expect(status).toBe(0)
+      expect(marker('downloaded')).toBe(false)
+    }
   })
 
   it('leaves the download of an uncached pnpm to corepack install', () => {
-    tool('pnpm', UNCACHED_SHIM)
+    tool('pnpm', COREPACK_SHIM)
     const { status } = run([])
     expect(status).toBe(0)
-    expect(existsSync(join(home, 'downloaded'))).toBe(false)
+    expect(marker('downloaded')).toBe(false)
     expect(logOf('corepack.log')).toBe(`enable pnpm --install-directory ${bin}\ninstall\n`)
+  })
+
+  it('lets the final check fetch the pin when the corepack step cannot run', () => {
+    rmSync(join(bin, 'corepack'))
+    tool('pnpm', COREPACK_SHIM)
+    const { status } = run([])
+    expect(status).toBe(0)
+    expect(marker('downloaded')).toBe(true)
+  })
+
+  it('keeps shims that were there before when corepack install fails', () => {
+    tool('pnpm', COREPACK_SHIM)
+    tool('pnpx', COREPACK_SHIM)
+    writeFileSync(join(home, 'offline'), '')
+    const { status, stderr } = run([])
+    expect(stderr).toMatch(/corepack could not provide pnpm/)
+    expect(stderr).toMatch(/missing: pnpm$/m)
+    expect(status).toBe(1)
+    expect(existsSync(join(bin, 'pnpm'))).toBe(true)
+    expect(existsSync(join(bin, 'pnpx'))).toBe(true)
+  })
+
+  it('removes the shims it wrote when corepack install fails', () => {
+    writeFileSync(join(home, 'offline'), '')
+    const { status, stderr } = run([])
+    expect(stderr).toMatch(/corepack could not provide pnpm/)
+    expect(status).toBe(1)
+    expect(logOf('corepack.log')).toBe(`enable pnpm --install-directory ${bin}\ninstall\n`)
+    expect(existsSync(join(bin, 'pnpm'))).toBe(false)
+    expect(existsSync(join(bin, 'pnpx'))).toBe(false)
   })
 })

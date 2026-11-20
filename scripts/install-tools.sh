@@ -40,6 +40,8 @@ fi
 
 # A mise shim on PATH installs a missing pinned version when it runs; a lookup must not.
 export MISE_NOT_FOUND_AUTO_INSTALL=0
+# Corepack's pnpm shim fetches a pinned pnpm it has not cached when it runs; a lookup must not.
+[ "$install" = 1 ] || export COREPACK_ENABLE_NETWORK=0
 
 log() { echo "[install-tools] $*" >&2; }
 
@@ -91,6 +93,14 @@ resolve_node() {
     if [ "$(node_major_in "$d")" = "$NODE_MAJOR" ]; then echo "$d"; return; fi
   done
   return 1
+}
+
+# Whether pnpm runs, from the root, where corepack reads packageManager, with
+# COREPACK_ENABLE_NETWORK set to $1. Corepack's pnpm shim asks before a download when stdin is a
+# terminal; stderr goes nowhere here, so the question is turned off and stdin closed.
+pnpm_runs() {
+  (cd "$ROOT" && PATH="$node_dir:$PATH" COREPACK_ENABLE_NETWORK="$1" \
+    COREPACK_ENABLE_DOWNLOAD_PROMPT=0 pnpm --version) </dev/null >/dev/null 2>&1
 }
 
 # Pinned version only: mise, then PATH, then the cache.
@@ -240,7 +250,8 @@ if [ -n "$node_dir" ]; then
   [ "$node_dir" = "$(path_dir node || true)" ] || dirs+=("$node_dir")
   # A cache-installed Node has no pnpm; corepack ships with it and reads packageManager. pnpm
   # must run, not only resolve: a mise pnpm shim with no pinned version is on PATH and exits 1.
-  if [ "$install" = 1 ] && ! PATH="$node_dir:$PATH" pnpm --version >/dev/null 2>&1 &&
+  # Offline, so an uncached pin is fetched by `corepack install` below, not by this silent check.
+  if [ "$install" = 1 ] && ! pnpm_runs 0 &&
     [ -x "$node_dir/corepack" ] && [ -w "$node_dir" ]; then
     if ! { PATH="$node_dir:$PATH" "$node_dir/corepack" enable pnpm --install-directory "$node_dir" &&
       (cd "$ROOT" && PATH="$node_dir:$PATH" COREPACK_ENABLE_DOWNLOAD_PROMPT=0 \
@@ -251,7 +262,7 @@ if [ -n "$node_dir" ]; then
       log "corepack could not provide pnpm"
     fi
   fi
-  PATH="$node_dir:$PATH" pnpm --version >/dev/null 2>&1 || missing+=("pnpm")
+  pnpm_runs "${COREPACK_ENABLE_NETWORK:-1}" || missing+=("pnpm")
 else
   missing+=("node $NODE_MAJOR")
 fi

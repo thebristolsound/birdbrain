@@ -9,6 +9,8 @@
 #
 #   scripts/install-tools.sh                    install what is missing, then resolve
 #   scripts/install-tools.sh --no-install       resolve only: no mise install, no download, no writes
+#                                               by this script (corepack's pnpm shim, which the
+#                                               pnpm check runs, may still write to its own cache)
 #   scripts/install-tools.sh --styles-from-cache <checkout>
 #                                               copy the cached Google style into <checkout> when it
 #                                               has none; no download, and exit 1 with no cached copy
@@ -40,6 +42,8 @@ fi
 
 # A mise shim on PATH installs a missing pinned version when it runs; a lookup must not.
 export MISE_NOT_FOUND_AUTO_INSTALL=0
+# Corepack's pnpm shim fetches a pinned pnpm it has not cached when it runs; a lookup must not.
+[ "$install" = 1 ] || export COREPACK_ENABLE_NETWORK=0
 
 log() { echo "[install-tools] $*" >&2; }
 
@@ -91,6 +95,17 @@ resolve_node() {
     if [ "$(node_major_in "$d")" = "$NODE_MAJOR" ]; then echo "$d"; return; fi
   done
   return 1
+}
+
+# Whether pnpm runs, from the root, where corepack reads packageManager, with
+# COREPACK_ENABLE_NETWORK set to $1. Corepack's pnpm shim asks before a download when stdin is a
+# terminal; stderr goes nowhere here, so the question is turned off and stdin closed. A pnpm of
+# another version switches to the pinned one, downloading it, before it reads --version; pnpm 10
+# reads the first setting that stops it and pnpm 11 the second.
+pnpm_runs() {
+  (cd "$ROOT" && PATH="$node_dir:$PATH" COREPACK_ENABLE_NETWORK="$1" \
+    COREPACK_ENABLE_DOWNLOAD_PROMPT=0 npm_config_manage_package_manager_versions=false \
+    pnpm_config_pm_on_fail=ignore pnpm --version) </dev/null >/dev/null 2>&1
 }
 
 # Pinned version only: mise, then PATH, then the cache.
@@ -238,19 +253,21 @@ if [ -z "$node_dir" ] && [ "$install" = 1 ]; then
 fi
 if [ -n "$node_dir" ]; then
   [ "$node_dir" = "$(path_dir node || true)" ] || dirs+=("$node_dir")
-  # A cache-installed Node has no pnpm; corepack ships with it and reads packageManager.
-  if [ "$install" = 1 ] && ! PATH="$node_dir:$PATH" command -v pnpm >/dev/null 2>&1 &&
+  # A cache-installed Node has no pnpm; corepack ships with it and reads packageManager. pnpm
+  # must run, not only resolve: a mise pnpm shim with no pinned version is on PATH and exits 1.
+  # Offline, so an uncached pin is fetched by `corepack install` below, not by this silent check.
+  if [ "$install" = 1 ] && ! pnpm_runs 0 &&
     [ -x "$node_dir/corepack" ] && [ -w "$node_dir" ]; then
-    if ! { PATH="$node_dir:$PATH" "$node_dir/corepack" enable pnpm --install-directory "$node_dir" &&
-      (cd "$ROOT" && PATH="$node_dir:$PATH" COREPACK_ENABLE_DOWNLOAD_PROMPT=0 \
-        "$node_dir/corepack" install >&2); }; then
-      # `enable` writes the shim before `install` fetches pnpm; a shim with nothing behind it
-      # would pass the check below.
-      rm -f "$node_dir/pnpm" "$node_dir/pnpx"
+    # `enable` replaces any pnpm or pnpx here that is not its own link, so it runs only once the
+    # pin is cached: a failed install leaves this folder as it was.
+    if ! { (cd "$ROOT" && PATH="$node_dir:$PATH" COREPACK_ENABLE_DOWNLOAD_PROMPT=0 \
+      "$node_dir/corepack" install >&2) &&
+      PATH="$node_dir:$PATH" "$node_dir/corepack" enable pnpm \
+        --install-directory "$node_dir"; }; then
       log "corepack could not provide pnpm"
     fi
   fi
-  PATH="$node_dir:$PATH" command -v pnpm >/dev/null 2>&1 || missing+=("pnpm")
+  pnpm_runs "${COREPACK_ENABLE_NETWORK:-1}" || missing+=("pnpm")
 else
   missing+=("node $NODE_MAJOR")
 fi

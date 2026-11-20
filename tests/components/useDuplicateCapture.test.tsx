@@ -140,5 +140,17 @@ describe('duplicateRefusalMessage', () => {
         'its verification is not affected'
     )
     expect(mismatch).not.toMatch(/currently verifies|import/i)
+    // Also sent only after the capture verified: a pre-chain capture is
+    // grandfathered as verified but has no entry to read (#2097).
+    const unreadable = duplicateRefusalMessage({
+      status: 'rejected',
+      reason: 'not_verified',
+      detail: 'entry-unreadable'
+    })
+    expect(unreadable).toBe(
+      'This capture cannot be duplicated because its manifest entry cannot be read; ' +
+        'its verification is not affected'
+    )
+    expect(unreadable).not.toMatch(/currently verifies/)
   })
 })

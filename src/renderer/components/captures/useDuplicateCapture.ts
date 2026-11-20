@@ -22,7 +22,13 @@ export function duplicateRefusalMessage(
       if (result.detail === 'legacy') {
         return 'Legacy HTML captures have no manifest entry, so they cannot be duplicated'
       }
-      // Main sends this detail only after the capture verified (#1954).
+      // Main sends these two details only after the capture verified (#1954, #2097).
+      if (result.detail === 'entry-unreadable') {
+        return (
+          'This capture cannot be duplicated because its manifest entry cannot be read; ' +
+          'its verification is not affected'
+        )
+      }
       if (result.detail === 'entry-mismatch') {
         return (
           'This capture cannot be duplicated because it cannot be matched to its manifest ' +

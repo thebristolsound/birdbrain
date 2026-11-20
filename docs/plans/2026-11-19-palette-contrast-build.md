@@ -1,5 +1,7 @@
 # Palette and contrast build
 
+**Status:** active
+
 **Date:** 2026-11-19
 
 **Spec:** [Palette and contrast overhaul](../specs/2026-11-17-palette-contrast-overhaul-design.md),
@@ -19,7 +21,8 @@ and white text on it measures under 3:1, so every `bg-accent` fill would fail th
 changed. Slice 1 adds the fill tokens and moves the shared button onto them. Slice 2 moves the
 remaining fills and then changes the accent.
 
-Each slice is one pull request with before and after screenshots in both themes.
+Slices 1 and 2 ship as one pull request, since the accent change needs both; each later slice is
+its own. Every pull request carries before and after screenshots in both themes.
 
 ## Slices
 
@@ -30,11 +33,13 @@ Each slice is one pull request with before and after screenshots in both themes.
    `--color-input` points at `--color-control`. The shared button's `default` variant takes the
    fill tokens. `tests/renderer/themeContrast.test.ts` measures text, control, fill and
    advisory-mark ratios in both themes.
-2. **Accent split.** Move every filled control off the solid accent onto the fill tokens: 32 of
-   the 55 lines with a solid `bg-accent` (buttons, count badges, checked checkboxes, switch
-   tracks). The other 23 are dots, bars, selection marks and tints, which keep the accent. Then
-   set `--color-accent` to `#9497ff` dark and `#4346d1` light, with the bundle's hover and subtle
-   values. A test fails any line that puts `text-white` on a solid `bg-accent`. The maintainer
+2. **Accent split.** Move every filled control off the accent onto the fill tokens. At the frame
+   of reference, 56 lines carry `bg-accent`, solid or as a tint. Slice 1 moves the shared button,
+   and this slice the other 32: buttons, count badges, checked checkboxes and switch tracks. The
+   23 that keep the accent are 16 solid dots, bars and progress fills and 7 tints, none with
+   white text on it. Then set `--color-accent` to `#9497ff` dark and `#4346d1` light, with the
+   bundle's hover and subtle values, and point `--color-primary` at the fill. A test counts the
+   solid accent backgrounds in each file against those marks, so a control moved back fails it. The maintainer
    approved this slice on 2026-11-19, in the Claude Code session that built it.
 3. **Control boundaries.** Inputs, search fields, checkboxes, radios, the switch track and
    icon-only outline buttons take `border-control`. Hairlines between regions stay on

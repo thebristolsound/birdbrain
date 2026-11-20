@@ -5,10 +5,11 @@
 **Status:** Accepted by the maintainer on 2026-11-19. Drawn on the consolidation design canvas
 (board P and every other board) and graded by two model judges: both themes until each judge passed
 it (Fable on its third round, Opus on its fourth), then the light theme alone for three rounds.
-Three of its status rules already hold on main, in `statusGroupModel.ts` and `StatusGroup.tsx`: the
-hollow advisory ring (#2230), Connected as nominal, and the problem icon and words in
-`--color-danger-fg`. Slice 1.1 has also lifted dark faint text to `#85858e`, short of this
-palette's value. The rest is not built, and the Birdbrain design system artifact is unchanged.
+Two of its status rules already hold on main, in `statusGroupModel.ts` and `StatusGroup.tsx`: the
+hollow advisory ring (#2230) and Connected as nominal. The problem rule holds in part: the bar's
+icon and the popover's words take `--color-danger-fg`, but the bar's word does not. Slice 1.1 has
+also lifted dark faint text to `#85858e`, short of this palette's value. The rest is not built,
+and the Birdbrain design system artifact is unchanged.
 
 **Frame of reference:** `origin/main` at `d4dc422`. Token values in the "now" columns are cited
 from `src/renderer/styles/globals.css` at that commit. The canvas draws from the Birdbrain design
@@ -141,6 +142,9 @@ at least:
   stand.
 - Filled on-states (a checked checkbox, an on switch) take `--color-accent-fill`, as the button
   does.
+- `StatusGroup`'s problem word in the bar (`status-word`) is `text-text-secondary` today and takes
+  `--color-danger-fg`. Its icon is the signal's own (the Egress icon or `Activity`), not the
+  triangle rule 2 names.
 - `StatusGroup`'s nominal dot (`DOT.nominal`, now `bg-text-faint`) moves to `--color-control`.
 - `StatusGroup`'s popover rows: nominal words use `text-text-secondary` today, the colour rule 2
   gives advisory words. They move to `--color-text-muted`, so advisory stays a step brighter.

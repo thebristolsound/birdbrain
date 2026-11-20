@@ -9,6 +9,8 @@
 #
 #   scripts/install-tools.sh                    install what is missing, then resolve
 #   scripts/install-tools.sh --no-install       resolve only: no mise install, no download, no writes
+#                                               by this script (corepack's pnpm shim, which the
+#                                               pnpm check runs, may still write to its own cache)
 #   scripts/install-tools.sh --styles-from-cache <checkout>
 #                                               copy the cached Google style into <checkout> when it
 #                                               has none; no download, and exit 1 with no cached copy

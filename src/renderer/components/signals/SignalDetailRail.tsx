@@ -157,7 +157,7 @@ export function SignalDetailRail({
                 onClick={() => onToggleEnabled(signal)}
                 className={[
                   'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors',
-                  signal.enabled ? 'bg-accent' : 'bg-text-faint'
+                  signal.enabled ? 'bg-accent-fill' : 'bg-text-faint'
                 ].join(' ')}
               >
                 <span

@@ -34,8 +34,8 @@ describe('titleBarOverlay', () => {
   it('spans the top bar and carries its surface colour per theme', () => {
     const dark = titleBarOverlay('dark', 'linux')
     const light = titleBarOverlay('light', 'linux')
-    expect(dark).toMatchObject({ height: TITLE_BAR_HEIGHT, color: '#0e0e11' })
-    expect(light).toMatchObject({ height: TITLE_BAR_HEIGHT, color: '#f4f4f5' })
+    expect(dark).toMatchObject({ height: TITLE_BAR_HEIGHT, color: '#111114' })
+    expect(light).toMatchObject({ height: TITLE_BAR_HEIGHT, color: '#f1f1f4' })
     expect(dark?.symbolColor).not.toBe(light?.symbolColor)
   })
 
@@ -46,8 +46,8 @@ describe('titleBarOverlay', () => {
 
 describe('windowBackgroundColor', () => {
   it('follows the theme canvas', () => {
-    expect(windowBackgroundColor('dark')).toBe('#090a0b')
-    expect(windowBackgroundColor('light')).toBe('#fafafa')
+    expect(windowBackgroundColor('dark')).toBe('#0b0b0d')
+    expect(windowBackgroundColor('light')).toBe('#fbfbfc')
   })
 })
 

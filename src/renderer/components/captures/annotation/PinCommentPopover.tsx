@@ -88,7 +88,7 @@ export function PinCommentPopover({
               type="button"
               onClick={() => onSave(body)}
               disabled={saving}
-              className="h-6 rounded bg-accent px-2.5 font-display text-[11px] font-semibold text-white hover:bg-accent-hover disabled:opacity-40"
+              className="h-6 rounded bg-accent-fill px-2.5 font-display text-[11px] font-semibold text-white hover:bg-accent-fill-hover disabled:opacity-40"
             >
               {isDraft ? 'Add pin' : 'Save'}
             </button>

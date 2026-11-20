@@ -263,7 +263,7 @@ export function SignalRow({
               }}
               className={[
                 'relative inline-flex h-4 w-[30px] shrink-0 items-center rounded-full transition-colors',
-                signal.enabled ? 'bg-accent' : 'bg-text-faint'
+                signal.enabled ? 'bg-accent-fill' : 'bg-text-faint'
               ].join(' ')}
             >
               <span

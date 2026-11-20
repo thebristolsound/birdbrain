@@ -1,14 +1,59 @@
 import { describe, expect, it } from 'vitest'
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 const css = readFileSync(join(process.cwd(), 'src/renderer/styles/globals.css'), 'utf-8')
-const dark = css.split('html.dark {')[1]?.split('}')[0] ?? ''
+const blocks = {
+  light: css.split('@theme {')[1]?.split('}')[0] ?? '',
+  dark: css.split('html.dark {')[1]?.split('}')[0] ?? ''
+}
+type Theme = keyof typeof blocks
+
+/**
+ * The six-digit hex a token resolves to, following `var()` aliases. The dark block overrides
+ * only what changes, so a token it does not declare falls back to the light declaration and
+ * its aliases resolve against the dark values, as on the page.
+ */
+function token(theme: Theme, name: string): string {
+  const declared = (block: string): string | undefined =>
+    new RegExp(`--color-${name}:\\s*([^;]+);`).exec(block)?.[1].trim()
+  const value = declared(blocks[theme]) ?? (theme === 'dark' ? declared(blocks.light) : undefined)
+  const alias = value && /^var\(--color-([\w-]+)\)$/.exec(value)
+  if (alias) return token(theme, alias[1])
+  if (!value || !/^#[0-9a-fA-F]{6}$/.test(value)) {
+    throw new Error(`${theme} resolves --color-${name} to no six-digit hex`)
+  }
+  return value.toLowerCase()
+}
 
 function darkToken(name: string): string {
-  const match = new RegExp(`--color-${name}:\\s*(#[0-9a-fA-F]{6})\\s*;`).exec(dark)
-  if (!match) throw new Error(`html.dark declares no six-digit hex for --color-${name}`)
-  return match[1].toLowerCase()
+  return token('dark', name)
+}
+
+function rgbaToken(theme: Theme, name: string): [number, number, number, number] {
+  const declared = (block: string) =>
+    new RegExp(
+      `--color-${name}:\\s*rgba\\((\\d+),\\s*(\\d+),\\s*(\\d+),\\s*([\\d.]+)\\)\\s*;`
+    ).exec(block)
+  const match = declared(blocks[theme]) ?? (theme === 'dark' ? declared(blocks.light) : null)
+  if (!match) throw new Error(`${theme} declares no rgba() for --color-${name}`)
+  const [, r, g, b, a] = match
+  return [Number(r), Number(g), Number(b), Number(a)]
+}
+
+/** An rgba tint composited over an opaque colour, as the browser paints it. */
+function over([r, g, b, a]: [number, number, number, number], base: string): string {
+  return (
+    '#' +
+    [r, g, b]
+      .map((channel, i) => {
+        const under = parseInt(base.slice(1 + i * 2, 3 + i * 2), 16)
+        return Math.round(channel * a + under * (1 - a))
+          .toString(16)
+          .padStart(2, '0')
+      })
+      .join('')
+  )
 }
 
 function luminance(hex: string): number {
@@ -25,6 +70,9 @@ function contrast(a: string, b: string): number {
   return (lighter + 0.05) / (darker + 0.05)
 }
 
+const themes: Theme[] = ['light', 'dark']
+const planes = ['canvas', 'surface', 'card', 'elevated']
+
 describe('faint text in the dark theme', () => {
   it('measures contrast as WCAG 2 defines it', () => {
     expect(contrast('#ffffff', '#000000')).toBeCloseTo(21, 5)
@@ -40,5 +88,136 @@ describe('faint text in the dark theme', () => {
     const muted = darkToken('text-muted')
     expect(faint).not.toBe(muted)
     expect(luminance(faint)).toBeLessThan(luminance(muted))
+  })
+})
+
+describe.each(themes)('the %s palette', (theme) => {
+  it.each(
+    planes.flatMap((plane) =>
+      ['text-primary', 'text-secondary', 'text-muted', 'text-faint'].map((text) => [text, plane])
+    )
+  )('%s is at least 4.5:1 on %s', (text, plane) => {
+    expect(contrast(token(theme, text), token(theme, plane))).toBeGreaterThanOrEqual(4.5)
+  })
+
+  it.each(planes.flatMap((plane) => ['control', 'input'].map((boundary) => [boundary, plane])))(
+    'the %s boundary is at least 3:1 on %s, hovered or not',
+    (boundary, plane) => {
+      const edge = token(theme, boundary)
+      const base = token(theme, plane)
+      expect(contrast(edge, base)).toBeGreaterThanOrEqual(3)
+      expect(contrast(edge, over(rgbaToken(theme, 'hover'), base))).toBeGreaterThanOrEqual(3)
+    }
+  )
+
+  // `bg-primary text-primary-foreground` is the shadcn spelling of a filled control, and switch
+  // thumbs and some buttons draw in `accent-foreground`.
+  it.each(
+    ['accent-fill', 'accent-fill-hover', 'primary'].flatMap((fill) =>
+      ['primary-foreground', 'accent-foreground'].map((text) => [text, fill])
+    )
+  )('%s is at least 4.5:1 on %s', (text, fill) => {
+    expect(contrast(token(theme, text), token(theme, fill))).toBeGreaterThanOrEqual(4.5)
+  })
+
+  it.each(planes)('accent text, hovered or not, is at least 4.5:1 on %s', (plane) => {
+    expect(contrast(token(theme, 'accent'), token(theme, plane))).toBeGreaterThanOrEqual(4.5)
+    expect(contrast(token(theme, 'accent-hover'), token(theme, plane))).toBeGreaterThanOrEqual(4.5)
+  })
+
+  // The accent badge, the toast action and the info medallion put accent text on the tint.
+  it.each(planes)('accent text is at least 4.5:1 on the accent tint over %s', (plane) => {
+    const tint = over(rgbaToken(theme, 'accent-subtle'), token(theme, plane))
+    expect(contrast(token(theme, 'accent'), tint)).toBeGreaterThanOrEqual(4.5)
+  })
+
+  it.each(
+    planes.flatMap((plane) =>
+      [
+        'success-fg',
+        'danger-fg',
+        'warning-fg',
+        'hue-orange-fg',
+        'hue-sky-fg',
+        'hue-pink-fg',
+        'hue-teal-fg',
+        'hue-violet-fg'
+      ].map((text) => [text, plane])
+    )
+  )('%s is at least 4.5:1 on %s', (text, plane) => {
+    expect(contrast(token(theme, text), token(theme, plane))).toBeGreaterThanOrEqual(4.5)
+  })
+
+  // Badges, toast medallions and the Verified mark put status text on its own 10% tint.
+  it.each(
+    planes.flatMap((plane) => ['success', 'danger', 'warning'].map((status) => [status, plane]))
+  )('%s text is at least 4.5:1 on its own tint over %s', (status, plane) => {
+    const tint = over(rgbaToken(theme, `${status}-surface`), token(theme, plane))
+    expect(contrast(token(theme, `${status}-fg`), tint)).toBeGreaterThanOrEqual(4.5)
+  })
+
+  it.each(
+    planes.flatMap((plane) =>
+      ['success-fg', 'danger-fg', 'warning-fg'].map((text) => [text, plane])
+    )
+  )('%s is at least 4.5:1 on a hovered row over %s', (text, plane) => {
+    const hovered = over(rgbaToken(theme, 'hover'), token(theme, plane))
+    expect(contrast(token(theme, text), hovered)).toBeGreaterThanOrEqual(4.5)
+  })
+
+  it.each(['surface', 'card', 'elevated'])('the advisory mark is at least 3:1 on %s', (plane) => {
+    expect(contrast(token(theme, 'warning-mark'), token(theme, plane))).toBeGreaterThanOrEqual(3)
+  })
+})
+
+it('splits the three light planes so chrome, canvas and cards read apart', () => {
+  expect(token('light', 'surface')).not.toBe(token('light', 'canvas'))
+  expect(luminance(token('light', 'surface'))).toBeLessThan(luminance(token('light', 'canvas')))
+  expect(luminance(token('light', 'canvas'))).toBeLessThan(luminance(token('light', 'card')))
+})
+
+describe('filled controls', () => {
+  // White on the dark accent text colour measures under 3:1, so anything with text or a white
+  // glyph on it takes the fill token. A solid accent background stays only on marks that hold
+  // nothing: dots, bars, progress fills and the skeleton. A checkbox or button moved back to
+  // the accent raises its file's count here, even when its white check sits on another line.
+  // Opacity of 50% or more counts as solid; the tints that stay are 40% or less.
+  const solidAccent =
+    /(^|[\s'"`:!{}(])bg-(accent(-hover)?(\/[5-9]\d|\/100)?|ring|\[var\(--color-(accent|ring)\)\]|\(--color-(accent|ring)\))(?![-\w/[])/g
+  const marks: Record<string, number> = {
+    'components/captures/CaptureItem.tsx': 1,
+    'components/dashboard/caseTypeStyle.ts': 1,
+    'components/dashboard/cases/NewCaseWizard.tsx': 1,
+    'components/export/ExportProgress.tsx': 1,
+    'components/launchedBrowser/CaptureControl.tsx': 1,
+    'components/layout/CommandPalette.tsx': 1,
+    'components/layout/Sidebar.tsx': 2,
+    'components/layout/TopBar.tsx': 1,
+    'components/overview/ActivityTimeline.tsx': 1,
+    'components/settings/UpdatesConfig.tsx': 1,
+    'components/sharing/InviteDialog.tsx': 1,
+    'components/sharing/SyncCard.tsx': 1,
+    'components/sharing/memberModel.ts': 2,
+    'components/ui/skeleton.tsx': 1
+  }
+  const root = join(process.cwd(), 'src/renderer')
+  const sources = readdirSync(root, { recursive: true, encoding: 'utf-8' }).filter((path) =>
+    /\.tsx?$/.test(path)
+  )
+
+  it('reads the renderer sources', () => {
+    expect(sources.length).toBeGreaterThan(100)
+  })
+
+  it('keeps a solid accent background to the dots, bars and progress fills', () => {
+    const found = Object.fromEntries(
+      sources
+        .map((path) => [
+          path.replaceAll('\\', '/'),
+          readFileSync(join(root, path), 'utf-8').match(solidAccent)?.length ?? 0
+        ])
+        .filter(([, count]) => count !== 0)
+    )
+    expect(found).toEqual(marks)
   })
 })

@@ -183,7 +183,7 @@ describe('Launch browser', () => {
     })) as HTMLButtonElement
     // The 28 pixel control, and the bar's one filled button.
     expect(launch.className).toContain('h-7')
-    expect(launch.className).toContain('bg-accent')
+    expect(launch.className).toMatch(/(^|\s)bg-accent-fill(\s|$)/)
     await waitFor(() => expect(launch.getAttribute('aria-disabled')).toBe('false'))
     fireEvent.click(launch)
     expect(useAppStore.getState().startDialogCaseId).toBe('case1')

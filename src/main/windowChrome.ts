@@ -25,8 +25,8 @@ const THEME_COLORS: Record<
   WindowTheme,
   { surface: string; canvas: string; symbol: string; tint: string }
 > = {
-  dark: { surface: '#0e0e11', canvas: '#090a0b', symbol: '#a1a1aa', tint: '#1c1c35' },
-  light: { surface: '#f4f4f5', canvas: '#fafafa', symbol: '#52525b', tint: '#e6e6f5' }
+  dark: { surface: '#111114', canvas: '#0b0b0d', symbol: '#a8a8b2', tint: '#1f2035' },
+  light: { surface: '#f1f1f4', canvas: '#fbfbfc', symbol: '#52525b', tint: '#e2e3f2' }
 }
 
 export function windowBackgroundColor(theme: WindowTheme): string {

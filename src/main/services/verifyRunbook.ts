@@ -378,13 +378,15 @@ expected absent on exactly the same terms as captures.
 \`\`\`sh
 list=$(mktemp)
 failed=0
-if [ -s ${ROOT.manifest} ]; then
-  jq -c 'select(.type == "exhibit")' ${ROOT.manifest} >"$list" ||
-    { echo "CHAIN UNREADABLE: ${ROOT.manifest}"; failed=1; }
-else
+if [ ! -e ${ROOT.manifest} ]; then
+  echo "CHAIN MISSING OR EMPTY: ${ROOT.manifest}"; failed=1
+elif ! jq -c 'select(.type == "exhibit")' ${ROOT.manifest} >"$list"; then
+  echo "CHAIN UNREADABLE: ${ROOT.manifest}"; failed=1
+elif ! jq -en 'any(inputs; type == "object")' ${ROOT.manifest} >/dev/null; then
   echo "CHAIN MISSING OR EMPTY: ${ROOT.manifest}"; failed=1
 fi
-# Read from a file, not a pipe: sh and bash run a piped loop in a subshell, losing jq's status.
+# Read from a file, not a pipe: a pipeline's status is its last command's, which drops
+# jq's, and sh and bash run a piped loop in a subshell, which drops the loop's flag.
 while IFS= read -r ex; do
   rel=$(printf '%s' "$ex" | jq -r '.path' | cut -d/ -f2-)
   num=$(printf '%s' "$ex" | jq -r '.exhibitNumber')
@@ -409,10 +411,11 @@ position in the file: an index says where an entry sits, not what it is about.
 \`\`\`sh
 list=$(mktemp)
 failed=0
-if [ -s ${ROOT.manifest} ]; then
-  jq -c 'select(.type == "derivation")' ${ROOT.manifest} >"$list" ||
-    { echo "CHAIN UNREADABLE: ${ROOT.manifest}"; failed=1; }
-else
+if [ ! -e ${ROOT.manifest} ]; then
+  echo "CHAIN MISSING OR EMPTY: ${ROOT.manifest}"; failed=1
+elif ! jq -c 'select(.type == "derivation")' ${ROOT.manifest} >"$list"; then
+  echo "CHAIN UNREADABLE: ${ROOT.manifest}"; failed=1
+elif ! jq -en 'any(inputs; type == "object")' ${ROOT.manifest} >/dev/null; then
   echo "CHAIN MISSING OR EMPTY: ${ROOT.manifest}"; failed=1
 fi
 while IFS= read -r d; do
@@ -431,8 +434,8 @@ rm -f "$list"
 \`\`\`
 
 Both blocks above also exit non-zero when \`${ROOT.manifest}\` is missing or
-empty, printing \`CHAIN MISSING OR EMPTY\`, and when \`jq\` cannot parse it,
-printing \`CHAIN UNREADABLE\`.
+holds no JSON object, printing \`CHAIN MISSING OR EMPTY\`, and when \`jq\` fails
+on it, printing \`CHAIN UNREADABLE\`.
 
 ${runbookHeading(6)}
 
@@ -504,13 +507,19 @@ for \`${ROOT.manifest}\` and for every member and lineage chain alike:
 receipt=$(mktemp)
 list=$(mktemp)
 failed=0
-# A member who has written nothing holds an empty chain; the package's own is never empty.
-[ -s ${ROOT.manifest} ] || { echo "CHAIN MISSING OR EMPTY: ${ROOT.manifest}"; failed=1; }
+[ -e ${ROOT.manifest} ] || { echo "CHAIN MISSING OR EMPTY: ${ROOT.manifest}"; failed=1; }
 for chain in ${ROOT.manifest} ${memberChainPath('*')} ${lineageChainPath('*', '*')}; do
   [ -e "$chain" ] || continue
-  jq -c '${VERIFY_RECIPES.receiptTokenFilter}' "$chain" >"$list" ||
-    { echo "CHAIN UNREADABLE: $chain"; failed=1; }
-  # Read from a file, not a pipe: sh and bash run a piped loop in a subshell, losing its flag.
+  # A member who has written nothing holds an empty chain, which passes; the package's own
+  # chain must hold an entry.
+  if ! jq -c '${VERIFY_RECIPES.receiptTokenFilter}' "$chain" >"$list"; then
+    echo "CHAIN UNREADABLE: $chain"; failed=1
+  elif [ "$chain" = ${ROOT.manifest} ] &&
+    ! jq -en 'any(inputs; type == "object")' "$chain" >/dev/null; then
+    echo "CHAIN MISSING OR EMPTY: $chain"; failed=1
+  fi
+  # Read from a file, not a pipe: a pipeline's status is its last command's, which drops
+  # jq's, and sh and bash run a piped loop in a subshell, which drops the loop's flag.
   while IFS= read -r r; do
     hash=$(printf '%s' "$r" | jq -r '.captureContentHash')
     idx=$(jq -rn --arg h "$hash" \\
@@ -536,8 +545,8 @@ rm -f "$receipt" "$list"
 
 The block exits non-zero on any \`RECEIPT FAIL\` or \`RECEIPT NAMES NO MERGE\`, in any
 chain it reads. It also exits non-zero on \`CHAIN UNREADABLE\`, for a chain \`jq\`
-cannot parse, and on \`CHAIN MISSING OR EMPTY\`, when \`${ROOT.manifest}\` is missing
-or empty, so a package holding no chain does not pass.
+fails on, and on \`CHAIN MISSING OR EMPTY\`, when \`${ROOT.manifest}\` is missing or
+holds no JSON object.
 
 A \`timestamp\` entry whose \`tsaToken\` is present but is not a string, \`null\`
 included, is malformed, whatever its \`subject\`. Both filters above skip it, and

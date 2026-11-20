@@ -1526,39 +1526,62 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
     )
 
     // #2203: each block once read a manifest it could not open or parse as one holding no
-    // exhibit, and exited 0.
+    // exhibit, and exited 0. A row that `keepsRead` damages the manifest after its exhibits,
+    // so the block still reports the entries jq read before it failed.
+    const EMPTY_MANIFEST = 'CHAIN MISSING OR EMPTY: manifest.jsonl'
     const UNREAD_MANIFEST = [
-      {
-        name: 'a missing manifest',
-        damage: (path: string) => rmSync(path),
-        says: 'CHAIN MISSING OR EMPTY: manifest.jsonl'
-      },
+      { name: 'a missing manifest', damage: (path: string) => rmSync(path), says: EMPTY_MANIFEST },
       {
         name: 'an empty manifest',
         damage: (path: string) => writeFileSync(path, ''),
-        says: 'CHAIN MISSING OR EMPTY: manifest.jsonl'
+        says: EMPTY_MANIFEST
+      },
+      {
+        name: 'a manifest of one blank line',
+        damage: (path: string) => writeFileSync(path, '\n'),
+        says: EMPTY_MANIFEST
+      },
+      {
+        name: 'a manifest of whitespace only',
+        damage: (path: string) => writeFileSync(path, '   \n\n'),
+        says: EMPTY_MANIFEST
+      },
+      {
+        name: 'a manifest holding only null',
+        damage: (path: string) => writeFileSync(path, 'null\n'),
+        says: EMPTY_MANIFEST
       },
       {
         name: 'a manifest line that is not JSON',
         damage: (path: string) => appendFileSync(path, 'not json\n'),
-        says: 'CHAIN UNREADABLE: manifest.jsonl'
+        says: 'CHAIN UNREADABLE: manifest.jsonl',
+        keepsRead: true
+      },
+      {
+        name: 'a manifest line jq cannot index',
+        damage: (path: string) => appendFileSync(path, '5\n'),
+        says: 'CHAIN UNREADABLE: manifest.jsonl',
+        keepsRead: true
       }
     ]
 
-    for (const { name, damage, says } of UNREAD_MANIFEST) {
+    for (const { name, damage, says, keepsRead } of UNREAD_MANIFEST) {
       it.skipIf(!RUNS)(`exit non-zero on ${name}`, () => {
         const dir = corruptedCopy(`runbook-unread-${name.replace(/\W/g, '-')}`)
         const blocks = [EXHIBIT_BLOCK, DERIVED_BLOCK].map((marker) => step5Block(dir, marker))
+        const intact = blocks.map((block) => runPlain([block], dir))
         damage(join(dir, 'manifest.jsonl'))
-        for (const block of blocks) {
+        blocks.forEach((block, i) => {
+          expect(intact[i].status, intact[i].stdout).toBe(0)
+          expect(intact[i].stdout).not.toBe('')
           const harness = runRunbookBlocks([block], { cwd: dir })
           expect(harness.ok, harness.stdout).toBe(false)
           for (const shell of ['sh', 'bash'] as const) {
             const plain = runPlain([block], dir, shell)
             expect(plain.status, `${shell}: ${plain.stdout}`).not.toBe(0)
-            expect(plain.stdout).toContain(says)
+            expect(plain.stdout).toBe(`${says}\n${keepsRead ? intact[i].stdout : ''}`)
           }
-        }
+        })
       })
     }
 
@@ -2034,6 +2057,21 @@ describe("the runbook's receipt block under a plain shell", () => {
       name: 'the package manifest is empty',
       damage: () => writeFileSync(join(dir, 'manifest.jsonl'), ''),
       says: 'CHAIN MISSING OR EMPTY: manifest.jsonl'
+    },
+    {
+      name: 'the package manifest is one blank line',
+      damage: () => writeFileSync(join(dir, 'manifest.jsonl'), '\n'),
+      says: 'CHAIN MISSING OR EMPTY: manifest.jsonl'
+    },
+    {
+      name: 'the package manifest holds only null',
+      damage: () => writeFileSync(join(dir, 'manifest.jsonl'), 'null\n'),
+      says: 'CHAIN MISSING OR EMPTY: manifest.jsonl'
+    },
+    {
+      name: 'the package manifest holds a line jq cannot index',
+      damage: () => appendFileSync(join(dir, 'manifest.jsonl'), '5\n'),
+      says: 'CHAIN UNREADABLE: manifest.jsonl'
     }
   ]
 

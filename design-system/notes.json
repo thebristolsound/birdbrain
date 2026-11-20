@@ -32,7 +32,7 @@
   "color-pink-500": "Mention entity hue (tag fallback). Exists so a chip references a token rather than a hex literal.",
   "color-success-surface": "Success status fill: the 10% step of the tinted triple (fill / line / foreground), never a solid fill. Success badge, success toast medallion.",
   "color-success-line": "Success status border: the 20% step of the triple.",
-  "color-success-fg": "Success text and icon on `color-success-surface`. Light is #047654, a step past emerald-700 so 10-12px text clears 4.5:1 on the tint over every light surface (4.6:1 on surface, 5.0:1 on canvas); dark is #4ec38e (7.4:1 on elevated).",
+  "color-success-fg": "Success text and icon on `color-success-surface`. Light is #046c4e, darker than emerald-700 so 10-12px text clears 4.5:1 on its tint and on a hovered row over every light surface (5.2:1 and 5.1:1 on surface); dark is #4ec38e (7.4:1 on elevated).",
   "color-danger-surface": "Danger status fill (10% step). Danger badge, error toast medallion.",
   "color-danger-line": "Danger status border (20% step).",
   "color-danger-fg": "Danger text and icon on `color-danger-surface`; the `danger` context-menu item. 6.3:1 on canvas light, 7.4:1 dark.",

@@ -156,6 +156,15 @@ describe.each(themes)('the %s palette', (theme) => {
     expect(contrast(token(theme, `${status}-fg`), tint)).toBeGreaterThanOrEqual(4.5)
   })
 
+  it.each(
+    planes.flatMap((plane) =>
+      ['success-fg', 'danger-fg', 'warning-fg'].map((text) => [text, plane])
+    )
+  )('%s is at least 4.5:1 on a hovered row over %s', (text, plane) => {
+    const hovered = over(rgbaToken(theme, 'hover'), token(theme, plane))
+    expect(contrast(token(theme, text), hovered)).toBeGreaterThanOrEqual(4.5)
+  })
+
   it.each(['surface', 'card', 'elevated'])('the advisory mark is at least 3:1 on %s', (plane) => {
     expect(contrast(token(theme, 'warning-mark'), token(theme, plane))).toBeGreaterThanOrEqual(3)
   })

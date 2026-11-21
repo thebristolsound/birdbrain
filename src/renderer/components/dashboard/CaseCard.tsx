@@ -102,7 +102,7 @@ export const CaseCard = memo(function CaseCard({
         <input
           ref={inputRef}
           data-testid="case-rename-input"
-          className="font-display font-bold text-sm text-text-primary mb-1 bg-transparent border border-border-strong rounded px-1 py-0.5 w-full outline-none focus:border-accent"
+          className="font-display font-bold text-sm text-text-primary mb-1 bg-transparent border border-input rounded px-1 py-0.5 w-full outline-none focus:border-accent"
           defaultValue={editingName}
           onClick={(e) => e.stopPropagation()}
           onBlur={(e) => handleRenameSubmit(e.target.value)}

@@ -221,3 +221,47 @@ describe('filled controls', () => {
     expect(found).toEqual(marks)
   })
 })
+
+describe('control boundaries', () => {
+  const root = join(process.cwd(), 'src/renderer')
+  const sources = readdirSync(root, { recursive: true, encoding: 'utf-8' }).filter((path) =>
+    /\.tsx?$/.test(path)
+  )
+  // A checkbox or switch that fills when on draws its off state in the control colour, the
+  // only boundary colour that holds 3:1 on every surface.
+  const toggle = /\?\s*'(border-accent-fill )?bg-accent-fill'\s*:\s*'([^']*)'/g
+  // Matched over the whole file, so a ternary Prettier wraps is checked as well as counted.
+  const toggles = sources.flatMap((path) => {
+    const text = readFileSync(join(root, path), 'utf-8')
+    return [...text.matchAll(toggle)].map((match) => ({
+      at: `${path.replaceAll('\\', '/')}:${text.slice(0, match.index).split('\n').length}`,
+      off: match[2],
+      // A checkbox that fills its border when on draws its off edge as a border; a switch track
+      // is a fill.
+      want: match[1] ? 'border-control' : 'bg-control'
+    }))
+  })
+
+  it('finds the toggles it checks', () => {
+    // Pinned by file, so a toggle that leaves the ternary form fails here even when a new one
+    // joins elsewhere.
+    expect(toggles.map(({ at }) => at.replace(/:\d+$/, '')).sort()).toEqual([
+      'components/captures/CaptureItem.tsx',
+      'components/captures/CaptureSelectionBar.tsx',
+      'components/notes/selection/NoteSelectionPopover.tsx',
+      'components/settings/AppearanceConfig.tsx',
+      'components/settings/CapturePreferences.tsx',
+      'components/settings/OperatorConfig.tsx',
+      'components/settings/UpdatesConfig.tsx',
+      'components/signals/SignalDetailRail.tsx',
+      'components/signals/SignalRow.tsx'
+    ])
+  })
+
+  it('draws every off toggle in the control colour', () => {
+    const offenders = toggles
+      .filter(({ off, want }) => !off.split(/\s+/).includes(want))
+      .map(({ at }) => at)
+    expect(offenders).toEqual([])
+  })
+})

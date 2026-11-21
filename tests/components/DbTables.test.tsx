@@ -37,8 +37,12 @@ describe('DbTables accessible names (#1537)', () => {
     await screen.findByText('one')
 
     expect(screen.getByLabelText('Table').tagName).toBe('SELECT')
-    expect(screen.getByRole('button', { name: 'Previous page' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Next page' })).toBeTruthy()
+    // Icon-only outline buttons draw their edge in the control colour.
+    for (const name of ['Previous page', 'Next page']) {
+      const classes = screen.getByRole('button', { name }).className.split(/\s+/)
+      expect(classes).toContain('border-control')
+      expect(classes).not.toContain('border-border-strong')
+    }
     expect(screen.getByRole('button', { name: 'Edit row' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Delete row' })).toBeTruthy()
 

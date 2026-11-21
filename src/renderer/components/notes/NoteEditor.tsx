@@ -39,7 +39,7 @@ export function NoteEditor({
   const isEmpty = useNoteEditorState(editor, (editor) => editor.isEmpty, true)
 
   if (!editor) {
-    return <div className={`rounded-lg border border-border bg-canvas ${minHeightClass}`} />
+    return <div className={`rounded-lg border border-input bg-canvas ${minHeightClass}`} />
   }
 
   return (
@@ -47,7 +47,7 @@ export function NoteEditor({
       className={
         workspace
           ? 'bg-canvas'
-          : 'rounded-lg border border-border bg-canvas focus-within:border-accent'
+          : 'rounded-lg border border-input bg-canvas focus-within:border-accent'
       }
     >
       {showToolbar ? <NoteToolbar editor={editor} workspace={workspace} /> : null}

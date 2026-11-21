@@ -95,6 +95,17 @@ describe('BatchTagPopover (#665)', () => {
     expect(screen.queryByText('3/3')).toBeNull()
   })
 
+  // The contrast test's toggle scan reads ternaries only, and this box builds its class in a
+  // function, so its off edge is pinned here.
+  it('draws an unticked box in the control colour and a ticked one filled', async () => {
+    renderPopover()
+    await screen.findByText('phishing')
+    const box = (name: string) => row(name).querySelector('span[aria-hidden="true"]')?.className
+    expect(box('benign')).toMatch(/(^|\s)border-control(\s|$)/)
+    expect(box('benign')).not.toMatch(/(^|\s)bg-accent-fill(\s|$)/)
+    expect(box('phishing')).toMatch(/(^|\s)bg-accent-fill(\s|$)/)
+  })
+
   it('applies an unapplied tag to the whole selection and stays open', async () => {
     renderPopover()
     fireEvent.click(await screen.findByText('benign'))

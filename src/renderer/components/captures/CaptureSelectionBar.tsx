@@ -103,7 +103,7 @@ export function CaptureSelectionBar({
         <span
           aria-hidden="true"
           className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[2px] border ${
-            allSelected ? 'border-accent-fill bg-accent-fill' : 'border-border-strong'
+            allSelected ? 'border-accent-fill bg-accent-fill' : 'border-control'
           }`}
         >
           <Check

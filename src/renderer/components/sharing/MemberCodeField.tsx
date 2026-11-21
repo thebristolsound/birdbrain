@@ -31,7 +31,7 @@ export function MemberCodeField({ id, value, check, refusal, onChange }: MemberC
         aria-invalid={invalid || undefined}
         data-testid="member-code-input"
         className={cn(
-          'w-16 rounded border-border-strong px-2.5 py-1.5 text-xs font-semibold uppercase tracking-[.02em]',
+          'w-16 rounded px-2.5 py-1.5 text-xs font-semibold uppercase tracking-[.02em]',
           invalid && 'border-danger-fg focus:border-danger-fg'
         )}
       />

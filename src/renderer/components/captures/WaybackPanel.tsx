@@ -248,7 +248,7 @@ export function WaybackPanel({ capture, onClose }: Props) {
             }}
             placeholder="Filter snapshots by date, status or type…"
             aria-label="Filter snapshots"
-            className="w-full rounded-md border border-border bg-canvas py-1.5 pl-7 pr-2.5 text-xs text-text-primary outline-none"
+            className="w-full rounded-md border border-input bg-canvas py-1.5 pl-7 pr-2.5 text-xs text-text-primary outline-none"
           />
         </div>
         <div className="flex flex-wrap items-center gap-1.5">

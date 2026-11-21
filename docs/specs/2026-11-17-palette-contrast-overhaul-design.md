@@ -17,10 +17,10 @@ system artifact, whose dark faint text is `#82838c`; the app ships `#85858e`.
 
 **Creative:** the
 [2026-11-17 one-row chrome bundle](../design-handoff/2026-11-17-one-row-chrome/) carries the palette
-as drawn, in both themes. The token table below departs from it in one value, the light success
-green. It ships packed as one HTML file. Every board inlines `palette.css` (the
-token overrides, with each ratio in a comment) and `bb.css` (the shell classes that use them), and
-board P shows each token before and after.
+as drawn, in both themes. The token table below departs from it in two values, the light success
+green and the dark faint text. It ships packed as one HTML file. Every board inlines
+`palette.css` (the token overrides, with each ratio in a comment) and `bb.css` (the shell classes
+that use them), and board P shows each token before and after.
 
 **Related:** the [consolidation plan](../plans/2026-11-15-chrome-capture-export-consolidation.md)
 (decision 2 on status tiers, and slice 1.1, which moved dark faint text to `#85858e`); this proposal
@@ -61,7 +61,7 @@ the cell says otherwise. Light values that do not change are omitted.
 | `--color-elevated` | Dialogs | `#1c1c20` | `#202025` | | |
 | `--color-text-secondary` | Body copy, advisory words | | | `#3f3f46` | `#303036` (11.6:1) |
 | `--color-text-muted` | Descriptions | `#a1a1aa` | `#a8a8b2` (6.9:1) | | |
-| `--color-text-faint` | Labels, timestamps | `#85858e` (4.6:1) | `#92939d` (5.3:1) | `#66666f` | `#63636c` (5.3:1) |
+| `--color-text-faint` | Labels, timestamps | `#85858e` (4.6:1) | `#9798a2` (5.7:1) | `#66666f` | `#63636c` (5.3:1) |
 | `--color-accent` | Text and strokes | `#6467f2` (3.9:1) | `#9497ff` (6.3:1) | `#4f52e0` (5.3:1) | `#4346d1` (6.1:1) |
 | `--color-accent-hover` | Hovered link and accent text | `#7a7cf5` | `#a7aaff` (7.6:1) | `#4346d1` | `#3a3dc0` (7.1:1) |
 | `--color-accent-subtle` | Selected tint, accent badge | `rgba(100,103,242,0.16)` | `rgba(120,124,255,0.14)` | `rgba(100,103,242,0.10)` | `rgba(79,82,224,0.09)` |
@@ -177,20 +177,14 @@ the exercise to be repeated for light mode. Fable 5.2 scored 8.0, 8.5 and 8.8; O
 effort scored 7.5, 8.0 and 8.5. Both passed on the third round, and both checked that the light
 changes left dark mode intact. From this pass on, the measurement also covers hover and highlight
 states for what the boards draw inside a hoverable item: text there measures 4.69:1 at least in
-light and 5.01:1 in dark, and marks and control borders 3.35:1 and 3.86:1. Review found pairs the
-boards never draw that fall short of 4.5:1. The light success green on a hovered row and on its own
-tint is fixed in the table; the dark faint grey on a hovered item over `--color-elevated` is under
-"Still open".
+light and 5.01:1 in dark, and marks and control borders 3.35:1 and 3.86:1. Review on #2238 found two
+text pairs that no board draws but the app could, both under 4.5:1, and the table fixes both.
+Light `--color-success-fg` `#047857` on a hovered row measured 4.3:1 and takes `#046c4e` (5.1:1
+hovered, 5.7:1 on surface). Dark `--color-text-faint` `#92939d` on a hovered item over
+`--color-elevated` measured 4.49:1. The maintainer chose `#9798a2` in a Claude Code session on
+2026-11-20 (4.8:1 hovered, 5.7:1 on elevated).
 
 ## Still open
-
-- **One hover pair under 4.5:1.** Review on #2238 found two text pairs that no board draws but the
-  app could. Light `--color-success-fg` `#047857` on a hovered row (4.3:1) is fixed in the table,
-  which takes `#046c4e` (5.1:1 hovered, 5.7:1 on surface). Dark `--color-text-faint` `#92939d` on
-  a hovered item over `--color-elevated` measures 4.5:1 rounded, 4.49:1 exact. Raising it would
-  change an accepted value and the bundle, so it waits for the maintainer. The candidate that
-  clears both states is `#9798a2` (4.8:1 hovered, 5.7:1 on elevated). Until then, keep faint text
-  off hovered items on that surface.
 
 - **The design system.** The Birdbrain design system artifact needs the same values, so other
   mocks pick them up.

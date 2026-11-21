@@ -69,8 +69,6 @@ its own. Every pull request carries before and after screenshots in both themes.
 
 ## Still open
 
-The spec's open items stay open: the design system artifact needs the same values, the nonzero
-"Missing" integrity count needs its own mark, and dark faint text on a hovered item over
-`--color-elevated` measures 4.49:1, which waits for the maintainer. Slice 4 is the one that puts
-the hover tint under faint text, so it keeps faint text off hovered items on that surface until
-the maintainer rules.
+The spec's open items stay open: the design system artifact needs the same values, and the
+nonzero "Missing" integrity count needs its own mark. Dark faint text is `#9798a2`, which clears
+4.5:1 on a hovered item over `--color-elevated`, so slice 4 can put the hover tint under it.

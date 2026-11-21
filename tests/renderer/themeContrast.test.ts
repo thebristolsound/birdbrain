@@ -158,7 +158,15 @@ describe.each(themes)('the %s palette', (theme) => {
 
   it.each(
     planes.flatMap((plane) =>
-      ['success-fg', 'danger-fg', 'warning-fg'].map((text) => [text, plane])
+      [
+        'text-primary',
+        'text-secondary',
+        'text-muted',
+        'text-faint',
+        'success-fg',
+        'danger-fg',
+        'warning-fg'
+      ].map((text) => [text, plane])
     )
   )('%s is at least 4.5:1 on a hovered row over %s', (text, plane) => {
     const hovered = over(rgbaToken(theme, 'hover'), token(theme, plane))

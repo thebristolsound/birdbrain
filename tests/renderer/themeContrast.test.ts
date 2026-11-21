@@ -131,6 +131,16 @@ describe.each(themes)('the %s palette', (theme) => {
     expect(contrast(token(theme, 'accent'), tint)).toBeGreaterThanOrEqual(4.5)
   })
 
+  // A selected row, such as the command palette's highlighted case, puts its hints on the tint.
+  it.each(
+    planes.flatMap((plane) =>
+      ['text-primary', 'text-secondary', 'text-muted', 'text-faint'].map((text) => [text, plane])
+    )
+  )('%s is at least 4.5:1 on the accent tint over %s', (text, plane) => {
+    const tint = over(rgbaToken(theme, 'accent-subtle'), token(theme, plane))
+    expect(contrast(token(theme, text), tint)).toBeGreaterThanOrEqual(4.5)
+  })
+
   it.each(
     planes.flatMap((plane) =>
       [

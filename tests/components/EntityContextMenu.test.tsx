@@ -235,6 +235,11 @@ describe('menu customisation and export drill-in', () => {
     expect(
       screen.getByRole('menuitemcheckbox', { name: 'Delete note…' }).getAttribute('aria-checked')
     ).toBe('false')
+    // The hidden action's label dims; its empty box does not.
+    expect(screen.getByRole('menuitemcheckbox', { name: 'Delete note…' }).className).not.toMatch(
+      /(^|\s)opacity-45(\s|$)/
+    )
+    expect(screen.getByText('Delete note…').className.split(/\s+/)).toContain('opacity-45')
     fireEvent.click(screen.getByText('Done — hidden actions can be restored here'))
     expect(screen.queryByTestId('context-menu-item-note-delete')).toBeNull()
     first.unmount()

@@ -50,9 +50,10 @@ its own. Every pull request carries before and after screenshots in both themes.
    toggles written as an on-off ternary, and component tests for the other checkboxes, the two
    sharing fields and the pager buttons. Native checkboxes and radios keep Chromium's own
    drawing. Dashed add-rows and inline edit fields that show no border at rest are not
-   boundaries and stay as they are. Two custom radio groups, `AutoCaptureCard`'s
-   exclusion-mode segments and `AddSelectorRow`'s match-mode cards, and the round "i" marks in
-   `InfoTip` and `ViewHeader` keep their borders for now. Whether those edges are control
+   boundaries and stay as they are. Custom pick-one controls keep their borders for now:
+   `AutoCaptureCard`'s exclusion-mode segments, `AddSelectorRow`'s match-mode cards, the theme
+   and density choices in `AppearanceConfig` and the selector chips in `NewCaseWizard`. So do
+   the round "i" marks in `InfoTip` and `ViewHeader`. Whether those edges are control
    boundaries waits for the maintainer.
 4. **Hover tint.** `hover:bg-elevated` (100 hits in 52 files), the keyboard highlight and the open
    pill take `bg-hover`.

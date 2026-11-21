@@ -31,6 +31,7 @@ describe('RelayCard', () => {
     expect(input.value).toBe(RELAY)
     // The field keeps Input's control-colour edge; a caller's border colour would replace it.
     expect(input.className.split(/\s+/)).toContain('border-input')
+    expect(input.className.split(/\s+/)).not.toContain('border-border-strong')
     expect(screen.getByText('Restart Birdbrain to use a changed relay address.')).toBeTruthy()
     fireEvent.change(input, { target: { value: 'https://relay.example.test' } })
     fireEvent.blur(input)

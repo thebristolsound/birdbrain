@@ -243,7 +243,19 @@ describe('control boundaries', () => {
   })
 
   it('finds the toggles it checks', () => {
-    expect(toggles.length).toBeGreaterThanOrEqual(9)
+    // Pinned by file, so a toggle that leaves the ternary form fails here even when a new one
+    // joins elsewhere.
+    expect(toggles.map(({ at }) => at.replace(/:\d+$/, '')).sort()).toEqual([
+      'components/captures/CaptureItem.tsx',
+      'components/captures/CaptureSelectionBar.tsx',
+      'components/notes/selection/NoteSelectionPopover.tsx',
+      'components/settings/AppearanceConfig.tsx',
+      'components/settings/CapturePreferences.tsx',
+      'components/settings/OperatorConfig.tsx',
+      'components/settings/UpdatesConfig.tsx',
+      'components/signals/SignalDetailRail.tsx',
+      'components/signals/SignalRow.tsx'
+    ])
   })
 
   it('draws every off toggle in the control colour', () => {

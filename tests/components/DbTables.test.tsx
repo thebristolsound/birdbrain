@@ -39,9 +39,9 @@ describe('DbTables accessible names (#1537)', () => {
     expect(screen.getByLabelText('Table').tagName).toBe('SELECT')
     // Icon-only outline buttons draw their edge in the control colour.
     for (const name of ['Previous page', 'Next page']) {
-      expect(screen.getByRole('button', { name }).className.split(/\s+/)).toContain(
-        'border-control'
-      )
+      const classes = screen.getByRole('button', { name }).className.split(/\s+/)
+      expect(classes).toContain('border-control')
+      expect(classes).not.toContain('border-border-strong')
     }
     expect(screen.getByRole('button', { name: 'Edit row' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Delete row' })).toBeTruthy()

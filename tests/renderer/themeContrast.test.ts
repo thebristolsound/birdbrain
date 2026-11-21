@@ -234,7 +234,7 @@ describe('control boundaries', () => {
   const toggles = sources.flatMap((path) => {
     const text = readFileSync(join(root, path), 'utf-8')
     return [...text.matchAll(toggle)].map((match) => ({
-      at: `${path}:${text.slice(0, match.index).split('\n').length}`,
+      at: `${path.replaceAll('\\', '/')}:${text.slice(0, match.index).split('\n').length}`,
       off: match[2],
       // A checkbox that fills its border when on draws its off edge as a border; a switch track
       // is a fill.

@@ -60,6 +60,15 @@ afterEach(() => {
 })
 
 describe('NoteEditor with an editor that arrives after mount', () => {
+  // The note box is a text field, so its edge takes the input's control colour.
+  it('draws the note box with the input border', async () => {
+    const { container } = render(<Host />, { wrapper })
+    await waitFor(() => expect(screen.queryByRole('toolbar')).not.toBeNull())
+    const classes = (container.firstElementChild as HTMLElement).className.split(/\s+/)
+    expect(classes).toContain('border-input')
+    expect(classes).not.toContain('border-border')
+  })
+
   it('does not show the placeholder over a note that opens with content', async () => {
     await mount(BOLD_DOC)
     expect(screen.queryByText(PLACEHOLDER)).toBeNull()

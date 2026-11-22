@@ -224,7 +224,8 @@ above about MCP writes remain accurate for non-dispatch work.
 
 `.github/workflows/health.yml` runs at 06:20 and 18:20 UTC and on demand. It checks both
 credentials (rejected, wrong login, expired, or within 14 days of the expiry variable) and the
-scheduled run history of `dispatch.yml`, `doc-curator.yml` and `stale-agent-issues.yml` (two
+scheduled run history of `dispatch.yml`, `doc-curator.yml`, `stale-agent-issues.yml` and
+`repo-health.yml` (two
 or more consecutive scheduled runs without a success). `stall.sh` adds three checks for a
 pipeline that stays green but stops moving: an agent PR untouched for 24 hours, a PR parked
 `awaiting-maintainer` or labelled `merge` and still open after 24 hours, and a free slot with
@@ -237,3 +238,38 @@ change, and closes itself on the first clean run. Scripts live in `.github/scrip
 Rotating the Claude token: `claude setup-token` on the subscription account, then
 `gh secret set CLAUDE_CODE_OAUTH_TOKEN --body "$(cat file)"` (the substitution strips the
 trailing newline a pasted token carries; a stored newline is a 401) and `gh variable set CLAUDE_CODE_OAUTH_TOKEN_EXPIRES --body YYYY-MM-DD`.
+
+## The repo-health report
+
+`.github/workflows/repo-health.yml` runs on Monday at 09:13 UTC and on demand
+([ADR-0058](../adr/0058-a-weekly-report-shows-repository-health-and-never-fails-a-build.md)).
+It runs `node scripts/repo-health/cli.mjs --publish`, which measures fifteen numbers about the
+codebase and rewrites one open issue labelled `repo-health` and `process`. The workflow uses its
+own token and no stored credential, and a finding never fails the run.
+
+Reading the issue:
+
+- **`within`** is a value on the allowed side of its budget.
+- **`outside`** is a value past its budget. It is something to look at, not a failure.
+- **`not measured`** is a signal the run could not read, with the reason beside it. It is never
+  shown as zero. The raw error is in the run log.
+- **A comment** means a signal changed status since the last run. A value that moves while its
+  status holds gets none.
+
+Working with it:
+
+- **Change a budget** in the signal's definition under `scripts/repo-health/lib/`, in a pull
+  request, and update the `why` beside it. A cleanup lowers its budget in the same change; the
+  issue's notes say how far each budget can tighten.
+- **Run it locally** with `pnpm repo-health`. Without `GH_TOKEN` or `GITHUB_TOKEN` the signals
+  that read GitHub show `not measured: no gh token`. Nothing is written unless `--publish` is
+  passed and `DRY_RUN` is exactly `false`.
+- **Dry run on the runner:** `gh workflow run repo-health.yml`. The `dry_run` input defaults to
+  true and the run's summary shows the writes it would make. `-f dry_run=false` on `main` writes.
+- **Pause it** with `gh workflow disable repo-health.yml`. Do not add a condition to the job: a
+  skipped run counts towards the failure streak the health workflow watches.
+- **Do not close the issue** to clear it. The next run reads the previous values from its body,
+  so a closed issue means a new one with nothing to compare against.
+
+A run that cannot start or cannot publish exits 2. Two such scheduled runs in a row raise the
+`health-alert` issue, because `repo-health.yml` is in the list the health workflow watches.

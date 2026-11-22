@@ -1286,13 +1286,10 @@ function caseDirectoryByteSource(): PackageByteSource {
  * writes a row only where `packagedPath` is set, which is set only where the
  * export's single read of the bytes succeeded. A file no entry names is
  * neither packaged nor listed, so the index cannot attribute to an Exhibit a
- * file nothing in the chain says was computed from it; a file that IS anchored
- * but whose bytes could not be read is not listed either, because a row with a
- * null path is a row the two verifiers read differently — the standalone one
- * calls it a fabricated row the manifest does not anchor at that path, while
- * verify.sh, which never reads the index, says nothing. Both still FAIL the
- * package through the chain-side check that the anchored file is absent, which
- * is the finding that matters and the one they agree on.
+ * file nothing in the chain says was computed from it. A file that IS anchored
+ * but whose bytes could not be read is not listed either; an Evidence Package
+ * export stops on one (`ExportForm` in the contents package, #2225), so only a
+ * Working Copy, which is not verifiable (ADR-0010), reaches that case.
  */
 function derivedFileRows(
   files: ExportDerivedFile[]

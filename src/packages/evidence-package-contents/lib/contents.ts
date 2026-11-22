@@ -272,13 +272,7 @@ const CAPTURE_FILE_RULES: ReadonlyArray<{
   }
 ]
 
-/**
- * The failure of an Evidence Package export whose read of a file a signed
- * entry records returned nothing (#2225). Package Verification fails a package
- * that lacks a file a signed entry anchors, so the export stops rather than
- * write one; it stops the same way on a Derived File an entry names over a
- * chain that does not verify, which the package would otherwise enclose.
- */
+/** The failure `ExportForm` states for a signed file the read did not return (#2225). */
 function signedFileUnread(owner: string, noun: string, path: string): Error {
   return new Error(
     `No package was written: could not read the ${noun} of ${owner} (${path}), ` +

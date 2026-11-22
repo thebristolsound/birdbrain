@@ -2506,7 +2506,7 @@ describe('export', () => {
 
     const html = readFileSync(outputPath, 'utf-8')
     expect(html).toContain('This is a standalone report, not an evidence package')
-    expect(html).toContain('These steps require the evidence package')
+    expect(html).toContain('These steps require an evidence package')
     expect(html).not.toContain('Companion files in this evidence package')
     // The verification steps still name pages/ generically — deliberately, so a
     // reader knows what to request. What must not appear is a per-exhibit
@@ -2673,7 +2673,7 @@ describe('export', () => {
     expect(verified).not.toMatch(/counts|trusted|digest/i)
 
     expect(await statementOf(false)).toContain(
-      'I have not altered the captures, the manifest or the packaged artefacts. No verification ' +
+      'I have not altered the captures or the manifest. No verification ' +
         'was run for this export, so the digests reproduced here are those recorded for each ' +
         'capture rather than values recomputed from the stored bytes at the time of export, and ' +
         'I make no statement about whether the stored bytes still match them.'
@@ -2702,7 +2702,7 @@ describe('export', () => {
 
     const html = readFileSync(outputPath, 'utf-8')
     expect(html).toContain('whose exhibit records a verified result')
-    expect(html).toMatch(/never for the package as a whole/)
+    expect(html).toMatch(/never for the captures described as a whole/)
     // The unconditional form claimed every capture rehashed, contradicting any
     // exhibit recorded as altered, absent or unverified.
     expect(html).not.toMatch(/That the stored bytes of each capture recompute/)
@@ -4608,6 +4608,123 @@ describe('export', () => {
       // #985's disclosure: the count left out is stated, not left to be counted.
       const report = entries.get('report.html')!.toString('utf-8')
       expect(report).toContain('It also leaves out 2 committed exhibit')
+    })
+
+    it('names a package outside the index sheet only when the export is one (#2224)', async () => {
+      // Every branch that speaks of a package: a selection leaving out other kinds, a chain
+      // capture the case does not hold, an archive.org reference, burned annotations, an
+      // authority with no bundled root, and a run with and without verification.
+      updateSettings({ tsaUrl: 'https://tsa.example.org/timestamp' })
+      saveAnnotations({
+        captureId: fixture.captureId,
+        shapes: [{ kind: 'redact', id: 'r', x: 4, y: 4, w: 8, h: 8, mode: 'solid' }],
+        imageWidth: 24,
+        imageHeight: 24
+      })
+      createWaybackRef({
+        captureId: fixture.captureId,
+        snapshot: {
+          timestamp: '2025-01-01T00:00:00.000Z',
+          snapshotUrl: 'https://web.archive.org/web/20250101000000/https://example.com/page',
+          originalUrl: 'https://example.com/page',
+          statusCode: 200,
+          mimeType: 'text/html'
+        },
+        checkedAt: '2026-04-06T09:00:00.000Z'
+      })
+      appendManifestEntry(join(tempDir, 'captures', fixture.caseId), {
+        type: 'capture',
+        captureId: 'orphan-capture-id',
+        caseId: fixture.caseId,
+        url: 'birdbrain://pipeline-test',
+        timestamp: '2026-04-05T12:00:00.000Z',
+        contentHash: createHash('sha256').update('orphan').digest('hex'),
+        sizeBytes: 0,
+        operatorId: 'op',
+        operatorName: 'Test Operator',
+        toolVersion: '0.1.0'
+      })
+
+      const reportOf = async (
+        format: 'html' | 'pdf' | 'zip',
+        auditTrail: boolean
+      ): Promise<string> => {
+        const outputPath = join(tempDir, `package-wording-${auditTrail}.${format}`)
+        await generateReport(
+          fixture.caseId,
+          {
+            format,
+            include: {
+              captures: true,
+              screenshots: true,
+              auditTrail,
+              notes: false,
+              annotations: 'burned'
+            },
+            exportClass: 'evidence',
+            outputPath,
+            captureIds: [fixture.captureId, fixture.document.id]
+          },
+          captureLifecycle
+        )
+        const report =
+          format === 'zip'
+            ? readStoredZipEntries(outputPath).get('report.html')!.toString('utf-8')
+            : readFileSync(outputPath, 'utf-8')
+        // The words a reader sees, so a sentence matches across the source's line breaks.
+        return report.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ')
+      }
+      const packageSentences = [
+        'never for the package as a whole',
+        'an exhibit the chain records and this package does not enclose',
+        'The chain claims captures this package does not contain',
+        'neither listed as exhibits below nor enclosed as stored page archives. The chain and ' +
+          'the contents of this package therefore disagree',
+        'digest-anchored copy in the package',
+        'Birdbrain did not retrieve, hash or package the archived content',
+        'this package contains no copy of it',
+        'A reviewer holding the evidence package can reproduce every integrity claim it makes',
+        'An exhibit absent from the package',
+        'configured when the package was built',
+        'I have not altered the captures, the manifest or the packaged artefacts'
+      ]
+      const standaloneSentences = [
+        'never for the captures described as a whole',
+        'an exhibit the chain records and this report does not describe',
+        'The chain claims captures this case does not hold',
+        'whose captures the case does not hold, so none is listed as an exhibit below. The ' +
+          'chain and the case therefore disagree',
+        'digest-anchored copy held by the tool',
+        'Birdbrain did not retrieve or hash the archived content',
+        'this report contains no copy of it',
+        'A reviewer holding an evidence package exported from this case can reproduce every ' +
+          "integrity claim this report makes using standard tools. The full procedure, including exact commands, is in that package's VERIFY.md.",
+        'These steps require an evidence package',
+        'An exhibit absent from a package',
+        'configured when this report was generated',
+        'I have not altered the captures or the manifest'
+      ]
+
+      // Both operator statements: one after a verification run and one without.
+      for (const [format, auditTrail] of [
+        ['html', true],
+        ['html', false],
+        ['pdf', true]
+      ] as const) {
+        const report = await reportOf(format, auditTrail)
+        const label = `${format}, verification ${auditTrail ? 'run' : 'not run'}`
+        for (const sentence of packageSentences) expect(report, label).not.toContain(sentence)
+        for (const sentence of standaloneSentences) expect(report, label).toContain(sentence)
+        // "the package hash" is the field of an export entry, named in a general note.
+        expect(report, label).not.toMatch(/\b(?:this|the) (?:evidence )?package\b(?! hash)/i)
+        expect(report, label).not.toMatch(/\bpackaged\b/i)
+      }
+      for (const auditTrail of [true, false]) {
+        const report = await reportOf('zip', auditTrail)
+        const label = `zip, verification ${auditTrail ? 'run' : 'not run'}`
+        for (const sentence of packageSentences) expect(report, label).toContain(sentence)
+        for (const sentence of standaloneSentences) expect(report, label).not.toContain(sentence)
+      }
     })
 
     it('discloses an altered exhibit rather than packaging it silently', async () => {

@@ -472,8 +472,8 @@
     ]
   },
   "report-html": {
-    "sha256": "bcfb407a2c1c2bf95e445c97a12110482cf466898e48ef9a2f49410272702966",
-    "bytes": 56837
+    "sha256": "04b832d45a4d8b4a9f49152425b7c4a202c0f8b72c740aeec0c00dd895b6e6b0",
+    "bytes": 56870
   },
   "shared-case-exclude": {
     "zipSha256": "1dd06281e4bd6d3af4b1f28a2bc407507aa369126e133d5fc96c5bd1ca194be7",

@@ -2076,6 +2076,11 @@ describe("the runbook's receipt block under a plain shell", () => {
       says: 'CHAIN MISSING OR EMPTY: manifest.jsonl'
     },
     {
+      name: 'the package manifest is whitespace only',
+      damage: () => writeFileSync(join(dir, 'manifest.jsonl'), '   \n\n'),
+      says: 'CHAIN MISSING OR EMPTY: manifest.jsonl'
+    },
+    {
       name: 'the package manifest holds only null',
       damage: () => writeFileSync(join(dir, 'manifest.jsonl'), 'null\n'),
       says: 'CHAIN MISSING OR EMPTY: manifest.jsonl'

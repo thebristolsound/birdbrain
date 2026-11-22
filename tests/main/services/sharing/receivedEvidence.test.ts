@@ -63,6 +63,14 @@ import {
 } from '../../../helpers/syncPeers'
 import { buildSyntheticToken } from '../../../helpers/timestampFixtures'
 
+// The real `readFile`, recorded, so a test can show which files the apply step reads whole.
+vi.mock('fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('fs/promises')>()
+  return { ...actual, readFile: vi.fn(actual.readFile) }
+})
+
+const fsPromises = await import('fs/promises')
+
 // Received evidence (#1811): after a sync, another member's Captures and
 // Exhibits are rows on the receiver, attributed to their author, searchable,
 // extracted, stamped through the author's chain, and removed on the author's
@@ -360,13 +368,14 @@ describe('received evidence (#1811)', () => {
     expect(listCaptures(CASE_ID)).toEqual([])
 
     // A file already at the path is never fetched again; the apply step hashes it itself.
-    writeFileSync(bobsPng, 'written here, not by the author')
+    const written = 'written here, not by the author'
+    writeFileSync(bobsPng, written)
     const local = await pull(CASE_ID, source)
     expect(local.errors).toEqual([
       expect.objectContaining({
         kind: 'hash-mismatch',
         installationId: A.installationId,
-        detail: expect.stringContaining(`${png.rel}: expected ${capture.screenshotHash}`)
+        detail: `${png.rel}: expected ${capture.screenshotHash}, found ${sha(written)}`
       })
     ])
     expect(listCaptures(CASE_ID)).toEqual([])
@@ -393,11 +402,11 @@ describe('received evidence (#1811)', () => {
       expect(getCapture(capture.captureId)).toBeUndefined()
       expect(getExhibit(capture.captureId)).toBeUndefined()
     }
-    const mismatch = (rel: string, hash: string | undefined) =>
+    const mismatch = (rel: string, hash: string | undefined, written: string) =>
       expect.objectContaining({
         kind: 'hash-mismatch',
         installationId: A.installationId,
-        detail: expect.stringContaining(`${rel}: expected ${hash}`)
+        detail: `${rel}: expected ${hash}, found ${sha(written)}`
       })
 
     // The peer does not hold the Transaction Record: every other file lands, and no row.
@@ -423,16 +432,20 @@ describe('received evidence (#1811)', () => {
     noRow()
 
     // A record already at the path is never fetched again; the row step hashes it itself.
-    writeFileSync(recordFile.abs, 'a record written here, not by the author')
+    const writtenRecord = 'a record written here, not by the author'
+    writeFileSync(recordFile.abs, writtenRecord)
     const local = await pull(CASE_ID, source)
-    expect(local.errors).toEqual([mismatch(recordFile.rel, capture.transactionRecordHash)])
+    expect(local.errors).toEqual([
+      mismatch(recordFile.rel, capture.transactionRecordHash, writtenRecord)
+    ])
     noRow()
 
     // The same for the PDF, once the record is the author's.
     writeFileSync(recordFile.abs, record)
-    writeFileSync(pdfFile.abs, 'a PDF written here, not by the author')
+    const writtenPdf = 'a PDF written here, not by the author'
+    writeFileSync(pdfFile.abs, writtenPdf)
     const localPdf = await pull(CASE_ID, source)
-    expect(localPdf.errors).toEqual([mismatch(pdfFile.rel, capture.pdfHash)])
+    expect(localPdf.errors).toEqual([mismatch(pdfFile.rel, capture.pdfHash, writtenPdf)])
     noRow()
 
     // The peer does not hold the PDF: the author's record is here, and still no row.
@@ -454,6 +467,153 @@ describe('received evidence (#1811)', () => {
       pdfHash: capture.pdfHash
     })
     expect((await verifyCapture(capture.captureId)).status).toBe('verified')
+  })
+
+  // #2250: the apply step hashes the screenshot, the Transaction Record and the PDF as they
+  // stream from disk, and reads whole only the page and the text, whose bytes the row uses.
+  describe('the files a received row does not hold (#2250)', () => {
+    // 200 KiB and 1 byte: several 64 KiB read-stream chunks, the last of them partial.
+    const SIZE = 200 * 1024 + 1
+    const invented = (seed: number, label: string): Buffer => {
+      const bytes = Buffer.alloc(SIZE)
+      for (let i = 0; i < SIZE; i++) bytes[i] = (i * 31 + seed) % 251
+      bytes.write(label)
+      return bytes
+    }
+    const pathsOf = (captureId: string) => ({
+      page: artifact(captureId, 'mhtml'),
+      text: artifact(captureId, 'txt'),
+      png: artifact(captureId, 'png'),
+      record: defaultCaptureStore.artifactPaths(CASE_ID, captureId, 'warc.gz'),
+      pdf: defaultCaptureStore.artifactPaths(CASE_ID, captureId, 'pdf')
+    })
+    const readWhole = (): unknown[] =>
+      vi.mocked(fsPromises.readFile).mock.calls.map(([path]) => path)
+
+    afterEach(() => {
+      vi.restoreAllMocks()
+    })
+
+    it('hashes them as they stream, reads none of them whole, and lands the row', async () => {
+      await activate(A)
+      const screenshot = invented(1, 'invented screenshot')
+      const record = invented(2, 'invented warc.gz')
+      const pdf = invented(3, '%PDF-1.4 invented')
+      const capture = await addCapture(CASE_ID, A, 1, {
+        screenshot,
+        transactionRecord: record,
+        pdf
+      })
+      // Known answers, hashed here outside the code under test: the author's entry anchors these
+      // bytes.
+      const entry = parsedChain(ownChainText(CASE_ID)).find(
+        (e) => e.type === 'capture' && e.captureId === capture.captureId
+      )
+      expect(entry).toMatchObject({
+        screenshotHash: sha(screenshot),
+        transactionRecordHash: sha(record),
+        pdfHash: sha(pdf)
+      })
+      const source = recordSource(CASE_ID, A)
+
+      await activate(B)
+      const { page, text, png, record: recordFile, pdf: pdfFile } = pathsOf(capture.captureId)
+      vi.mocked(fsPromises.readFile).mockClear()
+      const hashes = vi.spyOn(defaultCaptureStore, 'hashArtifact')
+      const result = await pull(CASE_ID, source)
+      expect(result.errors).toEqual([])
+      expect(result.capturesApplied).toBe(1)
+      const read = readWhole()
+      expect(read).toEqual(expect.arrayContaining([page.abs, text.abs]))
+      for (const { abs } of [png, recordFile, pdfFile]) expect(read).not.toContain(abs)
+      expect(hashes.mock.calls).toEqual([
+        [CASE_ID, capture.captureId, 'png'],
+        [CASE_ID, capture.captureId, 'warc.gz'],
+        [CASE_ID, capture.captureId, 'pdf']
+      ])
+      expect(await Promise.all(hashes.mock.results.map(({ value }) => value))).toEqual([
+        sha(screenshot),
+        sha(record),
+        sha(pdf)
+      ])
+      expect((await verifyCapture(capture.captureId)).status).toBe('verified')
+    })
+
+    it('hashes nothing while one of them is absent, and refuses the first wrong one once it arrives', async () => {
+      await activate(A)
+      const capture = await addCapture(CASE_ID, A, 1, {
+        transactionRecord: invented(2, 'invented warc.gz'),
+        pdf: invented(3, '%PDF-1.4 invented')
+      })
+      const source = recordSource(CASE_ID, A)
+
+      await activate(B)
+      const { page, text, png, record, pdf } = pathsOf(capture.captureId)
+      const genuinePdf = source.files.get(pdf.rel)!
+      source.files.delete(pdf.rel)
+      const first = await pull(CASE_ID, source)
+      expect(first.errors).toEqual([])
+      expect(first.capturesApplied).toBe(0)
+
+      // A screenshot already at its path is never fetched again, and the PDF is still absent.
+      const written = 'a screenshot written here, not by the author'
+      writeFileSync(png.abs, written)
+      vi.mocked(fsPromises.readFile).mockClear()
+      const hashes = vi.spyOn(defaultCaptureStore, 'hashArtifact')
+      const waiting = await pull(CASE_ID, source)
+      expect(waiting.errors).toEqual([])
+      expect(waiting.capturesApplied).toBe(0)
+      expect(hashes).not.toHaveBeenCalled()
+      const read = readWhole()
+      for (const { abs } of [page, text, png, record, pdf]) expect(read).not.toContain(abs)
+      expect(getCapture(capture.captureId)).toBeUndefined()
+
+      source.files.set(pdf.rel, genuinePdf)
+      const arrived = await pull(CASE_ID, source)
+      expect(arrived.errors).toEqual([
+        expect.objectContaining({
+          kind: 'hash-mismatch',
+          installationId: A.installationId,
+          detail: `${png.rel}: expected ${capture.screenshotHash}, found ${sha(written)}`
+        })
+      ])
+      expect(getCapture(capture.captureId)).toBeUndefined()
+    })
+
+    it('waits on one removed between the absence check and its hash, and lands the row once it is back', async () => {
+      await activate(A)
+      const capture = await addCapture(CASE_ID, A, 1, {
+        transactionRecord: invented(2, 'invented warc.gz'),
+        pdf: invented(3, '%PDF-1.4 invented')
+      })
+      const source = recordSource(CASE_ID, A)
+
+      await activate(B)
+      const { pdf } = pathsOf(capture.captureId)
+      const hashArtifact = defaultCaptureStore.hashArtifact
+      let removed = false
+      vi.spyOn(defaultCaptureStore, 'hashArtifact').mockImplementation(
+        async (caseId, captureId, type) => {
+          if (type === 'pdf' && !removed) {
+            removed = true
+            rmSync(pdf.abs)
+          }
+          return hashArtifact(caseId, captureId, type)
+        }
+      )
+      const vanished = await pull(CASE_ID, source)
+      expect(removed).toBe(true)
+      expect(vanished.errors).toEqual([])
+      expect(vanished.capturesApplied).toBe(0)
+      expect(getCapture(capture.captureId)).toBeUndefined()
+
+      // The file step asks for an anchored file that is not on disk again.
+      const back = await pull(CASE_ID, source)
+      expect(back.errors).toEqual([])
+      expect(back.capturesApplied).toBe(1)
+      expect(existsSync(pdf.abs)).toBe(true)
+      expect((await verifyCapture(capture.captureId)).status).toBe('verified')
+    })
   })
 
   it('refuses entries naming a held id or a taken number, and deletions of the receiver own', async () => {

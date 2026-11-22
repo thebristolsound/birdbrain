@@ -184,23 +184,36 @@ export async function applyReceivedEvidence(
     numbers.set(numberKey(author, n), id)
   }
 
-  // The bytes of each anchored file, or 'absent' while one has not arrived, or 'mismatch' after
-  // reporting it. Absence is checked for every file before any is read.
+  // The bytes of each anchored file read whole, in order, or 'absent' while one has not arrived,
+  // or 'mismatch' after reporting it. Absence is checked for every file before any is hashed. A
+  // file with `streamHash` is hashed as it streams from disk, and its bytes are never held.
   const readAnchored = async (
-    files: Array<{ rel: string; abs: string; hash: string }>,
+    files: Array<{
+      rel: string
+      abs: string
+      hash: string
+      streamHash?: () => Promise<string | null>
+    }>,
     author: string,
     index: number
   ): Promise<Buffer[] | 'absent' | 'mismatch'> => {
     if (files.some(({ abs }) => !existsSync(abs))) return 'absent'
     const bytes: Buffer[] = []
-    for (const { rel, abs, hash } of files) {
-      const read = await readFile(abs)
-      const actual = sha256(read)
+    for (const { rel, abs, hash, streamHash } of files) {
+      let actual: string | null
+      if (streamHash) {
+        actual = await streamHash()
+      } else {
+        const read = await readFile(abs)
+        actual = sha256(read)
+        bytes.push(read)
+      }
+      // Removed since the absence check: the next session asks for it again.
+      if (actual === null) return 'absent'
       if (actual !== hash) {
         refuse('hash-mismatch', author, index, `${rel}: expected ${hash}, found ${actual}`)
         return 'mismatch'
       }
-      bytes.push(read)
     }
     return bytes
   }
@@ -234,20 +247,26 @@ export async function applyReceivedEvidence(
       ...store.artifactPaths(caseId, id, type),
       hash
     })
+    // Hashed as they stream from disk, as verification hashes the record and the PDF: the row
+    // uses none of these files' bytes, so none is held whole.
+    const streamed = (type: CaptureArtifactType, hash: string) => ({
+      ...artifact(type, hash),
+      streamHash: () => store.hashArtifact(caseId, id, type)
+    })
     const mhtml = artifact('mhtml', entry.contentHash)
-    const png = entry.screenshotHash ? artifact('png', entry.screenshotHash) : undefined
+    const png = entry.screenshotHash ? streamed('png', entry.screenshotHash) : undefined
     const txt = entry.textHash ? artifact('txt', entry.textHash) : undefined
-    // Read for their hash only: the row holds neither file's bytes.
     const record = entry.transactionRecordHash
-      ? artifact('warc.gz', entry.transactionRecordHash)
+      ? streamed('warc.gz', entry.transactionRecordHash)
       : undefined
-    const pdf = entry.pdfHash ? artifact('pdf', entry.pdfHash) : undefined
+    const pdf = entry.pdfHash ? streamed('pdf', entry.pdfHash) : undefined
     const files = [mhtml, png, txt, record, pdf].filter((file) => file !== undefined)
     const bytes = await readAnchored(files, author, index)
     if (!Array.isArray(bytes)) return null
-    const [page] = bytes
+    // Only the page and the text are read whole, in that order.
+    const [page, text] = bytes
     const title = readMhtmlTitle(page) ?? entry.url
-    const textContent = txt ? bytes[files.indexOf(txt)].toString('utf-8') : undefined
+    const textContent = txt ? text.toString('utf-8') : undefined
     claim(id, author, n)
     return {
       textContent,

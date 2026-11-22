@@ -6,7 +6,7 @@ import type { AppendResult, CaptureEntryContext } from '@main/services/manifest'
 // fields a row mirrors, and in which columns. The ingest, a Duplicate and the row sync writes
 // for another member's Capture each pass the entry, what no entry signs, and where its row
 // departs from the entry on purpose. A field the row mirrors is added here once, not once per
-// writer. A received row leaves the six capture engine fields out (#2206).
+// writer.
 
 // The entry fields the row mirrors. A `capture` entry read from a chain has them, and so does
 // the context a writer signs once the append has returned its index and hashes.
@@ -54,10 +54,10 @@ export interface CaptureRowLocal {
   mhtmlPath: string
   screenshotPath?: string
   // The acquiring browser, as the writer knows it: what this installation saw for the ingest,
-  // the source's row for a Duplicate, and for a received row only the user agent its author's
-  // entry signs. No entry signs the extension's version, and an entry signs the user agent only
-  // when the Egress was not Direct and the browser version only for a launched browser, so the
-  // row takes all three from the writer.
+  // the source's row for a Duplicate, and for a received row only the user agent and browser
+  // version its author's entry signs. No entry signs the extension's version, and an entry signs
+  // the user agent only when the Egress was not Direct and the browser version only for a
+  // launched browser, so the row takes all three from the writer.
   extensionVersion?: string
   browserVersion?: string
   userAgent?: string
@@ -76,16 +76,12 @@ export interface CaptureRowLocal {
   // takes.
   author?: ExhibitAuthor
   committedAt?: string
-  // False leaves the six capture engine columns empty whatever the entry carries, as the
-  // received-row writer has since before those columns existed (#2206).
-  captureEngineFields?: false
 }
 
 export function captureRowOf(
   entry: MirroredCaptureEntry,
   local: CaptureRowLocal
 ): InsertCaptureParams & { id: string } {
-  const engine = local.captureEngineFields !== false
   return {
     id: entry.captureId,
     caseId: local.caseId,
@@ -127,12 +123,12 @@ export function captureRowOf(
     personaId: entry.personaId,
     personaLabel: entry.personaLabel,
     consentSuppression: entry.consentSuppression,
-    inventory: engine ? entry.inventory : undefined,
-    scrollToLoad: engine ? entry.scrollToLoad : undefined,
-    transactionRecordHash: engine ? entry.transactionRecordHash : undefined,
-    boundTls: engine ? entry.boundTls : undefined,
-    boundTlsAbsent: engine ? entry.boundTlsAbsent : undefined,
-    pdfHash: engine ? entry.pdfHash : undefined,
+    inventory: entry.inventory,
+    scrollToLoad: entry.scrollToLoad,
+    transactionRecordHash: entry.transactionRecordHash,
+    boundTls: entry.boundTls,
+    boundTlsAbsent: entry.boundTlsAbsent,
+    pdfHash: entry.pdfHash,
     exhibitNumber: entry.exhibitNumber ?? local.renumberedTo,
     author: local.author,
     committedAt: local.committedAt

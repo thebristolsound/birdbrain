@@ -200,7 +200,7 @@ export function UpdatesConfig({ settings, onUpdate }: UpdatesConfigProps) {
               onClick={() => onUpdate({ autoCheckForUpdates: !settings.autoCheckForUpdates })}
               className={cn(
                 'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors',
-                settings.autoCheckForUpdates ? 'bg-accent' : 'bg-text-faint'
+                settings.autoCheckForUpdates ? 'bg-accent-fill' : 'bg-control'
               )}
             >
               <span

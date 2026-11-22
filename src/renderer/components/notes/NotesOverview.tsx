@@ -228,7 +228,7 @@ function NotesWorkspace({ caseId }: { caseId: string }) {
             aria-label="New note"
             disabled={create.isPending}
             onClick={() => void newNote()}
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-accent text-white hover:bg-accent-hover disabled:opacity-50"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-accent-fill text-white hover:bg-accent-fill-hover disabled:opacity-50"
           >
             <Plus className="h-3.5 w-3.5" />
           </button>

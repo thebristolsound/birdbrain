@@ -62,18 +62,18 @@ describe('CapturePreferences screenshots toggle', () => {
   // Each assertion therefore fails for its own reason.
   it('draws the box from theme tokens in both states', () => {
     renderPanel()
-    const { className } = screenshotsCheckbox()
-    expect(className).toContain('border-border-strong')
-    expect(className).toContain('bg-canvas')
-    expect(className).toContain('checked:border-accent')
-    expect(className).toContain('checked:bg-accent')
+    const classes = screenshotsCheckbox().className.split(/\s+/)
+    expect(classes).toContain('border-control')
+    expect(classes).toContain('bg-canvas')
+    expect(classes).toContain('checked:border-accent-fill')
+    expect(classes).toContain('checked:bg-accent-fill')
   })
 
   // The class list opts out of the UA outline, so the replacement ring carries
   // the whole keyboard indicator. Full-strength accent, not an alpha tint: over
-  // the dark card (#6467f2 on #131316) that is 4.21:1, past WCAG 2.4.11's 3:1,
+  // the dark card (#9497ff on #17171b) that is 6.9:1, past WCAG 2.4.11's 3:1,
   // where the /25 tint it replaces was 1.34:1. The offset is what keeps the ring
-  // visible when the box is checked and already filled accent.
+  // visible when the box is checked and already filled.
   it('keeps a visible keyboard focus indicator', () => {
     renderPanel()
     const { className } = screenshotsCheckbox()

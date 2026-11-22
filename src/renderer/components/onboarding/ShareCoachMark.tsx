@@ -187,7 +187,7 @@ export function ShareCoachMark() {
                 dismiss()
                 navigate({ to: '/cases/$caseId/settings', params: { caseId } })
               }}
-              className="h-[26px] shrink-0 rounded border-none bg-accent px-2.5 text-[11px] font-medium text-white hover:bg-accent-hover"
+              className="h-[26px] shrink-0 rounded border-none bg-accent-fill px-2.5 text-[11px] font-medium text-white hover:bg-accent-fill-hover"
             >
               {COPY.showMe}
             </button>

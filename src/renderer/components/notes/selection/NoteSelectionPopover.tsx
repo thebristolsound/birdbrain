@@ -72,7 +72,7 @@ function CheckboxRow({ checked, disabled = false, label, testId, onToggle }: Che
       <span
         aria-hidden
         className={`grid h-3.5 w-3.5 shrink-0 place-items-center rounded border ${
-          checked ? 'border-accent bg-accent' : 'border-border-strong bg-transparent'
+          checked ? 'border-accent-fill bg-accent-fill' : 'border-control bg-transparent'
         }`}
       >
         {checked ? <Check className="h-2.5 w-2.5 text-white" strokeWidth={3.4} /> : null}
@@ -203,7 +203,7 @@ export function NoteSelectionConfirm({
           autoFocus
           disabled={pending}
           onClick={onConfirm}
-          className="flex h-6 items-center gap-1.5 rounded-md bg-accent px-3 text-xs font-semibold text-white disabled:opacity-60"
+          className="flex h-6 items-center gap-1.5 rounded-md bg-accent-fill px-3 text-xs font-semibold text-white disabled:opacity-60"
         >
           {mode === 'selector' ? 'Create' : 'Apply'}
         </button>

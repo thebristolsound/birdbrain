@@ -124,7 +124,7 @@ export function DbTables() {
             id="db-table-select"
             value={selectedTable}
             onChange={(e) => setSelectedTable(e.target.value)}
-            className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-text-primary outline-none focus:border-accent"
+            className="rounded-lg border border-input bg-surface px-3 py-1.5 text-sm text-text-primary outline-none focus:border-accent"
           >
             {TABLES.map((t) => (
               <option key={t} value={t}>
@@ -241,6 +241,7 @@ export function DbTables() {
               <Button
                 variant="outline"
                 size="icon-sm"
+                className="border-control"
                 aria-label="Previous page"
                 onClick={() => setPage((p) => Math.max(0, p - 1))}
                 disabled={page === 0}
@@ -250,6 +251,7 @@ export function DbTables() {
               <Button
                 variant="outline"
                 size="icon-sm"
+                className="border-control"
                 aria-label="Next page"
                 onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
                 disabled={page >= totalPages - 1}

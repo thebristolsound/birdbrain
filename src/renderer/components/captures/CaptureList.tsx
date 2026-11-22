@@ -295,7 +295,7 @@ export function CaptureList({
                   <Filter className="h-3 w-3" />
                   Filter
                   {activeFilterCount > 0 && (
-                    <span className="ml-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-accent text-[9px] font-medium text-white">
+                    <span className="ml-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-accent-fill text-[9px] font-medium text-white">
                       {activeFilterCount}
                     </span>
                   )}

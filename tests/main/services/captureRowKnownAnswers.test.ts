@@ -42,8 +42,10 @@ import {
 // their Duplicates, which between them set every entry field a row mirrors. The values in the
 // fixture file were recorded from the writers as they stood at origin/main 2aac9a32, before the
 // mapping from entry to row moved into one module, so a change to a column or a byte of an
-// entry of these eight fails here. Other shapes, such as a row an archive import renamed or a
-// received Capture numbered only by a `renumber` entry, are not pinned. Content is invented.
+// entry of these eight fails here. The received rows' six capture engine columns and browser
+// version were recorded again when that writer began to mirror them (#2206); nothing else
+// changed. Other shapes, such as a row an archive import renamed or a received Capture
+// numbered only by a `renumber` entry, are not pinned. Content is invented.
 //
 // Four values differ on every run and are replaced by a name before the comparison: each
 // installation's id, a Duplicate's id, each entry's hash and its signature. Every entry hash is
@@ -299,6 +301,34 @@ describe('the Capture row and signed entry each writer produces', () => {
     for (const sourceId of [BARE, FULL, BACKGROUND, LAUNCHED]) {
       received[NAMES[sourceId]] = rowOf(sourceId)
       received[`a Duplicate of: ${NAMES[sourceId]}`] = rowOf(duplicates.get(sourceId) ?? '')
+    }
+
+    // A received row holds the capture engine columns its author's row holds (#2206), and the
+    // browser version wherever the entry signs one: a launched Capture and its Duplicate.
+    const ENGINE_COLUMNS = [
+      'inventory',
+      'scroll_to_load',
+      'transaction_record_hash',
+      'pdf_hash',
+      'bound_tls',
+      'bound_tls_absent'
+    ]
+    const columnsOf = (row: unknown, columns: string[]): Record<string, unknown> => {
+      const { captures } = row as { captures: Record<string, unknown> }
+      return Object.fromEntries(columns.map((c) => [c, captures[c]]))
+    }
+    for (const sourceId of [BARE, FULL, BACKGROUND, LAUNCHED]) {
+      const columns =
+        sourceId === LAUNCHED ? [...ENGINE_COLUMNS, 'browser_version'] : ENGINE_COLUMNS
+      const name = NAMES[sourceId]
+      const pairs: Array<[unknown, unknown]> = [
+        [received[name], ingest[name]],
+        [received[`a Duplicate of: ${name}`], duplicate[name]]
+      ]
+      for (const [theirs, authors] of pairs) {
+        const { row } = authors as { row: unknown }
+        expect(columnsOf(theirs, columns)).toEqual(columnsOf(row, columns))
+      }
     }
 
     let text = JSON.stringify({ ingest, duplicate, received }, null, 2) + '\n'

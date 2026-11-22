@@ -25,7 +25,7 @@ export function HeroSection({ onNewInvestigation, onOpenRecent, onImportCase }: 
             data-testid="new-case-btn"
             data-tour="newcase"
             onClick={onNewInvestigation}
-            className="group flex items-center gap-2 px-5 py-3 bg-accent hover:bg-accent-hover text-white font-display font-bold text-sm rounded-2xl transition-[transform,background-color] active:scale-[0.98]"
+            className="group flex items-center gap-2 px-5 py-3 bg-accent-fill hover:bg-accent-fill-hover text-white font-display font-bold text-sm rounded-2xl transition-[transform,background-color] active:scale-[0.98]"
           >
             <PlusCircle className="h-4 w-4 group-hover:rotate-90 transition-transform duration-300" />
             Start New Case

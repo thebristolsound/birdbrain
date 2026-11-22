@@ -54,7 +54,7 @@ export function InstallExtensionStepper({
               aria-current={i === step ? 'step' : undefined}
               className={`grid h-8 w-8 flex-shrink-0 place-items-center rounded-[10px] border font-mono text-[13px] font-semibold transition-colors ${
                 i === step
-                  ? 'border-accent bg-accent text-white'
+                  ? 'border-accent-fill bg-accent-fill text-white'
                   : i < step
                     ? 'border-accent/20 bg-accent-subtle text-accent'
                     : 'border-border-strong bg-surface text-text-muted hover:border-accent/40 hover:text-text-secondary'

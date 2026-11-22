@@ -277,7 +277,7 @@ export function LinksTab({ capture, hit }: { capture: Capture; hit?: FieldHit })
   return (
     <div data-testid="links-tab" className="flex h-full flex-col overflow-hidden">
       <div className="flex shrink-0 items-center gap-2 border-b border-border bg-surface px-3 py-2">
-        <label className="flex min-w-0 flex-1 items-center gap-1.5 rounded border border-border bg-canvas px-2">
+        <label className="flex min-w-0 flex-1 items-center gap-1.5 rounded border border-input bg-canvas px-2">
           <Search aria-hidden className="h-3 w-3 text-text-faint" />
           <input
             type="search"

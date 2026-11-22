@@ -43,7 +43,7 @@ export function PinLegend({ rows, openShapeId, onToggle }: Props) {
             >
               <span
                 aria-hidden
-                className="mt-px grid h-[15px] w-[15px] shrink-0 place-items-center rounded-full bg-accent font-display text-[9px] font-bold text-white"
+                className="mt-px grid h-[15px] w-[15px] shrink-0 place-items-center rounded-full bg-accent-fill font-display text-[9px] font-bold text-white"
               >
                 {number}
               </span>

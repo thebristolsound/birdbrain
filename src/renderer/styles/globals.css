@@ -3,26 +3,39 @@
 @import "@fontsource-variable/jetbrains-mono";
 
 @theme {
-  /* Semantic surface tokens — light mode defaults (zinc) */
-  --color-canvas: #fafafa;
-  --color-surface: #f4f4f5;
+  /* Semantic surface tokens — light mode defaults. The chrome steps down to
+     --color-surface so it separates from the near-white canvas and white cards:
+     three planes, per the palette and contrast overhaul spec (2026-11-17). */
+  --color-canvas: #fbfbfc;
+  --color-surface: #f1f1f4;
   --color-card: #ffffff;
   --color-elevated: #ffffff;
 
   /* Semantic text tokens */
   --color-text-primary: #09090b;
-  --color-text-secondary: #3f3f46;
+  --color-text-secondary: #303036;
   --color-text-muted: #52525b;
-  --color-text-faint: #66666f;
+  --color-text-faint: #63636c;
 
-  /* Accent tokens — light darkens the indigo vs dark's #6467f2 for WCAG AA on zinc-50 */
-  --color-accent: #4f52e0;
-  --color-accent-hover: #4346d1;
-  --color-accent-subtle: rgba(100,103,242,0.10);
+  /* Accent tokens — text, strokes, focus and selection. A filled control takes
+     --color-accent-fill below, since no one indigo serves as both text and fill. */
+  --color-accent: #4346d1;
+  --color-accent-hover: #3a3dc0;
+  --color-accent-subtle: rgba(79,82,224,0.09);
+  /* The background of a filled control, with white text on it (5.8:1). */
+  --color-accent-fill: #4f52e0;
+  --color-accent-fill-hover: #4346d1;
 
   /* Border tokens */
-  --color-border: #e4e4e7;
-  --color-border-strong: #d4d4d8;
+  --color-border: #d6d6dc;
+  --color-border-strong: #bdbdc6;
+  /* Control boundaries and the nominal status dot, at 3:1 or more on every
+     plane, a hovered row included. */
+  --color-control: #7a7a84;
+  /* Hover, keyboard highlight and an open pill: an ink tint, since light cards,
+     menus and dialogs are already white and a lighter hover would vanish. */
+  --color-hover: rgba(24,24,40,0.06);
+  --color-scrim: rgba(24,24,32,0.28);
 
   /* Raw palette — entity types, status indicators, one-offs */
   --color-indigo-300: #a5b4fc;
@@ -58,7 +71,7 @@
      for the 10-12px text these carry. Dark lifts them back (see below). */
   --color-success-surface: rgba(16,185,129,0.10);
   --color-success-line: rgba(16,185,129,0.20);
-  --color-success-fg: #047857;
+  --color-success-fg: #046c4e;
 
   --color-danger-surface: rgba(239,68,68,0.10);
   --color-danger-line: rgba(239,68,68,0.20);
@@ -67,6 +80,8 @@
   --color-warning-surface: rgba(245,158,11,0.10);
   --color-warning-line: rgba(245,158,11,0.20);
   --color-warning-fg: #92400e;
+  /* The advisory dot, ring, icon or bar; advisory words take secondary text. */
+  --color-warning-mark: #b06d00;
 
   /* Categorical hue foregrounds: case type pills and the NEW badge. Light
      uses the 700 step, and orange the 800 step because its 700 lands at
@@ -75,6 +90,9 @@
   --color-hue-orange-fg: #9a3412;
   --color-hue-sky-fg: #0369a1;
   --color-hue-pink-fg: #be185d;
+  /* Captures and Selectors in the link map, held clear of the accent. */
+  --color-hue-teal-fg: #0f766e;
+  --color-hue-violet-fg: #7e22ce;
 
   /* Member hues for a Shared Case's chips, dots and bars (#1514): hue N is the
      Nth member in the Owner's member-add order, revoked members keep theirs,
@@ -101,7 +119,7 @@
   --color-card-foreground: var(--color-text-primary);
   --color-popover: var(--color-surface);
   --color-popover-foreground: var(--color-text-primary);
-  --color-primary: var(--color-accent);
+  --color-primary: var(--color-accent-fill);
   --color-primary-foreground: #ffffff;
   --color-secondary: var(--color-elevated);
   --color-secondary-foreground: var(--color-text-primary);
@@ -110,7 +128,7 @@
   --color-accent-foreground: #ffffff;
   --color-destructive: var(--color-red-500);
   --color-destructive-foreground: #ffffff;
-  --color-input: #8b8b93;
+  --color-input: var(--color-control);
   --color-ring: var(--color-accent);
 
   /* Radius system — the scale is 2 / 4 / 6 and nothing else. xl and 2xl alias
@@ -136,40 +154,47 @@
 
 /* === Dark mode overrides === */
 html.dark {
-  --color-canvas: #090a0b;
-  --color-surface: #0e0e11;
-  --color-card: #131316;
-  --color-elevated: #1c1c20;
+  --color-canvas: #0b0b0d;
+  --color-surface: #111114;
+  --color-card: #17171b;
+  --color-elevated: #202025;
   --color-text-primary: #fafafa;
   --color-text-secondary: #d4d4d8;
-  --color-text-muted: #a1a1aa;
-  --color-text-faint: #85858e;
-  --color-accent: #6467f2;
-  --color-accent-hover: #7a7cf5;
-  --color-accent-subtle: rgba(100,103,242,0.16);
-  --color-border: #27272a;
-  --color-border-strong: #3d3d42;
-  /* Status foregrounds lift back to the bright hues — against the dark canvas
-     those clear AA comfortably (9.17 / 6.64 / 10.41:1 on the tinted surface) */
-  --color-success-fg: #34d399;
-  --color-danger-fg: #f87171;
-  --color-warning-fg: #fbbf24;
-  /* Crypto pill reads orange in both themes; sky and pink keep today's hues */
-  --color-hue-orange-fg: #f97316;
-  --color-hue-sky-fg: #0ea5e9;
-  --color-hue-pink-fg: #ec4899;
+  --color-text-muted: #a8a8b2;
+  --color-text-faint: #9798a2;
+  --color-accent: #9497ff;
+  --color-accent-hover: #a7aaff;
+  --color-accent-subtle: rgba(120,124,255,0.14);
+  --color-accent-fill: #5457e6;
+  --color-accent-fill-hover: #4a4dd6;
+  --color-border: #2a2a30;
+  --color-border-strong: #3a3a41;
+  --color-control: #7a7a84;
+  --color-hover: rgba(255,255,255,0.06);
+  --color-scrim: rgba(0,0,0,0.55);
+  /* Status hues at matched lightness, so none shouts over the others. */
+  --color-success-fg: #4ec38e;
+  --color-danger-fg: #f47a7a;
+  --color-warning-fg: #e5a84b;
+  --color-warning-mark: #e5a84b;
+  --color-hue-orange-fg: #f08a3c;
+  --color-hue-sky-fg: #38b6f0;
+  --color-hue-pink-fg: #f06fa8;
+  --color-hue-teal-fg: #3cc7b4;
+  --color-hue-violet-fg: #c084fc;
   --color-member-1: #38bdf8;
   --color-member-2: #fbbf24;
   --color-member-3: #34d399;
   --color-member-4: #fb7185;
-  --color-input: var(--color-border-strong);
+  --color-input: var(--color-control);
 }
 
 /* === Shadow tokens (not in @theme — Tailwind doesn't generate shadow utilities from it) === */
 :root {
-  --shadow-card: 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-card: 0 1px 2px rgba(24,24,40,0.06);
   --shadow-card-hover: 0 1px 2px rgba(0,0,0,0.06);
-  --shadow-overlay: 0 10px 30px rgba(0,0,0,0.12);
+  --shadow-overlay: 0 16px 32px -8px rgba(24,24,40,0.16), 0 4px 10px -4px rgba(24,24,40,0.08);
+  --shadow-menu: 0 12px 24px -6px rgba(24,24,40,0.14), 0 4px 8px -4px rgba(24,24,40,0.10);
   --shadow-glow: none;
   --shadow-btn: none;
 }
@@ -177,6 +202,7 @@ html.dark {
   --shadow-card: none;
   --shadow-card-hover: none;
   --shadow-overlay: 0 10px 30px rgba(0,0,0,0.5);
+  --shadow-menu: 0 20px 25px -5px rgba(0,0,0,.28), 0 8px 10px -6px rgba(0,0,0,.22);
   --shadow-glow: none;
   --shadow-btn: none;
 }

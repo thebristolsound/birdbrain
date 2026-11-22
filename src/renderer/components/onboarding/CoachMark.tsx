@@ -153,7 +153,7 @@ export function CoachMark({
           <button
             data-testid="tour-next"
             onClick={onNext}
-            className="h-6 shrink-0 whitespace-nowrap rounded border-none bg-accent px-2.5 text-[11px] font-medium text-white hover:bg-accent-hover"
+            className="h-6 shrink-0 whitespace-nowrap rounded border-none bg-accent-fill px-2.5 text-[11px] font-medium text-white hover:bg-accent-fill-hover"
           >
             {step.last ?? (step.final ? 'Keep exploring' : 'Next →')}
           </button>
@@ -198,7 +198,7 @@ export function CoachMark({
       />
       <div
         data-testid="tour-badge"
-        className="pointer-events-none fixed z-[72] grid h-[18px] w-[18px] place-items-center rounded-full bg-accent text-[10px] font-bold tabular-nums text-white"
+        className="pointer-events-none fixed z-[72] grid h-[18px] w-[18px] place-items-center rounded-full bg-accent-fill text-[10px] font-bold tabular-nums text-white"
         style={{ top: layout.badge.top, left: layout.badge.left }}
       >
         {markNumber(steps, index)}

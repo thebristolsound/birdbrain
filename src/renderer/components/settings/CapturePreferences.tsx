@@ -63,7 +63,7 @@ export function CapturePreferences({ settings, onUpdate }: CapturePreferencesPro
                 type="checkbox"
                 checked={settings.captureScreenshots}
                 onChange={(e) => onUpdate({ captureScreenshots: e.target.checked })}
-                className="peer h-4 w-4 cursor-pointer appearance-none rounded border border-border-strong bg-canvas transition-colors checked:border-accent checked:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 focus-visible:ring-offset-card"
+                className="peer h-4 w-4 cursor-pointer appearance-none rounded border border-control bg-canvas transition-colors checked:border-accent-fill checked:bg-accent-fill focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 focus-visible:ring-offset-card"
               />
               <Check
                 aria-hidden="true"
@@ -154,7 +154,7 @@ export function CapturePreferences({ settings, onUpdate }: CapturePreferencesPro
                 onClick={() => onUpdate({ autoCaptureMode: switchOn ? 'notify' : 'per-case' })}
                 className={cn(
                   'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors',
-                  switchOn ? 'bg-accent' : 'bg-text-faint',
+                  switchOn ? 'bg-accent-fill' : 'bg-control',
                   modeIsAuto && 'cursor-not-allowed opacity-60'
                 )}
               >

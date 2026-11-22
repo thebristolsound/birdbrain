@@ -184,7 +184,7 @@ describe("a Capture's own files in an Evidence Package", () => {
         form: { kind: 'evidence-package', screenshots: true },
         captures: [page],
         entries: [captureEntry('cap-1')],
-        source: memorySource({ 'cap-1.png': 'pixels' })
+        source: memorySource({ 'cap-1.mhtml': 'page', 'cap-1.png': 'pixels' })
       })
     )
 
@@ -200,7 +200,7 @@ describe("a Capture's own files in an Evidence Package", () => {
       input({
         captures: [page],
         entries: [captureEntry('cap-1', { screenshotHash: sha256('pixels') })],
-        source: memorySource({ 'cap-1.png': 'pixels' })
+        source: memorySource({ 'cap-1.mhtml': 'page', 'cap-1.png': 'pixels' })
       })
     )
 
@@ -218,7 +218,7 @@ describe("a Capture's own files in an Evidence Package", () => {
         entries: [
           captureEntry('cap-1', { transactionRecordHash: sha256('warc'), pdfHash: sha256('pdf') })
         ],
-        source: memorySource({ 'cap-1.warc.gz': 'warc', 'cap-1.pdf': 'pdf' })
+        source: memorySource({ 'cap-1.mhtml': 'page', 'cap-1.warc.gz': 'warc', 'cap-1.pdf': 'pdf' })
       })
     )
 
@@ -233,7 +233,11 @@ describe("a Capture's own files in an Evidence Package", () => {
   })
 
   it('leaves out, unread, a Transaction Record and a PDF no entry anchors', () => {
-    const source = memorySource({ 'cap-1.warc.gz': 'warc', 'cap-1.pdf': 'pdf' })
+    const source = memorySource({
+      'cap-1.mhtml': 'page',
+      'cap-1.warc.gz': 'warc',
+      'cap-1.pdf': 'pdf'
+    })
     const contents = decidePackageContents(
       input({
         form: { kind: 'evidence-package', screenshots: true },
@@ -247,15 +251,53 @@ describe("a Capture's own files in an Evidence Package", () => {
     expect(source.asked).toEqual(['cap-1.mhtml', 'cap-1.png'])
   })
 
-  it('states an anchored file the Capture no longer holds as not enclosed', () => {
-    const contents = decidePackageContents(
-      input({
-        captures: [page],
-        entries: [captureEntry('cap-1', { pdfHash: sha256('pdf') })]
-      })
-    )
+  it.each([
+    ['mhtml', 'page archive', 'pages/cap-1.mhtml'],
+    ['png', 'screenshot', `screenshots/${sha256('pixels')}.png`],
+    ['warc.gz', 'Transaction Record', `transaction-records/${sha256('warc')}.warc.gz`],
+    ['pdf', 'PDF', `pdfs/${sha256('pdf')}.pdf`]
+  ])(
+    'fails the export, naming the Capture and the file, on an anchored %s it cannot read',
+    (type, noun, path) => {
+      const files: Record<string, string> = {
+        'cap-1.mhtml': 'page',
+        'cap-1.png': 'pixels',
+        'cap-1.warc.gz': 'warc',
+        'cap-1.pdf': 'pdf'
+      }
+      delete files[`cap-1.${type}`]
+      const decide = (screenshots: boolean) => () =>
+        decidePackageContents(
+          input({
+            form: { kind: 'evidence-package', screenshots },
+            captures: [page],
+            entries: [
+              captureEntry('cap-1', {
+                screenshotHash: sha256('pixels'),
+                transactionRecordHash: sha256('warc'),
+                pdfHash: sha256('pdf')
+              })
+            ],
+            source: memorySource(files)
+          })
+        )
 
-    expect(contents.ofCapture('cap-1').pdf).toBeNull()
+      const message = `No package was written: could not read the ${noun} of Capture cap-1 (${path}), which a signed entry records.`
+      expect(decide(false)).toThrow(message)
+      expect(decide(true)).toThrow(message)
+    }
+  )
+
+  it('names a renamed Capture by its chain id when it cannot read an anchored file', () => {
+    expect(() =>
+      decidePackageContents(
+        input({
+          captures: [capture('row-id', 'page')],
+          entries: [captureEntry('chain-id')],
+          chainNames: new Map([['row-id', { id: 'chain-id', path: null }]])
+        })
+      )
+    ).toThrow('could not read the page archive of Capture chain-id (pages/chain-id.mhtml)')
   })
 
   it('reads the anchoring fields from the last entry a chain holds for the Capture', () => {
@@ -263,7 +305,7 @@ describe("a Capture's own files in an Evidence Package", () => {
       input({
         captures: [page],
         entries: [captureEntry('cap-1', { pdfHash: sha256('pdf') }), captureEntry('cap-1')],
-        source: memorySource({ 'cap-1.pdf': 'pdf' })
+        source: memorySource({ 'cap-1.mhtml': 'page', 'cap-1.pdf': 'pdf' })
       })
     )
 
@@ -324,7 +366,15 @@ describe("a Capture's own files in an Evidence Package", () => {
           input({
             captures: [page],
             entries: [anchored],
-            source: memorySource({ 'cap-1.mhtml': 'page' }, [`cap-1.${type}`])
+            source: memorySource(
+              {
+                'cap-1.mhtml': 'page',
+                'cap-1.png': 'pixels',
+                'cap-1.warc.gz': 'warc',
+                'cap-1.pdf': 'pdf'
+              },
+              [`cap-1.${type}`]
+            )
           })
         )
       ).toThrow(`EACCES: cap-1.${type}`)
@@ -677,6 +727,54 @@ describe('Exhibits that are not Captures', () => {
     expect(contents.files).toEqual([])
   })
 
+  it('fails an Evidence Package on a file its signed entry records and the source cannot read', () => {
+    const signed = {
+      type: 'exhibit',
+      exhibitId: 'chain-id',
+      path: `${CASE}/documents/chain-id.pdf`
+    }
+    const decide = (form: ExportForm) => () =>
+      decidePackageContents(
+        input({
+          form,
+          fileExhibits: [document('row-id', 'statement')],
+          entries: [signed],
+          chainNames: new Map([['row-id', { id: 'chain-id', path: signed.path }]])
+        })
+      )
+
+    expect(decide(EVIDENCE)).toThrow(
+      'No package was written: could not read the document file of Exhibit chain-id ' +
+        '(documents/chain-id.pdf), which a signed entry records.'
+    )
+    expect(decide(WORKING_COPY)().ofFileExhibit('row-id').enclosed).toBeNull()
+  })
+
+  it('fails an Evidence Package on a signed Exhibit with no stored path', () => {
+    const signed = { type: 'exhibit', exhibitId: 'doc-1', path: `${CASE}/documents/doc-1.pdf` }
+
+    expect(() =>
+      decidePackageContents(
+        input({ fileExhibits: [document('doc-1', 'statement', null)], entries: [signed] })
+      )
+    ).toThrow('could not read the document file of Exhibit doc-1 (documents/doc-1.pdf)')
+  })
+
+  it("names an Exhibit's Derived File it cannot read by the Exhibit", () => {
+    const text = derivedFile('text-1', 'doc-1', `${CASE}/documents/doc-1_text.txt`)
+
+    expect(() =>
+      decidePackageContents(
+        input({
+          fileExhibits: [document('doc-1', 'statement')],
+          derivedFiles: new Map([['doc-1', [text]]]),
+          derivedVerifications: new Map([['doc-1', [verified('text-1')]]]),
+          source: memorySource({ [`${CASE}/documents/doc-1.pdf`]: 'statement' })
+        })
+      )
+    ).toThrow('could not read the text Derived File of Exhibit doc-1 (documents/doc-1_text.txt)')
+  })
+
   it('does not ask the source for an Exhibit with no stored path', () => {
     const source = memorySource({})
     const contents = decidePackageContents(
@@ -770,8 +868,18 @@ describe('Derived Files', () => {
     })
   })
 
-  it('does not enclose an anchored file the source cannot read', () => {
-    const [decided] = decide([verified('thumb-1')], memorySource({}))
+  it.each([
+    ['anchored', verified('thumb-1')],
+    ['chain-unverified', verified('thumb-1', 'unverified', 'chain-unverified')]
+  ])('fails an Evidence Package on a %s file the source cannot read', (_anchoring, result) => {
+    expect(() => decide([result], memorySource({}))).toThrow(
+      'No package was written: could not read the text Derived File of Capture cap-1 ' +
+        '(pages/cap-1_thumb.jpg), which a signed entry records.'
+    )
+  })
+
+  it('does not enclose, and does not fail on, an anchored file a Working Copy cannot read', () => {
+    const [decided] = decide([verified('thumb-1')], memorySource({}), WORKING_COPY)
 
     expect(decided).toMatchObject({ anchoring: 'anchored', enclosed: null })
   })

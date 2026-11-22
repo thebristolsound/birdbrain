@@ -29,7 +29,6 @@ import { generateReport } from '@main/services/export'
 import { commitStagedFiles, uploadToStaging } from '@main/services/staging'
 import { backfillCase } from '@main/services/exhibitBackfill'
 import { listExhibits } from '@main/services/db/exhibitRepo'
-import { listDerivedFilesForCase } from '@main/services/db/derivedFileRepo'
 import { seedUnanchoredDerivedFile } from '../../helpers/mixedKindCase'
 import { initSettings, updateSettings } from '@main/services/settings'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
@@ -771,17 +770,21 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
     {
       // #1156 round 4: the states that reach a Derived File are anchored and
       // enclosed (the good package), anchored with its bytes gone, named by no
-      // entry, and named over a chain that does not verify.
+      // entry, and named over a chain that does not verify. The export stops
+      // on bytes it cannot read (#2225), so this package lost the file and its
+      // index rows after it was written.
       name: 'a derived file whose bytes are gone',
-      build: async () => {
-        const thumbnail = listDerivedFilesForCase(caseId).find((f) => f.exhibitId === captureId)!
-        rmSync(join(tempDir, 'captures', thumbnail.path))
-        const dir = await exportPackage('lost-derived')
-        // Not enclosed and not indexed, so the only finding is the chain-side one.
-        const evidence = JSON.parse(readFileSync(join(dir, 'evidence.json'), 'utf-8')) as {
+      build: () => {
+        const dir = corruptedCopy('lost-derived')
+        const thumbPath = `pages/${captureId}_thumb.jpg`
+        rmSync(join(dir, thumbPath))
+        dropArtifacts(dir, (path) => path === thumbPath)
+        const evidencePath = join(dir, 'evidence.json')
+        const evidence = JSON.parse(readFileSync(evidencePath, 'utf-8')) as {
           exhibits: Array<{ id: string; derivedFiles: unknown[] }>
         }
-        expect(evidence.exhibits.find((e) => e.id === captureId)!.derivedFiles).toEqual([])
+        evidence.exhibits.find((e) => e.id === captureId)!.derivedFiles = []
+        writeFileSync(evidencePath, JSON.stringify(evidence, null, 2))
         return dir
       },
       binary: 'fail',

@@ -26,7 +26,10 @@ import type { CaptureFileType, PackageByteSource } from './byteSource'
  * What the export produces, with the choices that change what it encloses.
  *
  * - An Evidence Package encloses every file a signed entry anchors, whatever
- *   was asked for. `screenshots` adds the screenshots no entry anchors.
+ *   was asked for. `screenshots` adds the screenshots no entry anchors. When
+ *   the read of a file a signed entry records returns nothing (a Capture's
+ *   anchored file, a non-Capture Exhibit's file, a Derived File an entry
+ *   names), the decision throws and the export writes no package (#2225).
  * - A Working Copy is not a verifiable object (ADR-0010). It encloses the page
  *   archives when `pageArchives` is set, and for a screenshot the copy the
  *   operator works with, which `operatorScreenshots` supplies by Capture row
@@ -89,7 +92,10 @@ export interface DerivedFileContents {
   /** The verification `anchoring` was read from; absent when none was given. */
   verification?: DerivedFileVerification
   anchoring: DerivedFileAnchoring
-  /** Null when the file is held back, or when its bytes could not be read. */
+  /**
+   * Null when the file is held back, or when its bytes could not be read
+   * where that does not fail the export (see ExportForm).
+   */
   enclosed: EnclosedFile | null
 }
 
@@ -122,7 +128,10 @@ export interface CaptureContents {
 }
 
 export interface FileExhibitContents {
-  /** Null when the Exhibit's bytes could not be read, or it has no stored path. */
+  /**
+   * Null when the Exhibit has no stored path, or when its bytes could not be
+   * read where that does not fail the export (see ExportForm).
+   */
   enclosed: EnclosedFile | null
   timestampTokenPath: string | null
   /** One for each Derived File row of the Exhibit, in the order given. */
@@ -208,11 +217,11 @@ function decideTimestampTokens(
 /**
  * Which signed field anchors which of a Capture's files, and what an Evidence
  * Package does with a file no signed entry anchors. An Evidence Package always
- * encloses a file whose field the entry carries when the Capture holds it,
- * because Package Verification fails a signed hash whose file the package
- * lacks (#1986; D10 of docs/plans/2026-10-10-capture-engine-first-slice.md).
- * No rule can leave an anchored file out of one. A Working Copy is not
- * verifiable and does not read this table (ADR-0010).
+ * encloses a file whose field the entry carries, because Package Verification
+ * fails a signed hash whose file the package lacks (#1986; D10 of
+ * docs/plans/2026-10-10-capture-engine-first-slice.md), and fails the export
+ * when it cannot read one (see ExportForm). A Working Copy is not verifiable
+ * and does not read this table (ADR-0010).
  *
  * A screenshot, a Transaction Record and a PDF are named by their SHA-256, so
  * Captures holding the same bytes share one file. The page archive is named
@@ -222,6 +231,8 @@ const CAPTURE_FILE_RULES: ReadonlyArray<{
   slot: 'pageArchive' | 'screenshot' | 'transactionRecord' | 'pdf'
   type: CaptureFileType
   anchor: CaptureAnchor
+  /** How an export that cannot read the file names it to the operator. */
+  noun: string
   unanchored: 'enclosed' | 'when-screenshots-asked' | 'left-out'
   path: (chainId: string, sha256: string) => string
 }> = [
@@ -229,6 +240,7 @@ const CAPTURE_FILE_RULES: ReadonlyArray<{
     slot: 'pageArchive',
     type: 'mhtml',
     anchor: 'contentHash',
+    noun: 'page archive',
     unanchored: 'enclosed',
     path: (chainId) => capturePagePath(chainId)
   },
@@ -236,6 +248,7 @@ const CAPTURE_FILE_RULES: ReadonlyArray<{
     slot: 'screenshot',
     type: 'png',
     anchor: 'screenshotHash',
+    noun: 'screenshot',
     unanchored: 'when-screenshots-asked',
     path: (_chainId, sha256) => screenshotPath(sha256)
   },
@@ -245,6 +258,7 @@ const CAPTURE_FILE_RULES: ReadonlyArray<{
     slot: 'transactionRecord',
     type: 'warc.gz',
     anchor: 'transactionRecordHash',
+    noun: 'Transaction Record',
     unanchored: 'left-out',
     path: (_chainId, sha256) => transactionRecordPath(sha256)
   },
@@ -252,10 +266,25 @@ const CAPTURE_FILE_RULES: ReadonlyArray<{
     slot: 'pdf',
     type: 'pdf',
     anchor: 'pdfHash',
+    noun: 'PDF',
     unanchored: 'left-out',
     path: (_chainId, sha256) => pdfPath(sha256)
   }
 ]
+
+/**
+ * The failure of an Evidence Package export whose read of a file a signed
+ * entry records returned nothing (#2225). Package Verification fails a package
+ * that lacks a file a signed entry anchors, so the export stops rather than
+ * write one; it stops the same way on a Derived File an entry names over a
+ * chain that does not verify, which the package would otherwise enclose.
+ */
+function signedFileUnread(owner: string, noun: string, path: string): Error {
+  return new Error(
+    `No package was written: could not read the ${noun} of ${owner} (${path}), ` +
+      'which a signed entry records.'
+  )
+}
 
 const NO_CAPTURE_FILES = {
   pageArchive: null,
@@ -264,15 +293,18 @@ const NO_CAPTURE_FILES = {
   pdf: null
 } satisfies Partial<CaptureContents>
 
-/** Each Capture's signed entry by its chain id; where a chain holds more than one, the last wins. */
-function captureEntriesByChainId(
-  entries: readonly Record<string, unknown>[]
+/**
+ * Each Capture's or each other Exhibit's signed entry by its chain id; where a
+ * chain holds more than one, the last wins.
+ */
+function entriesByChainId(
+  entries: readonly Record<string, unknown>[],
+  type: 'capture' | 'exhibit'
 ): Map<string, Record<string, unknown>> {
   const byId = new Map<string, Record<string, unknown>>()
   for (const entry of entries) {
-    if (entry.type === 'capture' && typeof entry.captureId === 'string') {
-      byId.set(entry.captureId, entry)
-    }
+    const id = type === 'capture' ? entry.captureId : entry.exhibitId
+    if (entry.type === type && typeof id === 'string') byId.set(id, entry)
   }
   return byId
 }
@@ -307,7 +339,11 @@ export function decidePackageContents(input: PackageContentsInput): PackageConte
 
   // A Derived File sits beside its parent, under the parent's directory. The
   // read decides enclosure: nothing probes for the file and then reads it.
-  const derivedFilesOf = (parentRowId: string, parentDirectory: string): DerivedFileContents[] => {
+  const derivedFilesOf = (
+    parentRowId: string,
+    parentDirectory: string,
+    owner: string
+  ): DerivedFileContents[] => {
     const verifications = new Map(
       (input.derivedVerifications.get(parentRowId) ?? []).map((result) => [
         result.derivedFileId,
@@ -318,14 +354,15 @@ export function decidePackageContents(input: PackageContentsInput): PackageConte
       const verification = verifications.get(file.id)
       const anchoring = anchoringOf(verification)
       const bytes = encloses && anchoring !== 'no-entry' ? source.storedFile(file.path) : null
+      const path = derivedFilePackagePath(parentDirectory, file.path)
+      if (bytes === null && anchoring !== 'no-entry' && form.kind === 'evidence-package') {
+        throw signedFileUnread(owner, `${file.derivation} Derived File`, path)
+      }
       return {
         file,
         ...(verification !== undefined ? { verification } : {}),
         anchoring,
-        enclosed:
-          bytes !== null
-            ? { path: derivedFilePackagePath(parentDirectory, file.path), bytes }
-            : null
+        enclosed: bytes !== null ? { path, bytes } : null
       }
     })
   }
@@ -336,7 +373,7 @@ export function decidePackageContents(input: PackageContentsInput): PackageConte
   // A file named by its SHA-256 is written once, whichever Captures hold it.
   const contentAddressedPaths = new Set<string>()
 
-  const captureEntries = captureEntriesByChainId(entries)
+  const captureEntries = entriesByChainId(entries, 'capture')
   const evidenceFilesOf = (
     capture: PackageContentsInput['captures'][number],
     screenshots: boolean
@@ -348,12 +385,17 @@ export function decidePackageContents(input: PackageContentsInput): PackageConte
       'pageArchive' | 'screenshot' | 'transactionRecord' | 'pdf'
     > = { ...NO_CAPTURE_FILES }
     for (const rule of CAPTURE_FILE_RULES) {
-      const anchoredBy = typeof entry?.[rule.anchor] === 'string' ? rule.anchor : null
+      const signedHash = entry?.[rule.anchor]
+      const anchoredBy = typeof signedHash === 'string' ? rule.anchor : null
       const wanted =
         anchoredBy !== null ||
         rule.unanchored === 'enclosed' ||
         (rule.unanchored === 'when-screenshots-asked' && screenshots)
       const bytes = wanted ? source.captureFile(capture, rule.type) : null
+      if (bytes === null && typeof signedHash === 'string') {
+        // Named at the path Package Verification looks for it, from the signed hash.
+        throw signedFileUnread(`Capture ${chainId}`, rule.noun, rule.path(chainId, signedHash))
+      }
       if (bytes === null) continue
       const digest = sha256(bytes)
       const path = rule.path(chainId, digest)
@@ -405,7 +447,8 @@ export function decidePackageContents(input: PackageContentsInput): PackageConte
           : NO_CAPTURE_FILES
     const derivedFiles = derivedFilesOf(
       capture.id,
-      exhibitPackageDirectory('capture', capture.mhtmlPath ?? null)
+      exhibitPackageDirectory('capture', capture.mhtmlPath ?? null),
+      `Capture ${chainIdOf(capture.id)}`
     )
     // A Working Copy writes a Capture's Derived Files beside its own files.
     if (form.kind === 'working-copy') files.push(...enclosedDerivedFiles(derivedFiles))
@@ -416,9 +459,15 @@ export function decidePackageContents(input: PackageContentsInput): PackageConte
     })
   }
 
+  const exhibitEntries = entriesByChainId(entries, 'exhibit')
   const byFileExhibit = new Map<string, FileExhibitContents>()
   for (const exhibit of fileExhibits) {
+    const owner = `Exhibit ${chainIdOf(exhibit.id)}`
     const bytes = encloses && exhibit.path ? source.storedFile(exhibit.path) : null
+    const signedPath = exhibitEntries.get(chainIdOf(exhibit.id))?.path
+    if (bytes === null && typeof signedPath === 'string' && form.kind === 'evidence-package') {
+      throw signedFileUnread(owner, `${exhibit.kind} file`, exhibitPackagePath(signedPath))
+    }
     // The file sits where the Exhibit's signed entry puts it, which for a
     // renamed row is not where its own path would.
     const packagedFrom = chainNames.get(exhibit.id)?.path ?? exhibit.path
@@ -426,7 +475,8 @@ export function decidePackageContents(input: PackageContentsInput): PackageConte
       bytes !== null && packagedFrom ? { path: exhibitPackagePath(packagedFrom), bytes } : null
     const derivedFiles = derivedFilesOf(
       exhibit.id,
-      exhibitPackageDirectory(exhibit.kind, exhibit.path)
+      exhibitPackageDirectory(exhibit.kind, exhibit.path),
+      owner
     )
     byFileExhibit.set(exhibit.id, {
       enclosed,

@@ -1256,8 +1256,10 @@ interface EvidenceZipResult {
  * read decides, and nothing else does, is whether the file is in the package.
  *
  * A non-Capture Exhibit or a Derived File that exists and cannot be read (a
- * lock, a permission, a disconnected share) is not an error: it is disclosed
- * as not enclosed, and the export carries on.
+ * lock, a permission, a disconnected share) reads as null, the same answer as
+ * an absent file. Where a signed entry records the file, an Evidence Package
+ * export stops on that null (`ExportForm` in the contents package, #2225);
+ * otherwise the file is disclosed as not enclosed and the export carries on.
  *
  * A Capture's own file is different. `CaptureStore.readArtifact` does not
  * catch, so one that is present but unreadable fails the whole export with

@@ -43,7 +43,20 @@ export default {
   // copy: vitest.config.ts reads a file under docs/, and tests read fixtures from resources/,
   // scripts/ and design-system/.
   tempDirName: '.cache/stryker-tmp',
-  ignorePatterns: ['out', 'dist', 'coverage', 'website', '.cache', '.preflight', 'reports'],
+  ignorePatterns: [
+    'out',
+    'dist',
+    'coverage',
+    'website',
+    // Everything under .cache but the system sharp build: with BIRDBRAIN_TEST_SYSTEM_SHARP=1,
+    // tests/setup/system-sharp.ts loads that addon from a path relative to itself, so the
+    // sandbox needs its own copy. A narrower exception than the directory re-includes all of
+    // .cache.
+    '.cache/*',
+    '!.cache/test-sharp',
+    '.preflight',
+    'reports'
+  ],
 
   // Reuses results for mutants whose code and covering tests are unchanged since the last run.
   incremental: true,

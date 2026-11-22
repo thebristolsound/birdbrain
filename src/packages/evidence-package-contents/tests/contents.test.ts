@@ -118,6 +118,16 @@ const WORKING_COPY: ExportForm = {
 }
 const REPORT: ExportForm = { kind: 'report' }
 
+/**
+ * The error an Evidence Package throws on a signed file it cannot read (#2225). An Error, not
+ * a string, because `toThrow('<text>')` also passes when the decision throws `undefined`.
+ */
+const unread = (noun: string, owner: string, path: string): Error =>
+  new Error(
+    `No package was written: could not read the ${noun} of ${owner} (${path}), ` +
+      'which a signed entry records.'
+  )
+
 const input = (over: Partial<PackageContentsInput>): PackageContentsInput => ({
   form: EVIDENCE,
   entries: [],
@@ -282,9 +292,8 @@ describe("a Capture's own files in an Evidence Package", () => {
           })
         )
 
-      const message = `No package was written: could not read the ${noun} of Capture cap-1 (${path}), which a signed entry records.`
-      expect(decide(false)).toThrow(message)
-      expect(decide(true)).toThrow(message)
+      expect(decide(false)).toThrow(unread(noun, 'Capture cap-1', path))
+      expect(decide(true)).toThrow(unread(noun, 'Capture cap-1', path))
     }
   )
 
@@ -297,7 +306,7 @@ describe("a Capture's own files in an Evidence Package", () => {
           chainNames: new Map([['row-id', { id: 'chain-id', path: null }]])
         })
       )
-    ).toThrow('could not read the page archive of Capture chain-id (pages/chain-id.mhtml)')
+    ).toThrow(unread('page archive', 'Capture chain-id', 'pages/chain-id.mhtml'))
   })
 
   it('reads the anchoring fields from the last entry a chain holds for the Capture', () => {
@@ -744,8 +753,7 @@ describe('Exhibits that are not Captures', () => {
       )
 
     expect(decide(EVIDENCE)).toThrow(
-      'No package was written: could not read the document file of Exhibit chain-id ' +
-        '(documents/chain-id.pdf), which a signed entry records.'
+      unread('document file', 'Exhibit chain-id', 'documents/chain-id.pdf')
     )
     expect(decide(WORKING_COPY)().ofFileExhibit('row-id').enclosed).toBeNull()
   })
@@ -757,7 +765,34 @@ describe('Exhibits that are not Captures', () => {
       decidePackageContents(
         input({ fileExhibits: [document('doc-1', 'statement', null)], entries: [signed] })
       )
-    ).toThrow('could not read the document file of Exhibit doc-1 (documents/doc-1.pdf)')
+    ).toThrow(unread('document file', 'Exhibit doc-1', 'documents/doc-1.pdf'))
+  })
+
+  it('names the path from the last exhibit entry a chain holds, ignoring other entry types', () => {
+    const entries = [
+      { type: 'exhibit', exhibitId: 'doc-1', path: `${CASE}/documents/first.pdf` },
+      { type: 'exhibit', exhibitId: 'doc-1', path: `${CASE}/documents/doc-1.pdf` },
+      // An exclude entry names the Exhibit too, and carries no path (#1810).
+      { type: 'exclude', exhibitId: 'doc-1' }
+    ]
+
+    expect(() =>
+      decidePackageContents(input({ fileExhibits: [document('doc-1', 'statement')], entries }))
+    ).toThrow(unread('document file', 'Exhibit doc-1', 'documents/doc-1.pdf'))
+  })
+
+  it('does not fail on an unread file when the last exhibit entry carries no path', () => {
+    const contents = decidePackageContents(
+      input({
+        fileExhibits: [document('doc-1', 'statement')],
+        entries: [
+          { type: 'exhibit', exhibitId: 'doc-1', path: `${CASE}/documents/doc-1.pdf` },
+          { type: 'exhibit', exhibitId: 'doc-1' }
+        ]
+      })
+    )
+
+    expect(contents.ofFileExhibit('doc-1').enclosed).toBeNull()
   })
 
   it("names an Exhibit's Derived File it cannot read by the Exhibit", () => {
@@ -772,7 +807,7 @@ describe('Exhibits that are not Captures', () => {
           source: memorySource({ [`${CASE}/documents/doc-1.pdf`]: 'statement' })
         })
       )
-    ).toThrow('could not read the text Derived File of Exhibit doc-1 (documents/doc-1_text.txt)')
+    ).toThrow(unread('text Derived File', 'Exhibit doc-1', 'documents/doc-1_text.txt'))
   })
 
   it('does not ask the source for an Exhibit with no stored path', () => {
@@ -873,8 +908,7 @@ describe('Derived Files', () => {
     ['chain-unverified', verified('thumb-1', 'unverified', 'chain-unverified')]
   ])('fails an Evidence Package on a %s file the source cannot read', (_anchoring, result) => {
     expect(() => decide([result], memorySource({}))).toThrow(
-      'No package was written: could not read the text Derived File of Capture cap-1 ' +
-        '(pages/cap-1_thumb.jpg), which a signed entry records.'
+      unread('text Derived File', 'Capture cap-1', 'pages/cap-1_thumb.jpg')
     )
   })
 

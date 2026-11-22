@@ -2386,8 +2386,10 @@ describe('export', () => {
         captureLifecycle
       )
     ).rejects.toThrow(
-      `No package was written: could not read the page archive of Capture ${capture.id} ` +
-        `(pages/${capture.id}.mhtml), which a signed entry records.`
+      new Error(
+        `No package was written: could not read the page archive of Capture ${capture.id} ` +
+          `(pages/${capture.id}.mhtml), which a signed entry records.`
+      )
     )
     expect(existsSync(outputPath)).toBe(false)
   })
@@ -4635,8 +4637,10 @@ describe('export', () => {
       rmSync(join(tempDir, 'captures', stored.path!))
 
       await expect(exportMixed('mixed-missing.zip')).rejects.toThrow(
-        `No package was written: could not read the image file of Exhibit ${target.id} ` +
-          `(${target.packagePath}), which a signed entry records.`
+        new Error(
+          `No package was written: could not read the image file of Exhibit ${target.id} ` +
+            `(${target.packagePath}), which a signed entry records.`
+        )
       )
       expect(existsSync(join(tempDir, 'mixed-missing.zip'))).toBe(false)
     })
@@ -4765,8 +4769,10 @@ describe('export', () => {
       rmSync(join(tempDir, 'captures', thumbnail.path))
 
       await expect(exportMixed('mixed-anchored-gone.zip')).rejects.toThrow(
-        `No package was written: could not read the thumbnail Derived File of Capture ` +
-          `${fixture.captureId} (${fixture.thumbnailPackagePath}), which a signed entry records.`
+        new Error(
+          `No package was written: could not read the thumbnail Derived File of Capture ` +
+            `${fixture.captureId} (${fixture.thumbnailPackagePath}), which a signed entry records.`
+        )
       )
       expect(existsSync(join(tempDir, 'mixed-anchored-gone.zip'))).toBe(false)
     })
@@ -4827,8 +4833,10 @@ describe('export', () => {
       writeFileSync(manifestPath, lines.join('\n') + '\n')
 
       await expect(exportMixed('mixed-broken-chain-gone.zip')).rejects.toThrow(
-        `could not read the thumbnail Derived File of Capture ${fixture.captureId} ` +
-          `(${fixture.thumbnailPackagePath})`
+        new Error(
+          `No package was written: could not read the thumbnail Derived File of Capture ` +
+            `${fixture.captureId} (${fixture.thumbnailPackagePath}), which a signed entry records.`
+        )
       )
       expect(existsSync(join(tempDir, 'mixed-broken-chain-gone.zip'))).toBe(false)
     })
@@ -5012,8 +5020,10 @@ describe('export', () => {
             }
           })
         ).rejects.toThrow(
-          `could not read the page archive of Capture ${fixture.captureId} ` +
-            `(pages/${fixture.captureId}.mhtml)`
+          new Error(
+            `No package was written: could not read the page archive of Capture ` +
+              `${fixture.captureId} (pages/${fixture.captureId}.mhtml), which a signed entry records.`
+          )
         )
         expect(
           existsSync(
@@ -5043,9 +5053,11 @@ describe('export', () => {
             }
           })
         ).rejects.toThrow(
-          `No package was written: could not read the screenshot of Capture ` +
-            `${fixture.captureId} (screenshots/${sha256Hex(bytes)}.png), ` +
-            'which a signed entry records.'
+          new Error(
+            `No package was written: could not read the screenshot of Capture ` +
+              `${fixture.captureId} (screenshots/${sha256Hex(bytes)}.png), ` +
+              'which a signed entry records.'
+          )
         )
         expect(existsSync(join(tempDir, name))).toBe(false)
         expect(append).not.toHaveBeenCalled()

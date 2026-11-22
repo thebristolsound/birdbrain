@@ -296,8 +296,10 @@ describe('derived file states, end to end (#1156)', () => {
       let evidenceEntries: Map<string, Buffer> | null = null
       if (state.entry === 'present' && state.bytes !== 'readable') {
         await expect(generateReport(fixture.caseId, base, lifecycle)).rejects.toThrow(
-          `could not read the thumbnail Derived File of Capture ${fixture.captureId} ` +
-            `(${subjectPath})`
+          new Error(
+            `No package was written: could not read the thumbnail Derived File of Capture ` +
+              `${fixture.captureId} (${subjectPath}), which a signed entry records.`
+          )
         )
         expect(existsSync(base.outputPath), `${label}: evidence package written`).toBe(false)
       } else {

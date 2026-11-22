@@ -1,75 +1,152 @@
 #!/usr/bin/env node
 // Entry point for the repository health report: a handful of repository-level
 // numbers (suppressions, unused code, deferred dependency decisions, plans with no
-// status, broken links, skipped tests), each with a budget.
+// status, broken links, skipped tests, coverage and red runs on main, branches
+// left behind), each with a budget.
 //
 // Why this exists: the Health workflow watches the scheduled automation, and
 // nothing watched the codebase. `pnpm knip` ran nowhere, 74 of 124 plans had no
 // documented status, and all three audit exceptions shared one expiry date with
-// nobody counting down. Plan: docs/plans/2026-11-20-repo-health-report.md.
+// nobody counting down. Decision: docs/adr/0058. Plan:
+// docs/plans/2026-11-20-repo-health-report.md.
 //
 // The report is advisory. A signal outside its budget is something to look at, not
 // a failed build, so a finding never changes the exit status. A signal that could
 // not be read says "not measured" and counts with the ones outside their budget.
 //
-// Usage: node scripts/repo-health/cli.mjs [--json | --markdown]
+// Usage: node scripts/repo-health/cli.mjs [--json | --markdown] [--publish]
 //
-// Exit codes: 0 the report was produced, whatever it says; 2 could not run.
+// --publish keeps the one open `repo-health` issue up to date. It writes only when
+// DRY_RUN is exactly `false`; anything else prints the writes it would make.
+//
+// Env in: GH_TOKEN or GITHUB_TOKEN and GITHUB_REPOSITORY for the signals that read
+//         GitHub and for --publish; GITHUB_REPOSITORY_OWNER (the assignee), RUN_URL,
+//         DRY_RUN, GITHUB_STEP_SUMMARY and GITHUB_ACTIONS under the workflow.
+//
+// Exit codes: 0 the report was produced, whatever it says; 2 could not run, or
+// could not publish.
 
+import { appendFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 import { gitInfo } from '../slop-audit/cli.mjs'
 import { createReader, listTrackedFiles } from '../slop-audit/lib/files.mjs'
+import { createGh, hasToken } from './lib/gh.mjs'
 import { createKnipRunner } from './lib/knip.mjs'
+import { publish } from './lib/publish.mjs'
 import { buildReport, renderJson, renderMarkdown, renderText } from './lib/report.mjs'
 import { SIGNALS, collect } from './lib/signals.mjs'
 
-export const USAGE = 'usage: repo-health [--json | --markdown]'
+export const USAGE = 'usage: repo-health [--json | --markdown] [--publish]'
 
 export const parseArgs = (argv) => {
-  const options = { format: 'text' }
+  const options = { format: 'text', publish: false }
   for (const arg of argv) {
-    if (arg !== '--json' && arg !== '--markdown') {
+    if (arg === '--publish') {
+      options.publish = true
+    } else if (arg === '--json' || arg === '--markdown') {
+      if (options.format !== 'text') throw new Error(`choose one output format\n${USAGE}`)
+      options.format = arg.slice(2)
+    } else {
       throw new Error(`unknown argument "${arg}"\n${USAGE}`)
     }
-    if (options.format !== 'text') throw new Error(`choose one output format\n${USAGE}`)
-    options.format = arg.slice(2)
   }
   return options
 }
 
-const RENDERERS = { text: renderText, json: renderJson, markdown: renderMarkdown }
+const describeOutcome = (outcome) => {
+  const lines = outcome.writes.map((write) => (outcome.dryRun ? `would ${write}` : `did ${write}`))
+  if (outcome.dryRun) lines.push('dry run: nothing was written (DRY_RUN is not "false")')
+  if (outcome.duplicates.length > 0) {
+    lines.push(
+      `more than one open repo-health issue; used #${outcome.issue}, ` +
+        `ignored ${outcome.duplicates.map((number) => `#${number}`).join(', ')}`
+    )
+  }
+  return lines
+}
 
-// Everything that touches git, the disk, knip, the clock or the console is
-// injectable so the tests drive main() without a repository. The defaults are the
-// real thing.
+// Everything that touches git, the disk, knip, GitHub, the clock, the environment
+// or the console is injectable so the tests drive main() without a repository.
+// The defaults are the real thing.
 export const main = (argv, deps = {}) => {
   const {
     root = process.cwd(),
+    env = process.env,
     signals = SIGNALS,
     listFiles = listTrackedFiles,
     info = gitInfo,
     read = createReader(root),
-    knip = createKnipRunner({ root }),
+    knip = createKnipRunner({ root, env }),
+    gh = hasToken(env) ? createGh({ env }) : null,
     now = () => new Date(),
+    appendFile = appendFileSync,
     stdout = console.log,
     stderr = console.error
   } = deps
+  const log = (line) => stderr(`repo-health: ${line}`)
 
   let options
   let report
   try {
     options = parseArgs(argv)
     const { commit, dirty } = info(root)
-    const measuredAt = now().toISOString()
-    const ctx = { root, paths: listFiles(root), read, knip, today: measuredAt.slice(0, 10) }
-    const results = collect({ signals, ctx, log: (line) => stderr(`repo-health: ${line}`) })
-    report = buildReport({ commit, dirty, measuredAt, results })
+    const at = now()
+    const measuredAt = at.toISOString()
+    const ctx = {
+      root,
+      paths: listFiles(root),
+      read,
+      knip,
+      gh,
+      repo: env.GITHUB_REPOSITORY || null,
+      now: at.getTime(),
+      today: measuredAt.slice(0, 10),
+      log
+    }
+    report = buildReport({ commit, dirty, measuredAt, results: collect({ signals, ctx, log }) })
   } catch (error) {
-    stderr(`repo-health: ${error.message}`)
+    log(error.message)
     return 2
   }
 
-  stdout(RENDERERS[options.format](report))
+  let outcome = null
+  if (options.publish) {
+    try {
+      if (!gh || !env.GITHUB_REPOSITORY) {
+        throw new Error('--publish needs GH_TOKEN (or GITHUB_TOKEN) and GITHUB_REPOSITORY')
+      }
+      outcome = publish({
+        gh,
+        repo: env.GITHUB_REPOSITORY,
+        owner: env.GITHUB_REPOSITORY_OWNER || null,
+        report,
+        runUrl: env.RUN_URL || null,
+        dryRun: env.DRY_RUN !== 'false'
+      })
+    } catch (error) {
+      log(`could not publish: ${error.message}`)
+      return 2
+    }
+  }
+
+  const compared = { state: outcome?.state ?? null, stateReason: outcome?.stateReason ?? null }
+  if (options.format === 'text') stdout(renderText(report, compared.state))
+  else if (options.format === 'json') stdout(renderJson(report))
+  else stdout(renderMarkdown(report, { ...compared, runUrl: env.RUN_URL || null }))
+
+  const outcomeLines = outcome ? describeOutcome(outcome) : []
+  for (const line of outcomeLines) log(line)
+
+  if (env.GITHUB_ACTIONS === 'true') {
+    for (const signal of report.signals.filter((entry) => entry.status !== 'within')) {
+      stdout(`::warning title=Repository health::${signal.label}: ${signal.status}`)
+    }
+  }
+  if (env.GITHUB_STEP_SUMMARY) {
+    const summary = renderMarkdown(report, { ...compared, runUrl: env.RUN_URL || null })
+    const notes = outcomeLines.map((line) => `- ${line}`).join('\n')
+    appendFile(env.GITHUB_STEP_SUMMARY, `${summary}\n${notes}\n`)
+  }
   return 0
 }
 

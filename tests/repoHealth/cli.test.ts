@@ -33,8 +33,12 @@ const tree: Record<string, string> = { 'src/main/a.ts': 'export const a = 1\n' }
 const harness = (over: Record<string, unknown> = {}) => {
   const out: string[] = []
   const err: string[] = []
+  const appended: { path: string; text: string }[] = []
   const deps = {
     root: '/fixture',
+    env: {} as Record<string, string>,
+    gh: null as unknown,
+    appendFile: (path: string, text: string) => appended.push({ path, text }),
     signals: [signal('steady', () => ({ value: 3 }))],
     listFiles: () => Object.keys(tree),
     info: () => ({ commit: 'abc1234', dirty: false }),
@@ -45,14 +49,37 @@ const harness = (over: Record<string, unknown> = {}) => {
     stderr: (line: string) => err.push(line),
     ...over
   }
-  return { out, err, deps }
+  return { out, err, appended, deps }
+}
+
+const ISSUES = 'repos/o/r/issues?state=open&labels=repo-health&per_page=100'
+const PUBLISH_ENV = { GITHUB_REPOSITORY: 'o/r', GITHUB_REPOSITORY_OWNER: 'o' }
+
+// A gh that answers the issue list and records every write.
+const recordingGh = (issues: unknown[] | Error = []) => {
+  const writes: string[] = []
+  const gh = (args: string[]) => {
+    if (args[0] === '-X') {
+      writes.push(`${args[1]} ${args[2]}`)
+      return {}
+    }
+    if (args[0] !== ISSUES) throw new Error(`gh api ${args[0]} failed (exit 1): Not Found`)
+    if (issues instanceof Error) throw issues
+    return issues
+  }
+  return { gh, writes }
 }
 
 describe('parseArgs', () => {
   it('prints text unless one other format is asked for', () => {
-    expect(parseArgs([])).toEqual({ format: 'text' })
-    expect(parseArgs(['--json'])).toEqual({ format: 'json' })
-    expect(parseArgs(['--markdown'])).toEqual({ format: 'markdown' })
+    expect(parseArgs([])).toEqual({ format: 'text', publish: false })
+    expect(parseArgs(['--json'])).toEqual({ format: 'json', publish: false })
+    expect(parseArgs(['--markdown'])).toEqual({ format: 'markdown', publish: false })
+  })
+
+  it('publishes only when asked, alongside any format', () => {
+    expect(parseArgs(['--publish'])).toEqual({ format: 'text', publish: true })
+    expect(parseArgs(['--publish', '--json'])).toEqual({ format: 'json', publish: true })
   })
 
   it('refuses an unknown flag and names the usage', () => {
@@ -141,7 +168,7 @@ describe('collect', () => {
     const ids = SIGNALS.map((entry: Signal) => entry.id)
     expect(new Set(ids).size).toBe(ids.length)
     for (const entry of SIGNALS as Signal[]) {
-      expect(['code', 'dependencies', 'docs', 'tests']).toContain(entry.family)
+      expect(['code', 'dependencies', 'docs', 'tests', 'repository']).toContain(entry.family)
       expect(['count', 'percent']).toContain(entry.unit)
       expect(['lower', 'higher']).toContain(entry.better)
       expect(['tree', 'install', 'gh']).toContain(entry.needs)
@@ -201,7 +228,10 @@ describe('main', () => {
     expect(seen).toMatchObject({
       root: '/fixture',
       paths: ['src/main/a.ts'],
-      today: '2026-11-23'
+      today: '2026-11-23',
+      now: Date.parse('2026-11-23T09:13:00.000Z'),
+      gh: null,
+      repo: null
     })
     expect(seen!.read('src/main/a.ts')).toBe(tree['src/main/a.ts'])
     expect(seen!.knip()).toEqual({ issues: [] })
@@ -243,10 +273,12 @@ describe('main', () => {
     expect(out).toEqual([])
   })
 
-  it('measures every tree signal on this repository, with knip reported as not installed', () => {
+  it('measures every tree signal on this repository, with knip and GitHub unavailable', () => {
     const out: string[] = []
     const code = main(['--json'], {
       root: ROOT,
+      env: {},
+      gh: null,
       knip: () => {
         throw new Unmeasured('knip is not installed')
       },
@@ -265,9 +297,148 @@ describe('main', () => {
         expect(row, row.id).toMatchObject({
           value: null,
           status: 'not measured',
-          reason: 'knip is not installed'
+          reason: row.needs === 'gh' ? 'no gh token' : 'knip is not installed'
         })
       }
     }
+  })
+})
+
+describe('main under the workflow', () => {
+  it('passes the repository and a gh to the signals when the environment has them', () => {
+    let seen: Ctx | null = null
+    const { gh } = recordingGh()
+    const { deps } = harness({
+      env: PUBLISH_ENV,
+      gh,
+      signals: [
+        signal('spy', (ctx) => {
+          seen = ctx
+          return { value: 0 }
+        })
+      ]
+    })
+    main([], deps)
+    expect(seen).toMatchObject({ repo: 'o/r', gh })
+  })
+
+  it('prints a warning annotation for each signal that is not within budget', () => {
+    const { out, deps } = harness({
+      env: { GITHUB_ACTIONS: 'true' },
+      signals: [
+        signal('grown', () => ({ value: 9 })),
+        signal('steady', () => ({ value: 3 })),
+        signal('lost', () => {
+          throw new Unmeasured('knip is not installed')
+        })
+      ]
+    })
+    expect(main([], deps)).toBe(0)
+    expect(out.slice(1)).toEqual([
+      '::warning title=Repository health::Signal grown: outside',
+      '::warning title=Repository health::Signal lost: not measured'
+    ])
+  })
+
+  it('prints no annotation outside the workflow', () => {
+    const { out, deps } = harness({ signals: [signal('grown', () => ({ value: 9 }))] })
+    main([], deps)
+    expect(out).toHaveLength(1)
+  })
+
+  it('appends the report to the step summary when there is one, and not otherwise', () => {
+    const { appended, deps } = harness({ env: { GITHUB_STEP_SUMMARY: '/tmp/summary.md' } })
+    expect(main([], deps)).toBe(0)
+    expect(appended).toHaveLength(1)
+    expect(appended[0].path).toBe('/tmp/summary.md')
+    expect(appended[0].text).toContain('| code | Signal steady | 3 | <= 5 |')
+    const none = harness()
+    main([], none.deps)
+    expect(none.appended).toEqual([])
+  })
+})
+
+describe('main --publish', () => {
+  it('does a dry run unless DRY_RUN is exactly false, and says what it would write', () => {
+    for (const DRY_RUN of [undefined, 'true', 'FALSE', '0']) {
+      const { gh, writes } = recordingGh()
+      const env = DRY_RUN === undefined ? PUBLISH_ENV : { ...PUBLISH_ENV, DRY_RUN }
+      const { err, deps } = harness({ env, gh })
+      expect(main(['--publish'], deps)).toBe(0)
+      expect(writes).toEqual([])
+      expect(err).toContain('repo-health: would open the repo-health issue')
+      expect(err).toContain('repo-health: dry run: nothing was written (DRY_RUN is not "false")')
+    }
+  })
+
+  it('writes with DRY_RUN=false and says what it did', () => {
+    const { gh, writes } = recordingGh()
+    const { err, deps } = harness({ env: { ...PUBLISH_ENV, DRY_RUN: 'false' }, gh })
+    expect(main(['--publish'], deps)).toBe(0)
+    expect(writes).toEqual(['POST repos/o/r/labels', 'POST repos/o/r/issues'])
+    expect(err).toEqual([
+      'repo-health: did create the repo-health label',
+      'repo-health: did open the repo-health issue'
+    ])
+  })
+
+  it('compares with the open issue in what it prints, and names a duplicate', () => {
+    const { gh } = recordingGh([
+      { number: 50, body: 'duplicate' },
+      {
+        number: 41,
+        body:
+          '<!-- repo-health-state:v1\n' +
+          '{"schemaVersion":1,"measuredAt":"2026-11-16T09:13:00.000Z","commit":"x",' +
+          '"signals":{"steady":{"value":5,"status":"within"}}}\n-->'
+      }
+    ])
+    const { out, err, appended, deps } = harness({
+      env: {
+        ...PUBLISH_ENV,
+        DRY_RUN: 'false',
+        GITHUB_STEP_SUMMARY: '/tmp/s.md',
+        RUN_URL: 'https://x/1'
+      },
+      gh
+    })
+    expect(main(['--publish'], deps)).toBe(0)
+    expect(out[0]).toContain('[better by 2]')
+    expect(err).toContain(
+      'repo-health: more than one open repo-health issue; used #41, ignored #50'
+    )
+    expect(appended[0].text).toContain('Compared with: the run of 2026-11-16T09:13:00.000Z')
+    expect(appended[0].text).toContain('Run: https://x/1')
+    expect(appended[0].text).toContain('- did rewrite issue #41')
+  })
+
+  it('prints the published body with --markdown, and plain JSON with --json', () => {
+    const first = recordingGh()
+    const markdown = harness({ env: { ...PUBLISH_ENV, RUN_URL: 'https://x/1' }, gh: first.gh })
+    expect(main(['--publish', '--markdown'], markdown.deps)).toBe(0)
+    expect(markdown.out[0]).toContain('Run: https://x/1')
+    const second = recordingGh()
+    const json = harness({ env: PUBLISH_ENV, gh: second.gh })
+    expect(main(['--publish', '--json'], json.deps)).toBe(0)
+    expect(JSON.parse(json.out[0]).signals[0].id).toBe('steady')
+  })
+
+  it('exits 2 without a token or without a repository, and prints no report', () => {
+    const noToken = harness({ env: PUBLISH_ENV, gh: null })
+    expect(main(['--publish'], noToken.deps)).toBe(2)
+    expect(noToken.out).toEqual([])
+    expect(noToken.err[0]).toContain('--publish needs GH_TOKEN (or GITHUB_TOKEN)')
+    const noRepo = harness({ env: {}, gh: recordingGh().gh })
+    expect(main(['--publish'], noRepo.deps)).toBe(2)
+    expect(noRepo.out).toEqual([])
+  })
+
+  it('exits 2 when the issue list cannot be read, so the run goes red', () => {
+    const { gh, writes } = recordingGh(new Error('gh api issues failed (exit 1): HTTP 502'))
+    const { out, err, deps } = harness({ env: { ...PUBLISH_ENV, DRY_RUN: 'false' }, gh })
+    expect(main(['--publish'], deps)).toBe(2)
+    expect(out).toEqual([])
+    expect(writes).toEqual([])
+    expect(err).toEqual(['repo-health: could not publish: gh api issues failed (exit 1): HTTP 502'])
   })
 })

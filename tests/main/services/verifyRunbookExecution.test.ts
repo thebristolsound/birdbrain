@@ -1562,6 +1562,18 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
         damage: (path: string) => appendFileSync(path, '5\n'),
         says: 'CHAIN UNREADABLE: manifest.jsonl',
         keepsRead: true
+      },
+      // The entry test stops at the first object, so only a manifest with none before its bad
+      // line fails if that test ran before the read and named the manifest empty.
+      {
+        name: 'a manifest whose only line is not JSON',
+        damage: (path: string) => writeFileSync(path, 'not json\n'),
+        says: 'CHAIN UNREADABLE: manifest.jsonl'
+      },
+      {
+        name: 'a manifest whose only line jq cannot index',
+        damage: (path: string) => writeFileSync(path, '5\n'),
+        says: 'CHAIN UNREADABLE: manifest.jsonl'
       }
     ]
 
@@ -2071,6 +2083,17 @@ describe("the runbook's receipt block under a plain shell", () => {
     {
       name: 'the package manifest holds a line jq cannot index',
       damage: () => appendFileSync(join(dir, 'manifest.jsonl'), '5\n'),
+      says: 'CHAIN UNREADABLE: manifest.jsonl'
+    },
+    // As in step 5, only a manifest with no object before its bad line pins the read first.
+    {
+      name: "the package manifest's only line is not JSON",
+      damage: () => writeFileSync(join(dir, 'manifest.jsonl'), 'not json\n'),
+      says: 'CHAIN UNREADABLE: manifest.jsonl'
+    },
+    {
+      name: "the package manifest's only line is one jq cannot index",
+      damage: () => writeFileSync(join(dir, 'manifest.jsonl'), '5\n'),
       says: 'CHAIN UNREADABLE: manifest.jsonl'
     }
   ]

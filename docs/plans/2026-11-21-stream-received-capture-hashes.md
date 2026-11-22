@@ -1,7 +1,7 @@
 # Stream the hashes of a received Capture's unused files
 
-**Status:** active. This is a plan only: no change to `src/` or `tests/` until the maintainer
-approves it.
+**Status:** active. The maintainer approved this plan with the recommended answer to each open
+question, in the T3 thread for this branch on 2026-11-22; see "Decisions" at the end.
 
 **Date:** 2026-11-21
 
@@ -156,7 +156,7 @@ The plan returns `'absent'`, the outcome the absence check gives for the same fi
 Capture gets no row and no error, the session's other rows land, and the next session asks for
 the file again, because `missingAnchoredFiles` (`blobAcceptance.ts:180`) requests any anchored
 file not on disk. Either way the Capture gets no row, so nothing that fails today starts
-passing. Keeping today's outcome instead means throwing on `null`. Open question 2.
+passing. Keeping today's outcome instead would mean throwing on `null`; decision 2 chose to wait.
 
 ### The other two callers
 
@@ -171,7 +171,7 @@ they are because:
 - Streaming them would mean exporting one of the private `hashFile` functions from a second
   blocking-tier module.
 
-Open question 3 asks whether to stream them in this change instead.
+Decision 3 keeps them out of this change.
 
 ### The comment at line 240
 
@@ -264,9 +264,10 @@ All in `tests/main/services/sharing/receivedEvidence.test.ts`, under one new `de
    the source: no error, no row, and neither spy records a call for that Capture's files. When the
    PDF arrives, the next pull reports the mismatch on the screenshot with the full detail. Passes at
    `93f4dc9a`: it pins behaviour that must not change.
-3. **Waits on a file that disappears mid-check.** `hashArtifact` returns `null` once for the PDF:
-   no error, no row; the next pull lands the row. Fails at `93f4dc9a`, where `hashArtifact` is
-   not called on this path. Its expectation follows the answer to open question 2.
+3. **Waits on a file that disappears mid-check.** The first `hashArtifact` call for the PDF
+   removes it from disk before hashing, so the real call returns `null`: no error, no row. The
+   next pull fetches the PDF again and lands the row. Fails at `93f4dc9a`, where `hashArtifact` is
+   not called on this path. Its expectation follows decision 2.
 
 The existing `mismatch` helper in the `:382` test and the receiver-written step of `:335` are
 tightened to assert the whole detail, `found ${sha(<written bytes>)}` included, so the reported
@@ -324,14 +325,17 @@ known-answer fixture.
 - **Finding F2 of the same review:** Building the file list from `CAPTURE_ENTRY_HASH_FIELDS` was
   deferred separately in the same reply.
 
-## Open questions
+## Decisions
+
+The maintainer took the recommended answer to each of the three open questions below, in the T3
+thread for this branch on 2026-11-22.
 
 1. Should the screenshot stream too? The issue names only the Transaction Record and the PDF.
-   Recommended: yes. The row uses only its path, it can reach 100 MiB, and `hashArtifact` covers
+   **Decided: yes.** The row uses only its path, it can reach 100 MiB, and `hashArtifact` covers
    it with no extra code.
 2. If a file disappears between the absence check and its hash, should that Capture wait without
    an error (as when the file never arrived) or fail the session's whole apply step with a
-   `local` error, as it does today? Recommended: wait.
+   `local` error, as it does today? **Decided: wait.**
 3. Should the Exhibit and Derived File checks also stream, which means exporting one of the
-   private `hashFile` functions from a second blocking-tier module? Recommended: no, leave them
-   for a later change if wanted.
+   private `hashFile` functions from a second blocking-tier module? **Decided: no.** They stay as
+   they are; a later change can stream them if wanted.

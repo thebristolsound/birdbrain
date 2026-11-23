@@ -126,5 +126,31 @@
   "enabledPlugins": {
     "mattpocock-skills@mattpocock": true,
     "design@knowledge-work-plugins": true
-  }
+  },
+  "deniedMcpServers": [
+    {
+      "serverUrl": "https://mcp.context7.com/mcp"
+    },
+    {
+      "serverUrl": "https://mcp.atlassian.com/v2/mcp"
+    },
+    {
+      "serverUrl": "https://mcp.pagerduty.com/mcp"
+    },
+    {
+      "serverUrl": "https://mcp.datadoghq.com/api/unstable/mcp-server/mcp"
+    },
+    {
+      "serverUrl": "https://mcp.figma.com/mcp"
+    },
+    {
+      "serverUrl": "https://mcp.intercom.com/mcp"
+    },
+    {
+      "serverUrl": "https://mcp.monday.com/mcp"
+    },
+    {
+      "serverUrl": "https://mcp.clickup.com/mcp"
+    }
+  ]
 }

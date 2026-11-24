@@ -14,9 +14,8 @@ export interface PackageByteSource {
   captureFile(capture: { caseId: string; id: string }, type: CaptureFileType): Buffer | null
   /**
    * The file of an Exhibit that is not a Capture, or a Derived File, by its
-   * stored path. Null when the file cannot be read, whatever the reason: for
-   * these files a failed read is a classification, the file is not enclosed,
-   * and the export carries on (#1156).
+   * stored path. Null when the file cannot be read, whatever the reason; what
+   * a null does to the export is stated on `ExportForm` (#1156, #2225).
    */
   storedFile(storedPath: string): Buffer | null
 }

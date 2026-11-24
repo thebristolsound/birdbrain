@@ -9,14 +9,23 @@ import { countIssues } from './knip.mjs'
 import { Unmeasured } from './unmeasured.mjs'
 import { countMatches } from './tree.mjs'
 
-const BUDGET_SOURCE = 'the value at 1aa3cccf on 2026-11-21, so any growth shows'
+const BUDGET_SOURCE = 'the value at f2bd1b03 on 2026-11-24, so any growth shows'
 
 const EXCEPTIONS_FILE = 'audit-exceptions.json'
 const DEPENDABOT_FILE = '.github/dependabot.yml'
 const DAY_MS = 24 * 60 * 60 * 1000
 
-// One list entry per dependency Dependabot is told to hold back.
-const DEPENDABOT_IGNORE = /^\s*-\s*dependency-name:/gm
+// A YAML comment: a `#` at the start of a line or after white space, to the end
+// of the line.
+const YAML_COMMENT = /(^|[ \t])#.*$/gm
+// One key per dependency Dependabot is told to hold back. Counting the key, not
+// the line it sits on, reads the block form and the flow form
+// (`- { dependency-name: x }`, or several on one line) the same. A layout this
+// misreads can only count high, never low.
+const DEPENDENCY_NAME = /\bdependency-name\s*:/g
+
+export const countDependabotEntries = (text) =>
+  countMatches(text.replace(YAML_COMMENT, '$1'), DEPENDENCY_NAME)
 
 const readExceptions = (ctx) => {
   try {
@@ -53,7 +62,7 @@ export const DEPENDENCY_SIGNALS = [
     needs: 'tree',
     measure: (ctx) => {
       const exceptions = readExceptions(ctx).length
-      const ignores = countMatches(readDependabot(ctx), DEPENDABOT_IGNORE)
+      const ignores = countDependabotEntries(readDependabot(ctx))
       return {
         value: exceptions + ignores,
         note: `${exceptions} audit exception(s) and ${ignores} Dependabot ignore(s)`

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   DEPENDENCY_SIGNALS,
+  countDependabotEntries,
   daysToExpiry
   // @ts-expect-error - build script with no type declarations; the tsconfigs exclude scripts/
 } from '../../scripts/repo-health/lib/deps.mjs'
@@ -66,6 +67,36 @@ describe('deferred dependency decisions', () => {
     expect(() => measure('deferred-dependency-decisions', ctx)).toThrow(
       '.github/dependabot.yml could not be read'
     )
+  })
+})
+
+describe('countDependabotEntries', () => {
+  it('counts the block form, one entry a line', () => {
+    expect(countDependabotEntries(DEPENDABOT)).toBe(2)
+  })
+
+  it('counts the flow form too, so a change of layout cannot read low', () => {
+    const flow = [
+      '    ignore:',
+      "      - { dependency-name: 'vitest', update-types: ['version-update:semver-major'] }",
+      "      - { dependency-name: 'jsdom' }",
+      "    allow: [{ dependency-name: 'a' }, { dependency-name: 'b' }]"
+    ].join('\n')
+    expect(countDependabotEntries(flow)).toBe(4)
+  })
+
+  it('leaves out commented entries, whole-line and trailing', () => {
+    const text = [
+      '# - dependency-name: whole-line',
+      "      - dependency-name: 'kept' # dependency-name: trailing",
+      '      #- dependency-name: another',
+      "      - dependency-name : 'spaced'"
+    ].join('\n')
+    expect(countDependabotEntries(text)).toBe(2)
+  })
+
+  it('reads a file with no entries as zero', () => {
+    expect(countDependabotEntries('version: 2\nupdates: []\n')).toBe(0)
   })
 })
 

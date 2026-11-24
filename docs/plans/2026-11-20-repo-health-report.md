@@ -92,7 +92,8 @@ Left out, with the reason:
   `@typescript-eslint/no-explicit-any` already gates real ones.
 - **`@ts-expect-error`:** None of the 67 is in `src/`. They are untyped-script imports in tests
   and deliberate negative type tests.
-- **`TODO` and `FIXME`:** All six are template text in the migration scaffold script.
+- **`TODO` and `FIXME`:** All six are the migration scaffold script's template text: five in
+  the script and one in its test.
 - **A live `pnpm audit`, ADR duplicate numbers, the React Compiler baseline:** Each is already
   gated by CI or a test.
 - **Node pin mentions:** A prose regex with an allowlist reads zero forever after one cleanup.

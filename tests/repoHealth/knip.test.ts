@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  KNIP_TIMEOUT_MS,
   countIssues,
   createKnipRunner,
   parseKnipReport
@@ -9,7 +10,11 @@ import {
 import { Unmeasured } from '../../scripts/repo-health/lib/unmeasured.mjs'
 import { knipIssue } from './helpers'
 
-type SpawnCall = { command: string; args: string[]; options: { env: Record<string, string> } }
+type SpawnCall = {
+  command: string
+  args: string[]
+  options: { env: Record<string, string>; timeout?: number }
+}
 
 const report = { issues: [knipIssue('src/a.ts', { exports: 2 }), knipIssue('src/b.ts')] }
 
@@ -109,6 +114,17 @@ describe('createKnipRunner', () => {
     expect(run).toThrow(Unmeasured)
     expect(run).toThrow('knip is not installed')
     expect(calls).toHaveLength(0)
+  })
+
+  it('gives knip two minutes, and is not measured when it does not finish', () => {
+    const { run, calls } = runner()
+    run()
+    expect(KNIP_TIMEOUT_MS).toBe(120_000)
+    expect(calls[0].options.timeout).toBe(KNIP_TIMEOUT_MS)
+    const timedOut = Object.assign(new Error('spawnSync knip ETIMEDOUT'), { code: 'ETIMEDOUT' })
+    const stuck = runner({ spawn: () => ({ error: timedOut, stdout: '' }) })
+    expect(stuck.run).toThrow(Unmeasured)
+    expect(stuck.run).toThrow('knip did not finish in time')
   })
 
   it('is not measured when knip cannot be started', () => {

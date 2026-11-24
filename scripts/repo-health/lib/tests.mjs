@@ -6,7 +6,7 @@
 // nothing new.
 
 import { Unmeasured } from './unmeasured.mjs'
-import { countMatches, isCode, isOwn, isTestFile } from './tree.mjs'
+import { countMatches, isCode, isTestFile } from './tree.mjs'
 
 // A call at the start of a line: `it.skip(`, `test.describe.only(`, `xit(`.
 // Anchoring to the line start leaves out the same text inside a string or a
@@ -22,10 +22,10 @@ export const TEST_SIGNALS = [
     unit: 'count',
     better: 'lower',
     budget: 2,
-    why: 'the value at 1aa3cccf on 2026-11-21, so any growth shows',
+    why: 'the value at f2bd1b03 on 2026-11-24, so any growth shows',
     needs: 'tree',
     measure: (ctx) => {
-      const files = ctx.paths.filter((path) => isCode(path) && isTestFile(path) && !isOwn(path))
+      const files = ctx.paths.filter((path) => isCode(path) && isTestFile(path))
       if (files.length === 0) throw new Unmeasured('no test files were found to scan')
       return {
         value: files.reduce(

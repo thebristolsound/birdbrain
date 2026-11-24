@@ -10,6 +10,9 @@ import { join } from 'node:path'
 import { Unmeasured } from './unmeasured.mjs'
 
 const BINARY = 'node_modules/.bin/knip'
+// knip takes a few seconds here. A run that has not finished in two minutes is
+// stuck, and the report must not wait on it: the weekly job has ten.
+export const KNIP_TIMEOUT_MS = 120_000
 
 // The workflow's token is in the environment for the signals that read GitHub.
 // knip loads the Vite, Vitest and Playwright configurations, which is code that
@@ -55,8 +58,10 @@ export const createKnipRunner = ({ root, spawn = spawnSync, exists = existsSync,
       cwd: root,
       encoding: 'utf8',
       env: withoutTokens(env ?? process.env),
-      maxBuffer: 64 * 1024 * 1024
+      maxBuffer: 64 * 1024 * 1024,
+      timeout: KNIP_TIMEOUT_MS
     })
+    if (result.error?.code === 'ETIMEDOUT') throw new Unmeasured('knip did not finish in time')
     if (result.error) throw new Unmeasured('knip could not be started')
     return parseKnipReport(result.stdout)
   }

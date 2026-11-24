@@ -65,7 +65,10 @@ say "head $head_ref @ ${head_sha:0:12}  draft=$draft  labels: ${labels:-none}"
 #    missing one refuses. pregate.sh reads the same rules with jq; each script keeps its own
 #    parser (node here, jq there) rather than sourcing across the skill and workflow trees.
 "$cli" api "repos/{owner}/{repo}/rules/branches/main" > "$work/rules.json" || fail "cannot read the rules for main, so the required checks are unknown"
-"$cli" api "repos/{owner}/{repo}/commits/$head_sha/check-runs?per_page=100" > "$work/checks.json" || fail "cannot read check runs"
+# Every page: one page holds 100 runs, and a required check on a later page would read as missing.
+"$cli" api --paginate "repos/{owner}/{repo}/commits/$head_sha/check-runs?per_page=100" --jq '.check_runs[]' > "$work/check-runs.ndjson" || fail "cannot read check runs"
+node -e 'const fs=require("fs"); const runs=fs.readFileSync(process.argv[1],"utf8").split("\n").filter(Boolean).map(l=>JSON.parse(l)); fs.writeFileSync(process.argv[2],JSON.stringify({total_count:runs.length,check_runs:runs}))' \
+  "$work/check-runs.ndjson" "$work/checks.json" || fail "cannot parse check runs"
 "$cli" api "repos/{owner}/{repo}/commits/$head_sha/status?per_page=100" > "$work/status.json" || fail "cannot read commit statuses"
 verdict="$(node -e '
 const [rules,checks,status]=process.argv.slice(1,4).map(f=>JSON.parse(require("fs").readFileSync(f,"utf8")))

@@ -35,6 +35,8 @@ export default tseslint.config(
       '.cache/chrome-for-testing/',
       // The bundled seed step written by scripts/dev-seed/launch.mjs.
       '.cache/dev-seed/',
+      // Stryker's sandbox copies of the tree, present while pnpm test:mutation runs.
+      '.cache/stryker-tmp/',
       'Python/',
       // Checked-in prototype artifacts, not app code — see docs/design-handoff/.
       'docs/**/*.js',

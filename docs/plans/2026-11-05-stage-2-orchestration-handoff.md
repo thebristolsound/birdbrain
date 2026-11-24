@@ -31,7 +31,7 @@ started it and apart from the fifteen rulings:
 | --- | --- | --- |
 | 1 | Rulings docs PR, rulings posted on their issues, ruling 9 labels | done: #2066 merged; #600 and #599 took ready-for-agent on 2026-11-06 |
 | 2 | Schema 7 beta release | done: `v1.0.1-beta.26`, tagged 2026-11-05 |
-| 3 | #1832, taken over from its build thread | merged as #2068, fixed in #2140; the issue stays open for four maintainer questions |
+| 3 | #1832, taken over from its build thread | merged as #2068, fixed in #2140; the issue stays open for two maintainer questions, 2 and 4 |
 | 4 | #1831 follow-up: the designer's 12 Change verdicts and the empty Egress label | five verdicts merged in #2069; no PR has taken the rest |
 | 4a | #1831 hand checks (ruling 13), then the CI job PR (ruling 14) | Windows launches reported on #1831; the Linux checks and the CI job PR are not done |
 | 5 | Duplicate and received Persona rows (rulings 4 and 5) | done: #2091 |
@@ -85,7 +85,8 @@ to prepare #600 for the maintainer's queue. It built nothing.
     whose files #1832's PR did not touch. Its description leaves the start dialog and panel
     changes to a second PR.
   - #2072 (b6744d85, 2026-11-05) added the Windows probe rows for Chrome, Edge and Brave 156 and
-    closed #1828. #2071 takes the rows left: macOS, Linux Edge, regular Brave, Snap and Flatpak.
+    closed #1828. #2071 takes the rows left, among them macOS, Linux Edge, regular Brave, Snap
+    and Flatpak, and the Windows checks the run could not make.
   - #1498 closed on 2026-11-05 under ruling 11.
   - #2068 (4ef1e05b, 2026-11-06) merged clicked `launched` Captures from branch
     `feat/1832-launched-clicked-capture`. #2140 (ac0bfc76, 2026-11-10) fixed the four defects a
@@ -95,14 +96,15 @@ to prepare #600 for the maintainer's queue. It built nothing.
   - #2093 (39608b65, 2026-11-07) merged #1824's remainder, ruling 10.
   - #2209 (e4e4600b, 2026-11-17) moved the finish of `background` and `launched` Captures into
     `src/packages/capture-finish/`, which the evidence-affecting paths assessment lists at the
-    blocking tier (:314). #600's brief predates that move.
+    blocking tier (the `src/packages/capture-finish/**` row). #600's brief predates that move.
 - **Labels.** The maintainer moved #600 and #599 from ready-for-human to ready-for-agent on
   2026-11-06, as ruling 9 says. Neither carries `queued`. #1500 is ready-for-human.
 - **In flight.** Nothing. No open PR names #1833, #1499, #1501, #600 or #599, and no local or
   remote branch for them was found.
 - **Not done.**
-  - #1832 is open and ready-for-human. #2068 left four questions for the maintainer, listed
-    under "Open questions" below, and nobody has answered them on the issue.
+  - #1832 is open and ready-for-human. #2068 left four questions for the maintainer, and on
+    2026-11-23 nobody had answered them on the issue. The 2026-11-24 entry records two answers;
+    questions 2 and 4 are under "Open questions" below.
   - #1831 is open. The designer's other seven Change verdicts and the empty Egress label have no
     PR that names #1831. The chrome consolidation (#2201, built in #2205, #2228, #2229, #2233
     and #2240) changed the top bar and the session controls after #2069, so the seven verdicts
@@ -120,8 +122,9 @@ to prepare #600 for the maintainer's queue. It built nothing.
   - Whether the 1440 correction reached Claude Design is not recorded anywhere this session read.
 - **Order for #600.** #600's four blockers are met: #1832's code merged, `v1.0.1-beta.26`
   carries #1830's verifier, #1829 and #598 are closed. #2052 already shared the Selector matcher
-  and made the regex timeout reportable, and #2045 added the Capture Scope glossary entry, so
-  those parts of #600's brief are done. The brief still orders `reportHtml.ts`,
+  and made the regex timeout reportable, so those parts of #600's brief are done. #2045 added a
+  planned Capture Scope glossary entry, and `CONTEXT.md` still marks `launched-passive` as
+  planned, so the brief's glossary changes are not done. The brief still orders `reportHtml.ts`,
   `certification.ts` and `verifyRunbook.ts` after #1833, and the Concurrency rule above keeps
   two PRs off shared hot files. So #1833 goes first, or the maintainer reverses that order.
 - **Next command.** `gh issue list --label queued --state open`, to see whether the maintainer
@@ -132,7 +135,7 @@ to prepare #600 for the maintainer's queue. It built nothing.
 - **Answered.** The maintainer answered two of #1832's four questions, recorded in comment
   7140881445 on #1832. A `launched` record keeps leaving out the bodies the browser returns as
   text and adds no marker, and the zero pinning counts are accepted with no change to the record
-  format. Both answers carry to the `launched-passive` records #600 adds.
+  format.
 - **Still open.** Questions 2 and 4 on #1832, and the order of #1833 and #600.
 
 ## Open questions

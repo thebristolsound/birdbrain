@@ -29,18 +29,18 @@ started it and apart from the fifteen rulings:
 
 | Order | Slice | State |
 | --- | --- | --- |
-| 1 | Rulings docs PR, rulings posted on their issues, ruling 9 labels | in flight |
-| 2 | Schema 7 beta release | next |
-| 3 | #1832, taken over from its build thread | building |
-| 4 | #1831 follow-up: the designer's 12 Change verdicts and the empty Egress label | waits on #1832's PR |
-| 4a | #1831 hand checks (ruling 13), then the CI job PR (ruling 14) | waits on slice 4 |
-| 5 | Duplicate and received Persona rows (rulings 4 and 5) | after #1832 on `captureLifecycle.ts`, before #600 |
-| 6 | #1833 (rulings 6 and 7) | waits on the release and slice 5 |
-| 7 | #1499 (ruling 8), then #1501 | waits on the release and slice 5 |
-| 8 | #1824 remainder (ruling 10) | not started |
-| 9 | #600 with #599 | waits on #1832 merging |
-| 10 | #543 draft, #546, tester guide issue, close #1498 | not started |
-| 11 | #1828 (ruling 15) | not started |
+| 1 | Rulings docs PR, rulings posted on their issues, ruling 9 labels | done: #2066 merged; #600 and #599 took ready-for-agent on 2026-11-06 |
+| 2 | Schema 7 beta release | done: `v1.0.1-beta.26`, tagged 2026-11-05 |
+| 3 | #1832, taken over from its build thread | merged as #2068, fixed in #2140; the issue stays open for four maintainer questions |
+| 4 | #1831 follow-up: the designer's 12 Change verdicts and the empty Egress label | five verdicts merged in #2069; no PR has taken the rest |
+| 4a | #1831 hand checks (ruling 13), then the CI job PR (ruling 14) | Windows launches reported on #1831; the Linux checks and the CI job PR are not done |
+| 5 | Duplicate and received Persona rows (rulings 4 and 5) | done: #2091 |
+| 6 | #1833 (rulings 6 and 7) | unblocked; no PR, not queued |
+| 7 | #1499 (ruling 8), then #1501 | unblocked; no PR |
+| 8 | #1824 remainder (ruling 10) | merged as #2093; #1824 is open for the maintainer to accept one hover text |
+| 9 | #600 with #599 | ready-for-agent, not queued, no PR; the brief on #600 puts the three report files after #1833 |
+| 10 | #543 draft, #546, tester guide issue, close #1498 | #1498 closed; the rest is not started |
+| 11 | #1828 (ruling 15) | done: #2072 closed it, and #2071 takes the rows left |
 | 12 | Close-out under roadmap rules 2 and 4 | last |
 
 ## Log
@@ -71,8 +71,79 @@ started it and apart from the fifteen rulings:
   preflight is running again.
 - **Next command.** `gh pr list --search 1832 --state open` to pick up #1832's PR for takeover.
 
+### 2026-11-23
+
+No session updated this file between 2026-11-05 and this entry. A session that was not the
+orchestrating session wrote this entry on 2026-11-23 from GitHub and `origin/main` at d962cd30,
+to prepare #600 for the maintainer's queue. It built nothing.
+
+- **Shipped since 2026-11-05.**
+  - The rulings PR, #2066, merged as a28b83a8 on 2026-11-05.
+  - The release PR, #2067, merged as f08fe66b, and `v1.0.1-beta.26` was tagged on 2026-11-05. The
+    tag contains the schema 7 verifier (6c488f05) and predates every `launched` writer.
+  - #2069 (c2d8b395, 2026-11-05) built five of the designer's twelve Change verdicts, the ones
+    whose files #1832's PR did not touch. Its description leaves the start dialog and panel
+    changes to a second PR.
+  - #2072 (b6744d85, 2026-11-05) added the Windows probe rows for Chrome, Edge and Brave 156 and
+    closed #1828. #2071 takes the rows left: macOS, Linux Edge, regular Brave, Snap and Flatpak.
+  - #1498 closed on 2026-11-05 under ruling 11.
+  - #2068 (4ef1e05b, 2026-11-06) merged clicked `launched` Captures from branch
+    `feat/1832-launched-clicked-capture`. #2140 (ac0bfc76, 2026-11-10) fixed the four defects a
+    review of #2068 found (#2138 and #2139, both closed).
+  - #2091 (e27138c3, 2026-11-07) merged the Duplicate and received-row Persona change, rulings 4
+    and 5.
+  - #2093 (39608b65, 2026-11-07) merged #1824's remainder, ruling 10.
+  - #2209 (e4e4600b, 2026-11-17) moved the finish of `background` and `launched` Captures into
+    `src/packages/capture-finish/`, which the evidence-affecting paths assessment lists at the
+    blocking tier (:314). #600's brief predates that move.
+- **Labels.** The maintainer moved #600 and #599 from ready-for-human to ready-for-agent on
+  2026-11-06, as ruling 9 says. Neither carries `queued`. #1500 is ready-for-human.
+- **In flight.** Nothing. No open PR names #1833, #1499, #1501, #600 or #599, and no local or
+  remote branch for them was found.
+- **Not done.**
+  - #1832 is open and ready-for-human. #2068 left four questions for the maintainer, listed
+    under "Open questions" below, and nobody has answered them on the issue.
+  - #1831 is open. The designer's other seven Change verdicts and the empty Egress label have no
+    PR that names #1831. The chrome consolidation (#2201, built in #2205, #2228, #2229, #2233
+    and #2240) changed the top bar and the session controls after #2069, so the seven verdicts
+    need reading against `main` before anyone builds them. The Wayland pop-out and the keyboard
+    shortcut check on the Linux desktop are still owed, and no PR adds the CI job for the
+    known-answer suite.
+  - The Windows launches of 2026-11-05 found that Birdbrain refuses every Microsoft Edge launch.
+    #2070 holds that defect and is open.
+  - #1824 is open for one item: the maintainer accepts or replaces the import button's hover
+    text, "Checking whether import needs your acknowledgement".
+  - #543 is ready-for-human. The triage comment of 2026-11-15 asks whether an agent writes its
+    acceptance criteria now or waits for the Persona capture work. #546 waits on #1499. No
+    tester guide issue was found.
+  - The remote branch `drafts/2026-11-04-launcher-build-design-review` is still on GitHub.
+  - Whether the 1440 correction reached Claude Design is not recorded anywhere this session read.
+- **Order for #600.** #600's four blockers are met: #1832's code merged, `v1.0.1-beta.26`
+  carries #1830's verifier, #1829 and #598 are closed. #2052 already shared the Selector matcher
+  and made the regex timeout reportable, and #2045 added the Capture Scope glossary entry, so
+  those parts of #600's brief are done. The brief still orders `reportHtml.ts`,
+  `certification.ts` and `verifyRunbook.ts` after #1833, and the Concurrency rule above keeps
+  two PRs off shared hot files. So #1833 goes first, or the maintainer reverses that order.
+- **Next command.** `gh issue list --label queued --state open`, to see whether the maintainer
+  queued #1833 or #600. An unattended run picks up neither until one carries `queued`.
+
 ## Open questions
 
 - Where does Claude Design run, so the session can send it the 1440 correction?
 - May the session delete the remote branch `drafts/2026-11-04-launcher-build-design-review`
   through the GitHub API, given that the skills cannot and a hook blocks `git push --delete`?
+- #1832, question 1: should a `launched` record keep text response bodies such as pages, scripts
+  and data, and with what marker? Today the record leaves out every body the browser returns as
+  text and counts each one.
+- #1832, question 2: should a Capture of a tab hidden behind another bring that tab to the front
+  itself, instead of refusing with a message?
+- #1832, question 3: a `launched` Capture runs no image pinning but signs zero for both pinning
+  counts, which reads the same as "pinned none". Does the maintainer accept that, or does the
+  record format need an answer later?
+- #1832, question 4: does the maintainer confirm that the window for catching duplicate manual
+  Captures does not apply to the launched browser?
+- Does #1833 merge before #600, as #600's brief orders the three report files, or does the
+  maintainer reverse that order? Questions 1 and 3 change what every `launched` and
+  `launched-passive` record holds, so do they get an answer before #600 is queued?
+- Which session owns this file now? The orchestrating session of 2026-11-05 has not updated it
+  since that day.

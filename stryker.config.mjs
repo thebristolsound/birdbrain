@@ -58,9 +58,9 @@ export default {
     'reports'
   ],
 
-  // Reuses results for mutants whose code and covering tests are unchanged since the last run.
+  // Reuses results for mutants whose code and covering tests are unchanged since the last run
+  // with the same arguments; scripts/test-mutation.mjs names the file (--incrementalFile).
   incremental: true,
-  incrementalFile: '.cache/stryker/incremental.json',
 
   reporters: ['clear-text', 'progress', 'html', 'json'],
   htmlReporter: { fileName: '.cache/stryker/report/mutation.html' },

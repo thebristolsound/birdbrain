@@ -13,7 +13,7 @@ import base from './vitest.config'
 // scripts/test-mutation.mjs sets this from --tests.
 const SCOPE = (process.env.BIRDBRAIN_MUTATION_TESTS ?? 'src/packages')
   .split(',')
-  .map((path) => path.trim().replace(/\\/g, '/').replace(/\/+$/, ''))
+  .map((path) => path.trim().replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, ''))
   .filter((path) => path !== '')
 
 // These read source files as text. In the sandbox every source file carries all of its mutants

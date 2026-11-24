@@ -12,6 +12,7 @@
 // docs/agents/testing.md.
 
 import { spawn } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { createRequire } from 'node:module'
 import { pathToFileURL } from 'node:url'
 
@@ -26,7 +27,7 @@ export const parseArgs = (argv) => {
     const arg = argv[i]
     if (arg === '--tests') {
       const value = argv[i + 1]
-      if (value === undefined || value.startsWith('--')) throw new Error('--tests needs a path')
+      if (!value || value.startsWith('--')) throw new Error('--tests needs a path')
       tests = value
       i++
     } else if (arg.startsWith('--tests=')) {
@@ -37,6 +38,15 @@ export const parseArgs = (argv) => {
     }
   }
   return { tests, stryker }
+}
+
+// One results file per set of arguments: Stryker keeps a file's earlier mutants in the report
+// when a later run leaves them outside --mutate, so a shared file adds one scope's mutants to
+// another's score. --force is left out of the name so that it rewrites the file it retests.
+export const incrementalFile = ({ tests, stryker }) => {
+  const scope = JSON.stringify([tests, stryker.filter((arg) => arg !== '--force')])
+  const name = createHash('sha256').update(scope).digest('hex').slice(0, 12)
+  return `.cache/stryker/incremental-${name}.json`
 }
 
 // Required from Node, the electron package exports the path of its binary.
@@ -54,10 +64,8 @@ export const main = (argv, deps = {}) => {
   const childEnv = { ...env, ELECTRON_RUN_AS_NODE: '1' }
   if (parsed.tests !== null) childEnv[TESTS_ENV] = parsed.tests
   return new Promise((resolve) => {
-    const child = run(electron(), [STRYKER, 'run', ...parsed.stryker], {
-      stdio: 'inherit',
-      env: childEnv
-    })
+    const args = [STRYKER, 'run', '--incrementalFile', incrementalFile(parsed), ...parsed.stryker]
+    const child = run(electron(), args, { stdio: 'inherit', env: childEnv })
     child.on('error', (error) => {
       stderr(`test-mutation: ${error.message}`)
       resolve(2)

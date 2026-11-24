@@ -92,6 +92,6 @@ Do not use Stryker's `--testFiles` for this. With it, Stryker 10.1 switches a mu
 
 A test that reads source files as text fails the initial run, because each sandboxed source file carries all of its mutants side by side. `vitest.mutation.config.ts` lists the ones to leave out (`READS_SOURCE_AS_TEXT`); add any other you meet.
 
-The report lands in `.cache/stryker/report/mutation.html`, with every mutant shown in place and the tests that covered it. `.cache/stryker/incremental.json` holds the results, and the next run retests only mutants whose code or covering tests changed; `--force` retests everything.
+The report lands in `.cache/stryker/report/mutation.html`, with every mutant shown in place and the tests that covered it. Each set of arguments keeps its results in its own `.cache/stryker/incremental-<hash>.json`, so a run reports only the mutants in its own scope. The next run with the same arguments retests only mutants whose code or covering tests changed; `--force` retests everything.
 
 Read survivors as you read the probe's: name the input that would expose the mutant, or the reason none exists. Two kinds are usually noise here. A mutated log or error-message string is only a gap when the wording is part of a contract, and a `>=` for `>` survives wherever the two values can never be equal.

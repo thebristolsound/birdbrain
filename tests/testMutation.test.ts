@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { EventEmitter } from 'events'
 import {
   TESTS_ENV,
+  incrementalFile,
   main,
   parseArgs
   // @ts-expect-error - build script with no type declarations; the tsconfigs exclude scripts/
@@ -29,7 +30,30 @@ describe('parseArgs', () => {
   it('refuses --tests with no path', () => {
     expect(() => parseArgs(['--tests'])).toThrow('--tests needs a path')
     expect(() => parseArgs(['--tests', '--force'])).toThrow('--tests needs a path')
+    expect(() => parseArgs(['--tests', ''])).toThrow('--tests needs a path')
     expect(() => parseArgs(['--tests='])).toThrow('--tests needs a path')
+  })
+})
+
+describe('incrementalFile', () => {
+  const scope = { tests: 'tests/shared', stryker: ['--mutate', 'src/shared/noteDoc.ts'] }
+
+  it('gives one set of arguments one file, with or without --force', () => {
+    expect(incrementalFile(scope)).toMatch(/^\.cache\/stryker\/incremental-[0-9a-f]{12}\.json$/)
+    expect(incrementalFile({ ...scope, stryker: [...scope.stryker] })).toBe(incrementalFile(scope))
+    expect(incrementalFile({ ...scope, stryker: [...scope.stryker, '--force'] })).toBe(
+      incrementalFile(scope)
+    )
+  })
+
+  it('gives another --mutate or another --tests its own file', () => {
+    const files = [
+      incrementalFile(scope),
+      incrementalFile({ ...scope, stryker: ['--mutate', 'src/shared/safeFilename.ts'] }),
+      incrementalFile({ ...scope, tests: 'tests/main' }),
+      incrementalFile({ tests: null, stryker: [] })
+    ]
+    expect(new Set(files).size).toBe(files.length)
   })
 })
 
@@ -49,7 +73,13 @@ describe('main', () => {
     expect(await exit).toBe(0)
     expect(run).toHaveBeenCalledWith(
       '/electron',
-      ['./node_modules/@stryker-mutator/core/bin/stryker.js', 'run', '--force'],
+      [
+        './node_modules/@stryker-mutator/core/bin/stryker.js',
+        'run',
+        '--incrementalFile',
+        incrementalFile({ tests: 'tests/shared', stryker: ['--force'] }),
+        '--force'
+      ],
       {
         stdio: 'inherit',
         env: { PATH: '/bin', ELECTRON_RUN_AS_NODE: '1', [TESTS_ENV]: 'tests/shared' }
@@ -80,6 +110,14 @@ describe('main', () => {
 
   it('returns 2 without starting anything when the arguments are wrong', async () => {
     const { run, stderr, exit } = start(['--tests'])
+
+    expect(await exit).toBe(2)
+    expect(run).not.toHaveBeenCalled()
+    expect(stderr).toHaveBeenCalledWith('test-mutation: --tests needs a path')
+  })
+
+  it('returns 2 without starting anything when --tests is given an empty path', async () => {
+    const { run, stderr, exit } = start(['--tests', ''])
 
     expect(await exit).toBe(2)
     expect(run).not.toHaveBeenCalled()

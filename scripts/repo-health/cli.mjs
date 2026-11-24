@@ -14,8 +14,11 @@
 //
 // Usage: node scripts/repo-health/cli.mjs [--json | --markdown]
 //
+// It measures the whole working tree from any folder inside it.
+//
 // Exit codes: 0 the report was produced, whatever it says; 2 could not run.
 
+import { execFileSync } from 'node:child_process'
 import { pathToFileURL } from 'node:url'
 import { gitInfo } from '../slop-audit/cli.mjs'
 import { createReader, listTrackedFiles } from '../slop-audit/lib/files.mjs'
@@ -39,17 +42,27 @@ export const parseArgs = (argv) => {
 
 const RENDERERS = { text: renderText, json: renderJson, markdown: renderMarkdown }
 
+// The top of the working tree that holds `cwd`. `git ls-files` lists only the
+// folder it runs in, so a report taken from `src/` would see part of the code,
+// find nothing to count in the rest, and show that as a small number. The report
+// is always measured from here, wherever the command was typed.
+export const repositoryRoot = (cwd) =>
+  execFileSync('git', ['rev-parse', '--show-toplevel'], {
+    cwd,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe']
+  }).trim()
+
 // Everything that touches git, the disk, knip, the clock or the console is
 // injectable so the tests drive main() without a repository. The defaults are the
 // real thing.
 export const main = (argv, deps = {}) => {
   const {
-    root = process.cwd(),
+    cwd = process.cwd(),
+    locate = repositoryRoot,
     signals = SIGNALS,
     listFiles = listTrackedFiles,
     info = gitInfo,
-    read = createReader(root),
-    knip = createKnipRunner({ root }),
     now = () => new Date(),
     stdout = console.log,
     stderr = console.error
@@ -59,6 +72,10 @@ export const main = (argv, deps = {}) => {
   let report
   try {
     options = parseArgs(argv)
+    const root = locate(cwd)
+    if (!root) throw new Error('could not find the top of the working tree')
+    const read = deps.read ?? createReader(root)
+    const knip = deps.knip ?? createKnipRunner({ root })
     const { commit, dirty } = info(root)
     const measuredAt = now().toISOString()
     const ctx = { root, paths: listFiles(root), read, knip, today: measuredAt.slice(0, 10) }

@@ -10,7 +10,7 @@
 //
 // The report is advisory. A signal outside its budget is something to look at, not
 // a failed build, so a finding never changes the exit status. A signal that could
-// not be read says "not measured" and counts with the ones outside their budget.
+// not be read says "not measured" and has its own count, never within budget.
 //
 // Usage: node scripts/repo-health/cli.mjs [--json | --markdown]
 //

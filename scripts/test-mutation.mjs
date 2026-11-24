@@ -61,7 +61,10 @@ export const main = (argv, deps = {}) => {
     stderr(`test-mutation: ${error.message}`)
     return Promise.resolve(2)
   }
+  // --tests alone sets the scope: a value already in the environment would narrow the run while
+  // its results were filed under the default scope's name.
   const childEnv = { ...env, ELECTRON_RUN_AS_NODE: '1' }
+  delete childEnv[TESTS_ENV]
   if (parsed.tests !== null) childEnv[TESTS_ENV] = parsed.tests
   return new Promise((resolve) => {
     const args = [STRYKER, 'run', '--incrementalFile', incrementalFile(parsed), ...parsed.stryker]

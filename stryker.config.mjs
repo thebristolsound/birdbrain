@@ -39,9 +39,9 @@ export default {
   mutate: ['src/packages/**/*.{ts,mts,cts}', '!src/packages/**/tests/**', '!**/*.d.ts'],
 
   // Stryker copies the tree into a sandbox and mutates the copy, so the working tree is never
-  // edited and a dirty tree is fine. Only build output and the docs site are left out of the
-  // copy: vitest.config.ts reads a file under docs/, and tests read fixtures from resources/,
-  // scripts/ and design-system/.
+  // edited and a dirty tree is fine. Only build output, generated reports, caches and the docs
+  // site are left out of the copy: vitest.config.ts reads a file under docs/, and tests read
+  // fixtures from resources/, scripts/ and design-system/.
   tempDirName: '.cache/stryker-tmp',
   ignorePatterns: [
     'out',

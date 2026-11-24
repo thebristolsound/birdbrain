@@ -88,7 +88,7 @@ describe('main', () => {
   })
 
   it('leaves the scope unset without --tests, so the config default applies', async () => {
-    const { child, run, exit } = start([])
+    const { child, run, exit } = start([], { [TESTS_ENV]: 'tests/main' })
     child.emit('exit', 0, null)
 
     expect(await exit).toBe(0)

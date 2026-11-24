@@ -12,6 +12,8 @@ export const STATUSES = ['within', 'outside', 'not measured']
 
 const STATE_OPEN = '<!-- repo-health-state:v1'
 const STATE_CLOSE = '-->'
+// The form Date.prototype.toISOString writes, which is how a run records its time.
+const TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/
 
 export const statusOf = ({ value, budget, better }) => {
   if (value === null) return 'not measured'
@@ -97,12 +99,16 @@ const stateProblem = (state) => {
       return 'the state block has a value that does not fit its status'
     }
   }
+  if (typeof state.measuredAt !== 'string' || !TIMESTAMP.test(state.measuredAt)) {
+    return 'the state block has no run time'
+  }
   return null
 }
 
 // Reads the previous run's values out of an issue body. Anyone who can edit the
-// issue can edit the block, so every field is checked and anything unexpected
-// gives { state: null, reason }: no previous values, never "unchanged".
+// issue can edit the block, so every field the report reads is checked, the run
+// time included because the body prints it, and anything unexpected gives
+// { state: null, reason }: no previous values, never "unchanged".
 export const decodeState = (body) => {
   if (typeof body !== 'string') return { state: null, reason: 'no previous report was found' }
   const start = body.lastIndexOf(STATE_OPEN)

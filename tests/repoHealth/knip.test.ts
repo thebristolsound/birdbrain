@@ -132,12 +132,32 @@ describe('createKnipRunner', () => {
     expect(run).toThrow('knip could not be started')
   })
 
+  it('is not measured when knip prints more than the runner holds, and says so', () => {
+    const full = Object.assign(new Error('spawnSync knip ENOBUFS'), { code: 'ENOBUFS' })
+    const { run } = runner({ spawn: () => ({ error: full, stdout: '' }) })
+    expect(run).toThrow(Unmeasured)
+    expect(run).toThrow('knip printed more than 64 MiB')
+  })
+
+  it('does not trust a report knip printed before it exited with an error', () => {
+    for (const status of [2, null]) {
+      const { run } = runner({ spawn: () => ({ stdout: JSON.stringify(report), status }) })
+      expect(run).toThrow(Unmeasured)
+      expect(run).toThrow(`knip reported an error (exit status ${status})`)
+    }
+  })
+
+  it('reads exit 0 with a report as a report', () => {
+    const { run } = runner({ spawn: () => ({ stdout: JSON.stringify(report), status: 0 }) })
+    expect(run()).toEqual(report)
+  })
+
   it('remembers a failure too, so three signals do not start knip three times', () => {
     let starts = 0
     const { run } = runner({
       spawn: () => {
         starts += 1
-        return { stdout: 'not json', status: 2 }
+        return { stdout: 'not json', status: 1 }
       }
     })
     expect(run).toThrow('knip printed no JSON report')

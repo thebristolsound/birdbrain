@@ -2,7 +2,9 @@
 //
 // knip is configured in knip.jsonc and gated nowhere, so its counts are a number
 // to watch, not a failure. It exits 1 whenever it finds anything, which is every
-// run today, so the exit status says nothing here: the report shape decides.
+// run today, so exit 1 is a report. It exits 2 when a configuration failed to load
+// or a promise was left unhandled, and it does so after printing its report, so a
+// report under exit 2 is not trusted.
 
 import { spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
@@ -11,7 +13,7 @@ import { Unmeasured } from './unmeasured.mjs'
 
 const BINARY = 'node_modules/.bin/knip'
 // knip takes a few seconds here. A run that has not finished in two minutes is
-// stuck, and the report must not wait on it: the weekly job has ten.
+// stuck, and the report must not wait on it.
 export const KNIP_TIMEOUT_MS = 120_000
 
 // The workflow's token is in the environment for the signals that read GitHub.
@@ -62,7 +64,11 @@ export const createKnipRunner = ({ root, spawn = spawnSync, exists = existsSync,
       timeout: KNIP_TIMEOUT_MS
     })
     if (result.error?.code === 'ETIMEDOUT') throw new Unmeasured('knip did not finish in time')
+    if (result.error?.code === 'ENOBUFS') throw new Unmeasured('knip printed more than 64 MiB')
     if (result.error) throw new Unmeasured('knip could not be started')
+    if (result.status !== 0 && result.status !== 1) {
+      throw new Unmeasured(`knip reported an error (exit status ${result.status})`)
+    }
     return parseKnipReport(result.stdout)
   }
   return () => {

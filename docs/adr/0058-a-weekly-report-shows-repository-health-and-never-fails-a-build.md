@@ -115,4 +115,5 @@ that needs more of the maintainer's attention is not a saving.
   their budget and how many were not measured.
 - **Count `as any`, `@ts-expect-error` and `TODO`.** Every `any` hit was prose and the lint rule
   already blocks real ones; none of the `@ts-expect-error` uses is in `src/`; all six `TODO`
-  hits are template text in the migration scaffold script.
+  hits are the migration scaffold script's template text, five in the script and one in its
+  test.

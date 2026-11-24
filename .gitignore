@@ -153,3 +153,8 @@ report-*.html
 # The test reliability probe's journal of files it has edited, and its Vitest reports
 # (scripts/test-reliability/cli.mjs)
 /.cache/test-reliability/
+
+# Stryker's incremental results and reports, and its sandbox copies of the tree
+# (stryker.config.mjs)
+/.cache/stryker/
+/.cache/stryker-tmp/

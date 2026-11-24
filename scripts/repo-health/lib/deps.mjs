@@ -15,17 +15,58 @@ const EXCEPTIONS_FILE = 'audit-exceptions.json'
 const DEPENDABOT_FILE = '.github/dependabot.yml'
 const DAY_MS = 24 * 60 * 60 * 1000
 
-// A YAML comment: a `#` at the start of a line or after white space, to the end
-// of the line.
-const YAML_COMMENT = /(^|[ \t])#.*$/gm
-// One key per dependency Dependabot is told to hold back. Counting the key, not
-// the line it sits on, reads the block form and the flow form
-// (`- { dependency-name: x }`, or several on one line) the same. A layout this
-// misreads can only count high, never low.
-const DEPENDENCY_NAME = /\bdependency-name\s*:/g
+// A line with its YAML comment removed: a `#` at the start of the line or after
+// white space, outside a quoted value, to the end of the line.
+const stripYamlComment = (line) => {
+  let quote = null
+  for (let at = 0; at < line.length; at += 1) {
+    const char = line[at]
+    if (quote === '"' && char === '\\') at += 1
+    else if (quote !== null) {
+      if (char === quote) quote = null
+    } else if ((char === '"' || char === "'") && (at === 0 || /[\s[{,]/.test(line[at - 1]))) {
+      quote = char
+    } else if (char === '#' && (at === 0 || /[ \t]/.test(line[at - 1]))) {
+      return line.slice(0, at)
+    }
+  }
+  return line
+}
 
-export const countDependabotEntries = (text) =>
-  countMatches(text.replace(YAML_COMMENT, '$1'), DEPENDENCY_NAME)
+const IGNORE_KEY = /^(\s*(?:-\s+)?)(["']?)ignore\2\s*:(.*)$/
+// One key per dependency Dependabot is told to hold back, quoted or not. Counting
+// the key, not the line it sits on, reads the block form and the flow form
+// (`- { dependency-name: x }`, or several on one line) the same.
+const DEPENDENCY_NAME = /(?:^|[\s{,])(["']?)dependency-name\1\s*:/g
+const indentOf = (line) => line.length - line.trimStart().length
+
+// Counts the entries under every `ignore:` key. An `allow:` list also names
+// dependencies, but those are ones Dependabot is told to update.
+export const countDependabotEntries = (text) => {
+  const lines = text.split('\n').map(stripYamlComment)
+  let count = 0
+  let at = 0
+  while (at < lines.length) {
+    const key = IGNORE_KEY.exec(lines[at])
+    at += 1
+    if (!key) continue
+    const column = key[1].length
+    const section = [key[3]]
+    for (; at < lines.length; at += 1) {
+      const line = lines[at]
+      if (line.trim() === '') continue
+      const indent = indentOf(line)
+      if (indent < column || (indent === column && !line.trimStart().startsWith('-'))) break
+      section.push(line)
+    }
+    count += countMatches(section.join('\n'), DEPENDENCY_NAME)
+  }
+  return count
+}
+
+// A file with no `version` or `updates` key, such as an empty or comment-only one,
+// is not a configuration with no ignores.
+const TOP_LEVEL_KEYS = [/^version\s*:/m, /^updates\s*:/m]
 
 const readExceptions = (ctx) => {
   try {
@@ -36,11 +77,17 @@ const readExceptions = (ctx) => {
 }
 
 const readDependabot = (ctx) => {
+  let text
   try {
-    return ctx.read(DEPENDABOT_FILE)
+    text = ctx.read(DEPENDABOT_FILE)
   } catch {
     throw new Unmeasured(`${DEPENDABOT_FILE} could not be read`)
   }
+  const code = text.split('\n').map(stripYamlComment).join('\n')
+  if (!TOP_LEVEL_KEYS.every((key) => key.test(code))) {
+    throw new Unmeasured(`${DEPENDABOT_FILE} is missing its \`version\` or \`updates\` key`)
+  }
+  return text
 }
 
 // Days from `today` to each exception's expiry; negative once it has passed.

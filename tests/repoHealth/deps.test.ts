@@ -68,6 +68,29 @@ describe('deferred dependency decisions', () => {
       '.github/dependabot.yml could not be read'
     )
   })
+
+  it('is not measured when the Dependabot file is empty or holds only comments', () => {
+    const reason = '.github/dependabot.yml is missing its `version` or `updates` key'
+    for (const content of ['', '\n  \n', '# version: 2\n# updates: []\n', 'version: 2\n']) {
+      const ctx = ctxOf({
+        'audit-exceptions.json': exceptionsFile('2027-01-15'),
+        '.github/dependabot.yml': content
+      })
+      expect(() => measure('deferred-dependency-decisions', ctx)).toThrow(Unmeasured)
+      expect(() => measure('deferred-dependency-decisions', ctx)).toThrow(reason)
+    }
+  })
+
+  it('reads a configuration with no ignores as zero ignores', () => {
+    const ctx = ctxOf({
+      'audit-exceptions.json': exceptionsFile('2027-01-15'),
+      '.github/dependabot.yml': 'version: 2\nupdates: []\n'
+    })
+    expect(measure('deferred-dependency-decisions', ctx)).toEqual({
+      value: 1,
+      note: '1 audit exception(s) and 0 Dependabot ignore(s)'
+    })
+  })
 })
 
 describe('countDependabotEntries', () => {
@@ -80,13 +103,44 @@ describe('countDependabotEntries', () => {
       '    ignore:',
       "      - { dependency-name: 'vitest', update-types: ['version-update:semver-major'] }",
       "      - { dependency-name: 'jsdom' }",
-      "    allow: [{ dependency-name: 'a' }, { dependency-name: 'b' }]"
+      "    other: [{ dependency-name: 'a' }]",
+      "    ignore: [{ dependency-name: 'b' }, { dependency-name: 'c' }]"
     ].join('\n')
     expect(countDependabotEntries(flow)).toBe(4)
   })
 
+  it('leaves out allow entries, which name dependencies to update, not to hold back', () => {
+    const text = [
+      'updates:',
+      '  - package-ecosystem: npm',
+      '    allow:',
+      "      - dependency-name: 'a'",
+      '    ignore:',
+      "      - dependency-name: 'b'",
+      '  - package-ecosystem: pip',
+      "    allow: [{ dependency-name: 'c' }, { dependency-name: 'd' }]",
+      '  - ignore:',
+      "    - dependency-name: 'e'",
+      '    allow:',
+      "    - dependency-name: 'f'"
+    ].join('\n')
+    expect(countDependabotEntries(text)).toBe(2)
+  })
+
+  it('counts a quoted key, and a # inside a quoted value does not end the line', () => {
+    const text = [
+      '    ignore:',
+      '      - { "dependency-name": "vitest" }',
+      "      - 'dependency-name': jsdom",
+      "      - { versions: ['>= 1 #x'], dependency-name: y }",
+      '      - { versions: ["\\" #x"], dependency-name: z }'
+    ].join('\n')
+    expect(countDependabotEntries(text)).toBe(4)
+  })
+
   it('leaves out commented entries, whole-line and trailing', () => {
     const text = [
+      '    ignore:',
       '# - dependency-name: whole-line',
       "      - dependency-name: 'kept' # dependency-name: trailing",
       '      #- dependency-name: another',

@@ -145,7 +145,7 @@ export function CaptureItem({
       <span
         data-testid="capture-select-glyph"
         className={`flex h-3.5 w-3.5 items-center justify-center rounded-[2px] border ${
-          isMultiSelected ? 'border-accent-fill bg-accent-fill' : 'border-border-strong'
+          isMultiSelected ? 'border-accent-fill bg-accent-fill' : 'border-control'
         }`}
       >
         {isMultiSelected && <Check className="h-2.5 w-2.5 text-white" strokeWidth={3} />}

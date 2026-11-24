@@ -25,7 +25,6 @@ import sharp from 'sharp'
 import { initDatabase, closeDatabase, getDb } from '@main/services/db/core'
 import { createCase } from '@main/services/db/caseRepo'
 import { initStorage, ensureCaseDir } from '@main/services/storage'
-import { defaultCaptureStore } from '@main/services/captureStore'
 import { appendManifestEntry, initManifest } from '@main/services/manifest'
 import {
   ingestMhtmlCapture,
@@ -291,19 +290,8 @@ describe('report citation invariants', () => {
         })
       }
     },
-    {
-      name: 'page archive deleted after ingest',
-      include: FULL,
-      setup: async () => {
-        const { capture } = await ingest(
-          '<html>e</html>',
-          'https://example.com/e',
-          'E',
-          await png()
-        )
-        rmSync(defaultCaptureStore.artifactPaths(caseId, capture.id, 'mhtml').abs)
-      }
-    },
+    // No scenario deletes a signed page archive: that export writes no package
+    // to cite from (#2225, pinned in export.test.ts).
     {
       name: 'duplicate content hash sharing one token',
       include: FULL,

@@ -1,7 +1,8 @@
+import { tmpdir } from 'os'
 import { join } from 'path'
 import { describe, expect, it } from 'vitest'
 // @ts-expect-error - build script with no type declarations; the tsconfigs exclude scripts/
-import { USAGE, main, parseArgs } from '../../scripts/repo-health/cli.mjs'
+import { USAGE, main, parseArgs, repositoryRoot } from '../../scripts/repo-health/cli.mjs'
 // @ts-expect-error - build script with no type declarations; the tsconfigs exclude scripts/
 import { decodeState } from '../../scripts/repo-health/lib/report.mjs'
 import {
@@ -35,7 +36,8 @@ const harness = (over: Record<string, unknown> = {}) => {
   const err: string[] = []
   const appended: { path: string; text: string }[] = []
   const deps = {
-    root: '/fixture',
+    cwd: '/fixture/src/main',
+    locate: () => '/fixture',
     env: {} as Record<string, string>,
     gh: null as unknown,
     appendFile: (path: string, text: string) => appended.push({ path, text }),
@@ -273,20 +275,69 @@ describe('main', () => {
     expect(out).toEqual([])
   })
 
-  it('measures every tree signal on this repository, with knip and GitHub unavailable', () => {
+  it('exits 2 when the top of the working tree cannot be found', () => {
+    const thrown = harness({
+      locate: () => {
+        throw new Error('fatal: not a git repository')
+      }
+    })
+    expect(main([], thrown.deps)).toBe(2)
+    expect(thrown.out).toEqual([])
+    expect(thrown.err).toEqual(['repo-health: fatal: not a git repository'])
+    const empty = harness({ locate: () => '' })
+    expect(main([], empty.deps)).toBe(2)
+    expect(empty.err).toEqual(['repo-health: could not find the top of the working tree'])
+  })
+
+  it('lists and reads from the top of the tree, not from the folder it was started in', () => {
+    const seen: string[] = []
+    const { deps } = harness({
+      listFiles: (root: string) => {
+        seen.push(`list ${root}`)
+        return Object.keys(tree)
+      },
+      info: (root: string) => {
+        seen.push(`info ${root}`)
+        return { commit: 'abc1234', dirty: false }
+      }
+    })
+    expect(main([], deps)).toBe(0)
+    expect(seen).toEqual(['info /fixture', 'list /fixture'])
+  })
+})
+
+describe('repositoryRoot', () => {
+  it('finds the top of this repository from any folder inside it', () => {
+    expect(repositoryRoot(ROOT)).toBe(ROOT)
+    expect(repositoryRoot(join(ROOT, 'src', 'main'))).toBe(ROOT)
+    expect(repositoryRoot(join(ROOT, 'docs', 'plans'))).toBe(ROOT)
+  })
+
+  it('throws outside a repository', () => {
+    expect(() => repositoryRoot(tmpdir())).toThrow()
+  })
+})
+
+describe('main on this repository', () => {
+  const measure = (cwd: string) => {
     const out: string[] = []
     const code = main(['--json'], {
-      root: ROOT,
+      cwd,
       env: {},
       gh: null,
+      now: () => new Date('2026-11-24T12:00:00.000Z'),
       knip: () => {
         throw new Unmeasured('knip is not installed')
       },
       stdout: (line: string) => out.push(line),
       stderr: () => {}
     })
+    return { code, report: JSON.parse(out[0]) }
+  }
+
+  it('measures every tree signal, with knip reported as not installed', () => {
+    const { code, report } = measure(ROOT)
     expect(code).toBe(0)
-    const report = JSON.parse(out[0])
     expect(report.commit).toMatch(/^[0-9a-f]{40}$/)
     expect(report.signals.length).toBe(SIGNALS.length)
     for (const row of report.signals) {
@@ -302,6 +353,18 @@ describe('main', () => {
       }
     }
   })
+
+  // Run from a sub-folder, `git ls-files` lists that folder only. A report taken
+  // there once showed zero skipped tests and one broken link as within budget.
+  it.each(['src', 'docs', 'tests/repoHealth'])(
+    'reports the same numbers from %s as from the top level',
+    (folder) => {
+      const top = measure(ROOT).report
+      const inside = measure(join(ROOT, ...folder.split('/'))).report
+      expect(inside.signals).toEqual(top.signals)
+      expect(inside.counts).toEqual(top.counts)
+    }
+  )
 })
 
 describe('main under the workflow', () => {

@@ -376,18 +376,26 @@ inside the case directory — drop the leading case-id segment — so
 expected absent on exactly the same terms as captures.
 
 \`\`\`sh
-jq -c 'select(.type == "exhibit")' ${ROOT.manifest} | {
-  failed=0
-  while IFS= read -r ex; do
-    rel=$(printf '%s' "$ex" | jq -r '.path' | cut -d/ -f2-)
-    num=$(printf '%s' "$ex" | jq -r '.exhibitNumber')
-    want=$(printf '%s' "$ex" | jq -r '.contentHash')
-    got=$(sha256sum "$rel" | cut -d' ' -f1)
-    [ "$want" = "$got" ] && echo "exhibit $num OK" || { echo "EXHIBIT $num MISMATCH"; failed=1; }
-  done
-  # Read inside the braces: sh and bash run a pipeline's loop in a subshell.
-  [ "$failed" = 0 ]
-}
+list=$(mktemp)
+failed=0
+if [ ! -e ${ROOT.manifest} ]; then
+  echo "CHAIN MISSING OR EMPTY: ${ROOT.manifest}"; failed=1
+elif ! jq -c 'select(.type == "exhibit")' ${ROOT.manifest} >"$list"; then
+  echo "CHAIN UNREADABLE: ${ROOT.manifest}"; failed=1
+elif ! jq -en 'any(inputs; type == "object")' ${ROOT.manifest} >/dev/null; then
+  echo "CHAIN MISSING OR EMPTY: ${ROOT.manifest}"; failed=1
+fi
+# Read from a file, not a pipe: a pipeline's status is its last command's, which drops
+# jq's, and sh and bash run a piped loop in a subshell, which drops the loop's flag.
+while IFS= read -r ex; do
+  rel=$(printf '%s' "$ex" | jq -r '.path' | cut -d/ -f2-)
+  num=$(printf '%s' "$ex" | jq -r '.exhibitNumber')
+  want=$(printf '%s' "$ex" | jq -r '.contentHash')
+  got=$(sha256sum "$rel" | cut -d' ' -f1)
+  [ "$want" = "$got" ] && echo "exhibit $num OK" || { echo "EXHIBIT $num MISMATCH"; failed=1; }
+done <"$list"
+rm -f "$list"
+[ "$failed" = 0 ]
 \`\`\`
 
 **Derived files.** A derived file is bytes the tool computed FROM an exhibit —
@@ -401,22 +409,33 @@ Bind it by the entry that names THAT parent and THAT path, never by an entry's
 position in the file: an index says where an entry sits, not what it is about.
 
 \`\`\`sh
-jq -c 'select(.type == "derivation")' ${ROOT.manifest} | {
-  failed=0
-  while IFS= read -r d; do
-    parent=$(printf '%s' "$d" | jq -r '.parentExhibitId')
-    ppath=$(jq -rn --arg p "$parent" \\
-      'first(inputs | select(.type == "exhibit" and .exhibitId == $p) | .path) // empty' \\
-      ${ROOT.manifest})
-    if [ -n "$ppath" ]; then dir=$(dirname "$(printf '%s' "$ppath" | cut -d/ -f2-)"); else dir=${CAPTURE_PACKAGE_DIRECTORY}; fi
-    rel="$dir/$(basename "$(printf '%s' "$d" | jq -r '.outputPath')")"
-    want=$(printf '%s' "$d" | jq -r '.outputHash')
-    got=$(sha256sum "$rel" | cut -d' ' -f1)
-    [ "$want" = "$got" ] && echo "derived $rel OK" || { echo "DERIVED FILE MISMATCH: $rel"; failed=1; }
-  done
-  [ "$failed" = 0 ]
-}
+list=$(mktemp)
+failed=0
+if [ ! -e ${ROOT.manifest} ]; then
+  echo "CHAIN MISSING OR EMPTY: ${ROOT.manifest}"; failed=1
+elif ! jq -c 'select(.type == "derivation")' ${ROOT.manifest} >"$list"; then
+  echo "CHAIN UNREADABLE: ${ROOT.manifest}"; failed=1
+elif ! jq -en 'any(inputs; type == "object")' ${ROOT.manifest} >/dev/null; then
+  echo "CHAIN MISSING OR EMPTY: ${ROOT.manifest}"; failed=1
+fi
+while IFS= read -r d; do
+  parent=$(printf '%s' "$d" | jq -r '.parentExhibitId')
+  ppath=$(jq -rn --arg p "$parent" \\
+    'first(inputs | select(.type == "exhibit" and .exhibitId == $p) | .path) // empty' \\
+    ${ROOT.manifest})
+  if [ -n "$ppath" ]; then dir=$(dirname "$(printf '%s' "$ppath" | cut -d/ -f2-)"); else dir=${CAPTURE_PACKAGE_DIRECTORY}; fi
+  rel="$dir/$(basename "$(printf '%s' "$d" | jq -r '.outputPath')")"
+  want=$(printf '%s' "$d" | jq -r '.outputHash')
+  got=$(sha256sum "$rel" | cut -d' ' -f1)
+  [ "$want" = "$got" ] && echo "derived $rel OK" || { echo "DERIVED FILE MISMATCH: $rel"; failed=1; }
+done <"$list"
+rm -f "$list"
+[ "$failed" = 0 ]
 \`\`\`
+
+Both blocks above also exit non-zero when \`${ROOT.manifest}\` is missing or
+holds no JSON object, printing \`CHAIN MISSING OR EMPTY\`, and when \`jq\` fails
+on it, printing \`CHAIN UNREADABLE\`.
 
 ${runbookHeading(6)}
 
@@ -486,39 +505,48 @@ for \`${ROOT.manifest}\` and for every member and lineage chain alike:
 
 \`\`\`sh
 receipt=$(mktemp)
+list=$(mktemp)
 failed=0
+[ -e ${ROOT.manifest} ] || { echo "CHAIN MISSING OR EMPTY: ${ROOT.manifest}"; failed=1; }
 for chain in ${ROOT.manifest} ${memberChainPath('*')} ${lineageChainPath('*', '*')}; do
   [ -e "$chain" ] || continue
-  jq -c '${VERIFY_RECIPES.receiptTokenFilter}' "$chain" | {
-    bad=0
-    while IFS= read -r r; do
-      hash=$(printf '%s' "$r" | jq -r '.captureContentHash')
-      idx=$(jq -rn --arg h "$hash" \\
-        'first(inputs | select(.type == "merge" and .entryHash == $h) | .index) // empty' "$chain")
-      if [ -z "$idx" ]; then
-        echo "RECEIPT NAMES NO MERGE: entry $(printf '%s' "$r" | jq -r '.index') of $chain"
-        bad=1
-        continue
-      fi
-      printf '%s' "$r" | jq -r '.tsaToken' | openssl base64 -d -A >"$receipt"
-      if openssl ts -verify -digest "$hash" -in "$receipt" -token_in \\
-        -CAfile ${ROOT.tsaRoot} -untrusted ${ROOT.tsaIntermediates} >/dev/null 2>&1; then
-        echo "receipt OK: merge #$idx of $chain"
-      else
-        echo "RECEIPT FAIL: merge #$idx of $chain"
-        bad=1
-      fi
-    done
-    # sh and bash run this group in a subshell, so its flag leaves only as its status.
-    [ "$bad" = 0 ]
-  } || failed=1
+  # A member who has written nothing holds an empty chain, which passes; the package's own
+  # chain must hold an entry.
+  if ! jq -c '${VERIFY_RECIPES.receiptTokenFilter}' "$chain" >"$list"; then
+    echo "CHAIN UNREADABLE: $chain"; failed=1
+  elif [ "$chain" = ${ROOT.manifest} ] &&
+    ! jq -en 'any(inputs; type == "object")' "$chain" >/dev/null; then
+    echo "CHAIN MISSING OR EMPTY: $chain"; failed=1
+  fi
+  # Read from a file, not a pipe: a pipeline's status is its last command's, which drops
+  # jq's, and sh and bash run a piped loop in a subshell, which drops the loop's flag.
+  while IFS= read -r r; do
+    hash=$(printf '%s' "$r" | jq -r '.captureContentHash')
+    idx=$(jq -rn --arg h "$hash" \\
+      'first(inputs | select(.type == "merge" and .entryHash == $h) | .index) // empty' "$chain")
+    if [ -z "$idx" ]; then
+      echo "RECEIPT NAMES NO MERGE: entry $(printf '%s' "$r" | jq -r '.index') of $chain"
+      failed=1
+      continue
+    fi
+    printf '%s' "$r" | jq -r '.tsaToken' | openssl base64 -d -A >"$receipt"
+    if openssl ts -verify -digest "$hash" -in "$receipt" -token_in \\
+      -CAfile ${ROOT.tsaRoot} -untrusted ${ROOT.tsaIntermediates} >/dev/null 2>&1; then
+      echo "receipt OK: merge #$idx of $chain"
+    else
+      echo "RECEIPT FAIL: merge #$idx of $chain"
+      failed=1
+    fi
+  done <"$list"
 done
-rm -f "$receipt"
+rm -f "$receipt" "$list"
 [ "$failed" = 0 ]
 \`\`\`
 
 The block exits non-zero on any \`RECEIPT FAIL\` or \`RECEIPT NAMES NO MERGE\`, in any
-chain it reads.
+chain it reads. It also exits non-zero on \`CHAIN UNREADABLE\`, for a chain \`jq\`
+fails on, and on \`CHAIN MISSING OR EMPTY\`, when \`${ROOT.manifest}\` is missing or
+holds no JSON object.
 
 A \`timestamp\` entry whose \`tsaToken\` is present but is not a string, \`null\`
 included, is malformed, whatever its \`subject\`. Both filters above skip it, and

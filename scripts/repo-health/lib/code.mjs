@@ -5,13 +5,14 @@
 //   typescript-eslint's no-explicit-any already gates the real ones.
 // - `@ts-expect-error`: none in src/. The 67 hits are untyped-script imports in
 //   tests and deliberate negative type tests.
-// - TODO and FIXME: all six are template text in the migration scaffolder.
+// - TODO and FIXME: all six are the migration scaffold script's template text,
+//   five in the script and one in its test.
 
 import { countIssues } from './knip.mjs'
 import { Unmeasured } from './unmeasured.mjs'
-import { countMatches, isCode, isOwn, isTestFile, under } from './tree.mjs'
+import { countMatches, isCode, isTestFile, under } from './tree.mjs'
 
-const BUDGET_SOURCE = 'the value at 1aa3cccf on 2026-11-21, so any growth shows'
+const BUDGET_SOURCE = 'the value at f2bd1b03 on 2026-11-24, so any growth shows'
 
 const SUPPRESSION_ROOTS = [
   'src/',
@@ -24,6 +25,9 @@ const SUPPRESSION_ROOTS = [
 const PRODUCT_ROOTS = ['src/', 'extension/src/']
 
 // A comment that opens with the directive: the line, block and next-line forms.
+// Nothing is excluded, this tool's own folders included. Its tests build the
+// directive from parts so that no file of the tool matches, and a real
+// suppression added to the tool later is counted like any other.
 const ESLINT_DISABLE = /(?:\/\/|\/\*)\s*eslint-disable/g
 const DOUBLE_CAST = /\bas\s+unknown\s+as\b/g
 
@@ -44,11 +48,7 @@ export const CODE_SIGNALS = [
     why: BUDGET_SOURCE,
     needs: 'tree',
     measure: (ctx) => ({
-      value: countIn(
-        ctx,
-        (path) => isCode(path) && under(path, SUPPRESSION_ROOTS) && !isOwn(path),
-        ESLINT_DISABLE
-      )
+      value: countIn(ctx, (path) => isCode(path) && under(path, SUPPRESSION_ROOTS), ESLINT_DISABLE)
     })
   },
   {

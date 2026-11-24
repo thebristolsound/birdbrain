@@ -16,6 +16,8 @@
 //
 // Usage: node scripts/repo-health/cli.mjs [--json | --markdown] [--publish]
 //
+// It measures the whole working tree from any folder inside it.
+//
 // --publish keeps the one open `repo-health` issue up to date. It writes only when
 // DRY_RUN is exactly `false`; anything else prints the writes it would make.
 //
@@ -26,6 +28,7 @@
 // Exit codes: 0 the report was produced, whatever it says; 2 could not run, or
 // could not publish.
 
+import { execFileSync } from 'node:child_process'
 import { appendFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 import { gitInfo } from '../slop-audit/cli.mjs'
@@ -65,18 +68,28 @@ const describeOutcome = (outcome) => {
   return lines
 }
 
+// The top of the working tree that holds `cwd`. `git ls-files` lists only the
+// folder it runs in, so a report taken from `src/` would see part of the code,
+// find nothing to count in the rest, and show that as a small number. The report
+// is always measured from here, wherever the command was typed.
+export const repositoryRoot = (cwd) =>
+  execFileSync('git', ['rev-parse', '--show-toplevel'], {
+    cwd,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe']
+  }).trim()
+
 // Everything that touches git, the disk, knip, GitHub, the clock, the environment
 // or the console is injectable so the tests drive main() without a repository.
 // The defaults are the real thing.
 export const main = (argv, deps = {}) => {
   const {
-    root = process.cwd(),
+    cwd = process.cwd(),
+    locate = repositoryRoot,
     env = process.env,
     signals = SIGNALS,
     listFiles = listTrackedFiles,
     info = gitInfo,
-    read = createReader(root),
-    knip = createKnipRunner({ root, env }),
     gh = hasToken(env) ? createGh({ env }) : null,
     now = () => new Date(),
     appendFile = appendFileSync,
@@ -89,6 +102,10 @@ export const main = (argv, deps = {}) => {
   let report
   try {
     options = parseArgs(argv)
+    const root = locate(cwd)
+    if (!root) throw new Error('could not find the top of the working tree')
+    const read = deps.read ?? createReader(root)
+    const knip = deps.knip ?? createKnipRunner({ root, env })
     const { commit, dirty } = info(root)
     const at = now()
     const measuredAt = at.toISOString()

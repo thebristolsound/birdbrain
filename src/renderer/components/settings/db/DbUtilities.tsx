@@ -454,7 +454,7 @@ export function DbUtilities() {
           aria-label="Table to export"
           value={exportTable}
           onChange={(e) => setExportTable(e.target.value)}
-          className="rounded-lg border border-border bg-surface px-2 py-1.5 text-xs text-text-primary outline-none"
+          className="rounded-lg border border-input bg-surface px-2 py-1.5 text-xs text-text-primary outline-none"
         >
           {EXPORT_TABLES.map((t) => (
             <option key={t} value={t}>
@@ -466,7 +466,7 @@ export function DbUtilities() {
           aria-label="Export format"
           value={exportFormat}
           onChange={(e) => setExportFormat(e.target.value as 'csv' | 'json')}
-          className="rounded-lg border border-border bg-surface px-2 py-1.5 text-xs text-text-primary outline-none"
+          className="rounded-lg border border-input bg-surface px-2 py-1.5 text-xs text-text-primary outline-none"
         >
           <option value="csv">CSV</option>
           <option value="json">JSON</option>

@@ -38,11 +38,24 @@ its own. Every pull request carries before and after screenshots in both themes.
    and this slice the other 32: buttons, count badges, checked checkboxes and switch tracks. The
    23 that keep the accent are 16 solid dots, bars and progress fills and 7 tints, none with
    white text on it. Then set `--color-accent` to `#9497ff` dark and `#4346d1` light, with the
-   bundle's hover and subtle values, and point `--color-primary` at the fill. A test counts the
+   spec's hover and subtle values, and point `--color-primary` at the fill. A test counts the
    solid accent backgrounds in each file against those marks, so a control moved back fails it.
-3. **Control boundaries.** Inputs, search fields, checkboxes, radios, the switch track and
-   icon-only outline buttons take `border-control`. Hairlines between regions stay on
-   `border-border`. Starts from the 101 `border-border-strong` hits in 55 files.
+3. **Control boundaries.** Text fields, selects, the note editor's box and the two search-field
+   wrappers that drew their own border in `border-border` or `border-border-strong` take
+   `border-input`, which already points at `--color-control`; the relay URL and Member Code
+   fields drop the border colour they passed to `Input`, so they keep its edge. Custom
+   checkboxes take `border-control` when unchecked, the context menu's customise boxes
+   included, and switch tracks `bg-control` when off. The database pager's two icon-only
+   outline buttons take `border-control`. Tests pin every off state this slice moves: a source
+   scan for the nine toggles written as an on-off ternary, and component tests for the other
+   checkboxes, the note editor's box, the two sharing fields and the pager buttons. Native
+   checkboxes and radios keep Chromium's own drawing. Dashed add-rows and inline edit fields
+   that show no border at rest are not boundaries and stay as they are. Custom pick-one
+   controls keep their borders for now: `AutoCaptureCard`'s exclusion-mode segments,
+   `AddSelectorRow`'s match-mode cards and the theme and density choices in `AppearanceConfig`.
+   So do the selector toggle chips in `NewCaseWizard`, which can be on several at once, and the
+   round "i" marks in `InfoTip` and `ViewHeader`. Whether those edges are control boundaries
+   waits for the maintainer.
 4. **Hover tint.** `hover:bg-elevated` (100 hits in 52 files), the keyboard highlight and the open
    pill take `bg-hover`.
 5. **Status tiers.** The nominal dot draws in `--color-control`, and the hollow advisory ring,
@@ -56,8 +69,6 @@ its own. Every pull request carries before and after screenshots in both themes.
 
 ## Still open
 
-The spec's open items stay open: the design system artifact needs the same values, the nonzero
-"Missing" integrity count needs its own mark, and dark faint text on a hovered item over
-`--color-elevated` measures 4.49:1, which waits for the maintainer. Slice 4 is the one that puts
-the hover tint under faint text, so it keeps faint text off hovered items on that surface until
-the maintainer rules.
+The spec's open items stay open: the design system artifact needs the same values, and the
+nonzero "Missing" integrity count needs its own mark. Dark faint text is `#9798a2`, which clears
+4.5:1 on a hovered item over `--color-elevated`, so slice 4 can put the hover tint under it.

@@ -1,7 +1,16 @@
 import { describe, it, expect, beforeAll, beforeEach, afterAll, afterEach, vi } from 'vitest'
 import { execFileSync } from 'child_process'
 import { createHash, createSign, generateKeyPairSync } from 'crypto'
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import {
+  appendFileSync,
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync
+} from 'fs'
 import { dirname, join } from 'path'
 import { tmpdir } from 'os'
 import { Readable } from 'stream'
@@ -20,7 +29,6 @@ import { generateReport } from '@main/services/export'
 import { commitStagedFiles, uploadToStaging } from '@main/services/staging'
 import { backfillCase } from '@main/services/exhibitBackfill'
 import { listExhibits } from '@main/services/db/exhibitRepo'
-import { listDerivedFilesForCase } from '@main/services/db/derivedFileRepo'
 import { seedUnanchoredDerivedFile } from '../../helpers/mixedKindCase'
 import { initSettings, updateSettings } from '@main/services/settings'
 import { initInstallationId, resetInstallationId } from '@main/services/installationId'
@@ -56,6 +64,7 @@ import {
   ENGINE_SCROLL_TO_LOAD
 } from '../../helpers/captureEnginePackage'
 import {
+  lineageChainPath,
   memberChainPath,
   pdfPath,
   screenshotPath,
@@ -761,17 +770,21 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
     {
       // #1156 round 4: the states that reach a Derived File are anchored and
       // enclosed (the good package), anchored with its bytes gone, named by no
-      // entry, and named over a chain that does not verify.
+      // entry, and named over a chain that does not verify. The export stops
+      // on bytes it cannot read (#2225), so this package lost the file and its
+      // index rows after it was written.
       name: 'a derived file whose bytes are gone',
-      build: async () => {
-        const thumbnail = listDerivedFilesForCase(caseId).find((f) => f.exhibitId === captureId)!
-        rmSync(join(tempDir, 'captures', thumbnail.path))
-        const dir = await exportPackage('lost-derived')
-        // Not enclosed and not indexed, so the only finding is the chain-side one.
-        const evidence = JSON.parse(readFileSync(join(dir, 'evidence.json'), 'utf-8')) as {
+      build: () => {
+        const dir = corruptedCopy('lost-derived')
+        const thumbPath = `pages/${captureId}_thumb.jpg`
+        rmSync(join(dir, thumbPath))
+        dropArtifacts(dir, (path) => path === thumbPath)
+        const evidencePath = join(dir, 'evidence.json')
+        const evidence = JSON.parse(readFileSync(evidencePath, 'utf-8')) as {
           exhibits: Array<{ id: string; derivedFiles: unknown[] }>
         }
-        expect(evidence.exhibits.find((e) => e.id === captureId)!.derivedFiles).toEqual([])
+        evidence.exhibits.find((e) => e.id === captureId)!.derivedFiles = []
+        writeFileSync(evidencePath, JSON.stringify(evidence, null, 2))
         return dir
       },
       binary: 'fail',
@@ -1515,6 +1528,78 @@ describe('the shipped runbook and verify.sh, executed against a real evidence pa
       }
     )
 
+    // #2203: each block once read a manifest it could not open or parse as one holding no
+    // exhibit, and exited 0. A row that `keepsRead` damages the manifest after its exhibits,
+    // so the block still reports the entries jq read before it failed.
+    const EMPTY_MANIFEST = 'CHAIN MISSING OR EMPTY: manifest.jsonl'
+    const UNREAD_MANIFEST = [
+      { name: 'a missing manifest', damage: (path: string) => rmSync(path), says: EMPTY_MANIFEST },
+      {
+        name: 'an empty manifest',
+        damage: (path: string) => writeFileSync(path, ''),
+        says: EMPTY_MANIFEST
+      },
+      {
+        name: 'a manifest of one blank line',
+        damage: (path: string) => writeFileSync(path, '\n'),
+        says: EMPTY_MANIFEST
+      },
+      {
+        name: 'a manifest of whitespace only',
+        damage: (path: string) => writeFileSync(path, '   \n\n'),
+        says: EMPTY_MANIFEST
+      },
+      {
+        name: 'a manifest holding only null',
+        damage: (path: string) => writeFileSync(path, 'null\n'),
+        says: EMPTY_MANIFEST
+      },
+      {
+        name: 'a manifest line that is not JSON',
+        damage: (path: string) => appendFileSync(path, 'not json\n'),
+        says: 'CHAIN UNREADABLE: manifest.jsonl',
+        keepsRead: true
+      },
+      {
+        name: 'a manifest line jq cannot index',
+        damage: (path: string) => appendFileSync(path, '5\n'),
+        says: 'CHAIN UNREADABLE: manifest.jsonl',
+        keepsRead: true
+      },
+      // The entry test stops at the first object, so only a manifest with none before its bad
+      // line fails if that test ran before the read and named the manifest empty.
+      {
+        name: 'a manifest whose only line is not JSON',
+        damage: (path: string) => writeFileSync(path, 'not json\n'),
+        says: 'CHAIN UNREADABLE: manifest.jsonl'
+      },
+      {
+        name: 'a manifest whose only line jq cannot index',
+        damage: (path: string) => writeFileSync(path, '5\n'),
+        says: 'CHAIN UNREADABLE: manifest.jsonl'
+      }
+    ]
+
+    for (const { name, damage, says, keepsRead } of UNREAD_MANIFEST) {
+      it.skipIf(!RUNS)(`exit non-zero on ${name}`, () => {
+        const dir = corruptedCopy(`runbook-unread-${name.replace(/\W/g, '-')}`)
+        const blocks = [EXHIBIT_BLOCK, DERIVED_BLOCK].map((marker) => step5Block(dir, marker))
+        const intact = blocks.map((block) => runPlain([block], dir))
+        damage(join(dir, 'manifest.jsonl'))
+        blocks.forEach((block, i) => {
+          expect(intact[i].status, intact[i].stdout).toBe(0)
+          expect(intact[i].stdout).not.toBe('')
+          const harness = runRunbookBlocks([block], { cwd: dir })
+          expect(harness.ok, harness.stdout).toBe(false)
+          for (const shell of ['sh', 'bash'] as const) {
+            const plain = runPlain([block], dir, shell)
+            expect(plain.status, `${shell}: ${plain.stdout}`).not.toBe(0)
+            expect(plain.stdout).toBe(`${says}\n${keepsRead ? intact[i].stdout : ''}`)
+          }
+        })
+      })
+    }
+
     for (const row of TAMPERED) {
       it.skipIf(!RUNS)(`exit non-zero on ${row.name}`, () => {
         const dir = corruptedCopy(`runbook-${row.name.replace(/\W/g, '-')}`)
@@ -1944,6 +2029,110 @@ describe("the runbook's receipt block under a plain shell", () => {
       )
       expect(plain.status).not.toBe(0)
     })
+  }
+
+  // #2203: a chain the block could not parse, and a package holding no chain, once exited 0
+  // having checked nothing. The package without a receipt passes, so in each case below the
+  // status comes from the damaged input alone.
+  const memberChain = memberChainPath(RECEIPT_MEMBER_ID)
+  const lineageChain = lineageChainPath('source-case', RECEIPT_MEMBER_ID)
+  const UNREAD_CHAIN = [
+    {
+      name: 'the package manifest holds a line that is not JSON',
+      damage: () => appendFileSync(join(dir, 'manifest.jsonl'), 'not json\n'),
+      says: 'CHAIN UNREADABLE: manifest.jsonl'
+    },
+    {
+      name: "a member's chain holds a line that is not JSON",
+      damage: () => appendFileSync(join(dir, memberChain), 'not json\n'),
+      says: `CHAIN UNREADABLE: ${memberChain}`
+    },
+    {
+      name: 'a lineage chain holds a line that is not JSON',
+      damage: () => {
+        mkdirSync(dirname(join(dir, lineageChain)), { recursive: true })
+        writeFileSync(join(dir, lineageChain), 'not json\n')
+      },
+      says: `CHAIN UNREADABLE: ${lineageChain}`
+    },
+    {
+      name: 'the package holds no chain',
+      damage: () => {
+        rmSync(join(dir, 'manifest.jsonl'))
+        rmSync(join(dir, memberChain))
+      },
+      says: 'CHAIN MISSING OR EMPTY: manifest.jsonl'
+    },
+    {
+      name: "the package manifest is missing beside a member's chain",
+      damage: () => rmSync(join(dir, 'manifest.jsonl')),
+      says: 'CHAIN MISSING OR EMPTY: manifest.jsonl'
+    },
+    {
+      name: 'the package manifest is empty',
+      damage: () => writeFileSync(join(dir, 'manifest.jsonl'), ''),
+      says: 'CHAIN MISSING OR EMPTY: manifest.jsonl'
+    },
+    {
+      name: 'the package manifest is one blank line',
+      damage: () => writeFileSync(join(dir, 'manifest.jsonl'), '\n'),
+      says: 'CHAIN MISSING OR EMPTY: manifest.jsonl'
+    },
+    {
+      name: 'the package manifest is whitespace only',
+      damage: () => writeFileSync(join(dir, 'manifest.jsonl'), '   \n\n'),
+      says: 'CHAIN MISSING OR EMPTY: manifest.jsonl'
+    },
+    {
+      name: 'the package manifest holds only null',
+      damage: () => writeFileSync(join(dir, 'manifest.jsonl'), 'null\n'),
+      says: 'CHAIN MISSING OR EMPTY: manifest.jsonl'
+    },
+    {
+      name: 'the package manifest holds a line jq cannot index',
+      damage: () => appendFileSync(join(dir, 'manifest.jsonl'), '5\n'),
+      says: 'CHAIN UNREADABLE: manifest.jsonl'
+    },
+    // As in step 5, only a manifest with no object before its bad line pins the read first.
+    {
+      name: "the package manifest's only line is not JSON",
+      damage: () => writeFileSync(join(dir, 'manifest.jsonl'), 'not json\n'),
+      says: 'CHAIN UNREADABLE: manifest.jsonl'
+    },
+    {
+      name: "the package manifest's only line is one jq cannot index",
+      damage: () => writeFileSync(join(dir, 'manifest.jsonl'), '5\n'),
+      says: 'CHAIN UNREADABLE: manifest.jsonl'
+    }
+  ]
+
+  for (const shell of ['sh', 'bash'] as const) {
+    it.skipIf(!RUNS)(`exits 0 under ${shell} on chains that hold no receipt`, () => {
+      writeReceiptPackage(dir, { withoutReceipt: true })
+      const plain = runPlain([receiptBlock], dir, shell)
+      expect(plain.stdout).toBe('')
+      expect(plain.status).toBe(0)
+    })
+
+    // A member who has written nothing yet holds an empty chain file (manifest.ts).
+    it.skipIf(!RUNS)(`exits 0 under ${shell} beside an empty member chain`, () => {
+      writeReceiptPackage(dir, { withoutReceipt: true })
+      writeFileSync(join(dir, memberChain), '')
+      const plain = runPlain([receiptBlock], dir, shell)
+      expect(plain.stdout).toBe('')
+      expect(plain.status).toBe(0)
+    })
+
+    for (const { name, damage, says } of UNREAD_CHAIN) {
+      it.skipIf(!RUNS)(`exits non-zero under ${shell} when ${name}`, () => {
+        writeReceiptPackage(dir, { withoutReceipt: true })
+        damage()
+        const plain = runPlain([receiptBlock], dir, shell)
+        expect(plain.stdout.trim()).toBe(says)
+        expect(plain.status).not.toBe(0)
+        expect(runRunbookBlocks([receiptBlock], { cwd: dir }).ok).toBe(false)
+      })
+    }
   }
 })
 

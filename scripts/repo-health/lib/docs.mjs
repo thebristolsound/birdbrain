@@ -8,7 +8,7 @@ import { posix } from 'node:path'
 import { compareDocuments, LEFT, RIGHT } from '../../lint-agents-md.mjs'
 import { Unmeasured } from './unmeasured.mjs'
 
-const BUDGET_SOURCE = 'the value at 1aa3cccf on 2026-11-21, so any growth shows'
+const BUDGET_SOURCE = 'the value at f2bd1b03 on 2026-11-24, so any growth shows'
 
 const PLAN = /^docs\/plans\/[^/]+\.md$/
 // docs/README.md, "Conventions": the four values a plan's status line may open with.

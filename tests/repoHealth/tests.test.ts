@@ -44,7 +44,7 @@ describe('skipped or focused tests', () => {
     expect(measure(ctx)).toEqual({ value: 0 })
   })
 
-  it('looks only at test files, and not at this tool or its own tests', () => {
+  it("looks only at test files, this tool's own tests included", () => {
     const ctx = ctxOf({
       'src/main/a.ts': call('it', 'skip'),
       'scripts/b.mjs': call('it', 'skip'),
@@ -53,7 +53,7 @@ describe('skipped or focused tests', () => {
       'src/packages/example/tests/d.ts': call('it', 'skip'),
       'tests/e.test.ts': "it('runs', () => {})"
     })
-    expect(measure(ctx)).toEqual({ value: 1 })
+    expect(measure(ctx)).toEqual({ value: 2 })
   })
 
   it('is not measured when it finds no test files, so a moved suite cannot read as zero', () => {

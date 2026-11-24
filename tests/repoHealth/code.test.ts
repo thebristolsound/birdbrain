@@ -8,17 +8,23 @@ import { ctxOf, knipIssue, signalOf } from './helpers'
 const measure = (id: string, ctx: ReturnType<typeof ctxOf>) =>
   signalOf(CODE_SIGNALS, id).measure(ctx)
 
-describe('eslint-disable comments', () => {
+// The directive is assembled here so that this file never holds the text the
+// signal counts. The tool excludes nothing, its own tests included.
+const WORD = ['eslint', 'disable'].join('-')
+const line = (rest = '') => `// ${WORD}${rest}`
+const block = (rest = '') => `/* ${WORD}${rest} */`
+
+describe('suppression comments', () => {
   it('counts the line, block and next-line forms across the scanned roots', () => {
     const ctx = ctxOf({
       'src/main/a.ts': [
-        '// eslint-disable-next-line no-console',
+        line('-next-line no-console'),
         'console.log(1)',
-        'const b = 2 // eslint-disable-line no-unused-vars'
+        `const b = 2 ${line('-line no-unused-vars')}`
       ].join('\n'),
-      'extension/src/b.tsx': '/* eslint-disable react/no-danger */\nexport const B = 1\n',
-      '.github/scripts/c.mjs': '//eslint-disable-next-line no-undef\nfoo()\n',
-      'tests/d.test.ts': '  /*   eslint-disable-next-line */\n',
+      'extension/src/b.tsx': `${block(' react/no-danger')}\nexport const B = 1\n`,
+      '.github/scripts/c.mjs': `//${WORD}-next-line no-undef\nfoo()\n`,
+      'tests/d.test.ts': `  /*   ${WORD}-next-line */\n`,
       'e2e/e.spec.ts': 'export const e = 1\n'
     })
     expect(measure('eslint-disable', ctx)).toEqual({ value: 5 })
@@ -26,21 +32,21 @@ describe('eslint-disable comments', () => {
 
   it('does not count the words outside a comment, or outside code', () => {
     const ctx = ctxOf({
-      'src/main/a.ts': "const rule = 'eslint-disable is not allowed here'\n",
-      'scripts/notes.md': '// eslint-disable-next-line\n',
-      'vitest.config.ts': '// eslint-disable-next-line\n',
-      'website/content/x.js': '// eslint-disable-next-line\n'
+      'src/main/a.ts': `const rule = '${WORD} is not allowed here'\n`,
+      'scripts/notes.md': `${line('-next-line')}\n`,
+      'vitest.config.ts': `${line('-next-line')}\n`,
+      'website/content/x.js': `${line('-next-line')}\n`
     })
     expect(measure('eslint-disable', ctx)).toEqual({ value: 0 })
   })
 
-  it("leaves out the tool's own source and tests, which spell the pattern out", () => {
+  it("counts a suppression in the tool's own source and tests like any other", () => {
     const ctx = ctxOf({
-      'scripts/repo-health/lib/code.mjs': '// eslint-disable-next-line\n',
-      'tests/repoHealth/code.test.ts': '// eslint-disable-next-line\n',
-      'scripts/other.mjs': '// eslint-disable-next-line\n'
+      'scripts/repo-health/lib/code.mjs': `${line('-next-line')}\n`,
+      'tests/repoHealth/code.test.ts': `${block()}\n`,
+      'scripts/other.mjs': `${line('-next-line')}\n`
     })
-    expect(measure('eslint-disable', ctx)).toEqual({ value: 1 })
+    expect(measure('eslint-disable', ctx)).toEqual({ value: 3 })
   })
 
   it('is not measured when it finds no code to scan, and so never reads as zero', () => {

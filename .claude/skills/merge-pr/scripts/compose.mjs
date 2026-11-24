@@ -4,6 +4,7 @@
 // Writes <out-dir>/subject.txt and <out-dir>/body.txt; prints both. Exits 1 without a Summary.
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 const WRAP = 72
 
@@ -47,7 +48,7 @@ export function compose(body, title, number) {
   return { subject: `${title.trim()} (#${number})`, body: wrap(summary) }
 }
 
-if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split('/').pop())) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const [file, title, number, outDir] = process.argv.slice(2)
   if (!file || !title || !number || !outDir) {
     console.error('usage: compose.mjs <body-file> <pr-title> <pr-number> <out-dir>')

@@ -118,7 +118,7 @@ function OlderCaseRow({
           <input
             ref={inputRef}
             data-testid="case-rename-input"
-            className="w-full rounded border border-border-strong bg-transparent px-1 py-0.5 text-xs font-medium text-text-primary outline-none focus:border-accent"
+            className="w-full rounded border border-input bg-transparent px-1 py-0.5 text-xs font-medium text-text-primary outline-none focus:border-accent"
             defaultValue={editingName}
             onClick={(e) => e.stopPropagation()}
             onBlur={(e) => handleRenameSubmit(e.target.value)}

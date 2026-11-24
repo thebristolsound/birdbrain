@@ -2361,36 +2361,37 @@ describe('export', () => {
 
   // --- report.html must never cite a file the package does not contain ---
 
-  it('reports a missing page archive as absent even when no verification runs', async () => {
+  it('fails a package whose signed page archive is gone even when no verification runs', async () => {
     const { capture } = await ingest(caseId, '<html>gone</html>', 'https://example.com/gone', 'G')
     // Delete the stored archive after ingest, then export without an audit trail
-    // so no verification result exists to infer absence from.
+    // so no verification result exists to infer absence from (#2225).
     rmSync(defaultCaptureStore.artifactPaths(caseId, capture.id, 'mhtml').abs)
 
     const outputPath = join(tempDir, 'missing-archive.zip')
-    await generateReport(
-      caseId,
-      {
-        format: 'zip',
-        include: {
-          captures: true,
-          screenshots: false,
-          auditTrail: false,
-          notes: false,
-          annotations: 'none'
+    await expect(
+      generateReport(
+        caseId,
+        {
+          format: 'zip',
+          include: {
+            captures: true,
+            screenshots: false,
+            auditTrail: false,
+            notes: false,
+            annotations: 'none'
+          },
+          exportClass: 'evidence',
+          outputPath
         },
-        exportClass: 'evidence',
-        outputPath
-      },
-      captureLifecycle
+        captureLifecycle
+      )
+    ).rejects.toThrow(
+      new Error(
+        `No package was written: could not read the page archive of Capture ${capture.id} ` +
+          `(pages/${capture.id}.mhtml), which a signed entry records.`
+      )
     )
-
-    const entries = readStoredZipEntries(outputPath)
-    const html = entries.get('report.html')!.toString('utf-8')
-
-    expect(entries.has(`pages/${capture.id}.mhtml`)).toBe(false)
-    expect(html).not.toContain(`pages/${capture.id}.mhtml`)
-    expect(html).toContain('Stored page archive not available')
+    expect(existsSync(outputPath)).toBe(false)
   })
 
   it('cites no screenshot path when screenshots are excluded from the package', async () => {
@@ -2506,7 +2507,7 @@ describe('export', () => {
 
     const html = readFileSync(outputPath, 'utf-8')
     expect(html).toContain('This is a standalone report, not an evidence package')
-    expect(html).toContain('These steps require the evidence package')
+    expect(html).toContain('These steps require an evidence package')
     expect(html).not.toContain('Companion files in this evidence package')
     // The verification steps still name pages/ generically — deliberately, so a
     // reader knows what to request. What must not appear is a per-exhibit
@@ -2673,7 +2674,7 @@ describe('export', () => {
     expect(verified).not.toMatch(/counts|trusted|digest/i)
 
     expect(await statementOf(false)).toContain(
-      'I have not altered the captures, the manifest or the packaged artefacts. No verification ' +
+      'I have not altered the captures or the manifest. No verification ' +
         'was run for this export, so the digests reproduced here are those recorded for each ' +
         'capture rather than values recomputed from the stored bytes at the time of export, and ' +
         'I make no statement about whether the stored bytes still match them.'
@@ -2702,7 +2703,7 @@ describe('export', () => {
 
     const html = readFileSync(outputPath, 'utf-8')
     expect(html).toContain('whose exhibit records a verified result')
-    expect(html).toMatch(/never for the package as a whole/)
+    expect(html).toMatch(/never for the captures described as a whole/)
     // The unconditional form claimed every capture rehashed, contradicting any
     // exhibit recorded as altered, absent or unverified.
     expect(html).not.toMatch(/That the stored bytes of each capture recompute/)
@@ -4610,6 +4611,123 @@ describe('export', () => {
       expect(report).toContain('It also leaves out 2 committed exhibit')
     })
 
+    it('names a package outside the index sheet only when the export is one (#2224)', async () => {
+      // Every branch that speaks of a package: a selection leaving out other kinds, a chain
+      // capture the case does not hold, an archive.org reference, burned annotations, an
+      // authority with no bundled root, and a run with and without verification.
+      updateSettings({ tsaUrl: 'https://tsa.example.org/timestamp' })
+      saveAnnotations({
+        captureId: fixture.captureId,
+        shapes: [{ kind: 'redact', id: 'r', x: 4, y: 4, w: 8, h: 8, mode: 'solid' }],
+        imageWidth: 24,
+        imageHeight: 24
+      })
+      createWaybackRef({
+        captureId: fixture.captureId,
+        snapshot: {
+          timestamp: '2025-01-01T00:00:00.000Z',
+          snapshotUrl: 'https://web.archive.org/web/20250101000000/https://example.com/page',
+          originalUrl: 'https://example.com/page',
+          statusCode: 200,
+          mimeType: 'text/html'
+        },
+        checkedAt: '2026-04-06T09:00:00.000Z'
+      })
+      appendManifestEntry(join(tempDir, 'captures', fixture.caseId), {
+        type: 'capture',
+        captureId: 'orphan-capture-id',
+        caseId: fixture.caseId,
+        url: 'birdbrain://pipeline-test',
+        timestamp: '2026-04-05T12:00:00.000Z',
+        contentHash: createHash('sha256').update('orphan').digest('hex'),
+        sizeBytes: 0,
+        operatorId: 'op',
+        operatorName: 'Test Operator',
+        toolVersion: '0.1.0'
+      })
+
+      const reportOf = async (
+        format: 'html' | 'pdf' | 'zip',
+        auditTrail: boolean
+      ): Promise<string> => {
+        const outputPath = join(tempDir, `package-wording-${auditTrail}.${format}`)
+        await generateReport(
+          fixture.caseId,
+          {
+            format,
+            include: {
+              captures: true,
+              screenshots: true,
+              auditTrail,
+              notes: false,
+              annotations: 'burned'
+            },
+            exportClass: 'evidence',
+            outputPath,
+            captureIds: [fixture.captureId, fixture.document.id]
+          },
+          captureLifecycle
+        )
+        const report =
+          format === 'zip'
+            ? readStoredZipEntries(outputPath).get('report.html')!.toString('utf-8')
+            : readFileSync(outputPath, 'utf-8')
+        // The words a reader sees, so a sentence matches across the source's line breaks.
+        return report.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ')
+      }
+      const packageSentences = [
+        'never for the package as a whole',
+        'an exhibit the chain records and this package does not enclose',
+        'The chain claims captures this package does not contain',
+        'neither listed as exhibits below nor enclosed as stored page archives. The chain and ' +
+          'the contents of this package therefore disagree',
+        'digest-anchored copy in the package',
+        'Birdbrain did not retrieve, hash or package the archived content',
+        'this package contains no copy of it',
+        'A reviewer holding the evidence package can reproduce every integrity claim it makes',
+        'An exhibit absent from the package',
+        'configured when the package was built',
+        'I have not altered the captures, the manifest or the packaged artefacts'
+      ]
+      const standaloneSentences = [
+        'never for the captures described as a whole',
+        'an exhibit the chain records and this report does not describe',
+        'The chain claims captures this case does not hold',
+        'whose captures the case does not hold, so none is listed as an exhibit below. The ' +
+          'chain and the case therefore disagree',
+        'digest-anchored copy held by the tool',
+        'Birdbrain did not retrieve or hash the archived content',
+        'this report contains no copy of it',
+        'A reviewer holding an evidence package exported from this case can reproduce every ' +
+          "integrity claim this report makes using standard tools. The full procedure, including exact commands, is in that package's VERIFY.md.",
+        'These steps require an evidence package',
+        'An exhibit absent from a package',
+        'configured when this report was generated',
+        'I have not altered the captures or the manifest'
+      ]
+
+      // Both operator statements: one after a verification run and one without.
+      for (const [format, auditTrail] of [
+        ['html', true],
+        ['html', false],
+        ['pdf', true]
+      ] as const) {
+        const report = await reportOf(format, auditTrail)
+        const label = `${format}, verification ${auditTrail ? 'run' : 'not run'}`
+        for (const sentence of packageSentences) expect(report, label).not.toContain(sentence)
+        for (const sentence of standaloneSentences) expect(report, label).toContain(sentence)
+        // "the package hash" is the field of an export entry, named in a general note.
+        expect(report, label).not.toMatch(/\b(?:this|the) (?:evidence )?package\b(?! hash)/i)
+        expect(report, label).not.toMatch(/\bpackaged\b/i)
+      }
+      for (const auditTrail of [true, false]) {
+        const report = await reportOf('zip', auditTrail)
+        const label = `zip, verification ${auditTrail ? 'run' : 'not run'}`
+        for (const sentence of packageSentences) expect(report, label).toContain(sentence)
+        for (const sentence of standaloneSentences) expect(report, label).not.toContain(sentence)
+      }
+    })
+
     it('discloses an altered exhibit rather than packaging it silently', async () => {
       // The export's verification run covers every kind (X37): bytes that no
       // longer recompute to the digest the chain records are stated as altered
@@ -4630,25 +4748,18 @@ describe('export', () => {
       expect(report).toContain('3 / 4')
     })
 
-    it('states a committed exhibit whose stored bytes are gone as a gap', async () => {
+    it('fails the export when a committed exhibit has lost its stored bytes', async () => {
       const target = fixture.image
       const stored = listExhibits(fixture.caseId).find((e) => e.id === target.id)!
       rmSync(join(tempDir, 'captures', stored.path!))
 
-      const entries = await exportMixed('mixed-missing.zip')
-      expect(entries.has(target.packagePath)).toBe(false)
-
-      const report = entries.get('report.html')!.toString('utf-8')
-      expect(report).toContain('Stored file not available')
-      expect(report).toContain('Absent')
-
-      const evidence = JSON.parse(entries.get('evidence.json')!.toString('utf-8')) as {
-        warnings: { missingContentExhibitCount: number; missingContentExhibitIds: string[] }
-        exhibits: Array<{ id: string; path: string | null }>
-      }
-      expect(evidence.warnings.missingContentExhibitCount).toBe(1)
-      expect(evidence.warnings.missingContentExhibitIds).toEqual([target.id])
-      expect(evidence.exhibits.find((e) => e.id === target.id)!.path).toBeNull()
+      await expect(exportMixed('mixed-missing.zip')).rejects.toThrow(
+        new Error(
+          `No package was written: could not read the image file of Exhibit ${target.id} ` +
+            `(${target.packagePath}), which a signed entry records.`
+        )
+      )
+      expect(existsSync(join(tempDir, 'mixed-missing.zip'))).toBe(false)
     })
 
     it('states one verification result on the cover and under chain of custody', async () => {
@@ -4768,31 +4879,19 @@ describe('export', () => {
       expect(certification).not.toContain('2 derived files')
     })
 
-    it('discloses an anchored derived file whose bytes are gone as a gap', async () => {
+    it('fails the export when an anchored derived file has lost its bytes', async () => {
       const thumbnail = listDerivedFilesForCase(fixture.caseId).find(
         (file) => file.exhibitId === fixture.captureId
       )!
       rmSync(join(tempDir, 'captures', thumbnail.path))
 
-      const entries = await exportMixed('mixed-anchored-gone.zip')
-      expect(entries.has(fixture.thumbnailPackagePath)).toBe(false)
-
-      // Not listed either: a row with a null path is a row the two verifiers
-      // read differently, and both already FAIL through the chain-side check.
-      const evidence = JSON.parse(entries.get('evidence.json')!.toString('utf-8')) as {
-        exhibits: Array<{ id: string; derivedFiles: unknown[] }>
-      }
-      expect(evidence.exhibits.find((e) => e.id === fixture.captureId)!.derivedFiles).toEqual([])
-
-      const report = entries.get('report.html')!.toString('utf-8')
-      expect(report).toContain('could not be read and is not enclosed')
-      expect(report).toContain('The chain anchors 1 file')
-
-      const certification = entries.get('certification.html')!.toString('utf-8')
-      expect(certification).toContain(
-        '1 derived file named by a manifest entry whose stored bytes could not be read and are ' +
-          'not enclosed'
+      await expect(exportMixed('mixed-anchored-gone.zip')).rejects.toThrow(
+        new Error(
+          `No package was written: could not read the thumbnail Derived File of Capture ` +
+            `${fixture.captureId} (${fixture.thumbnailPackagePath}), which a signed entry records.`
+        )
       )
+      expect(existsSync(join(tempDir, 'mixed-anchored-gone.zip'))).toBe(false)
     })
 
     it('says the chain did not verify rather than that an entry is absent', async () => {
@@ -4835,12 +4934,10 @@ describe('export', () => {
       expect(certification).toContain('1 derived file enclosed,')
     })
 
-    it('does not certify a file as enclosed because its chain did not verify', async () => {
+    it('fails the export on a derived file that lost its bytes when its chain did not verify', async () => {
       // The two axes crossed: a broken chain AND bytes the export cannot read.
-      // The zip and the report both omit the file, correctly; counting it as
-      // unverifiable INSTEAD of answering the enclosure question put it under
-      // the certification's enclosed clause, so the document claimed to
-      // contain a file it does not.
+      // The entry still names the file, so the package would have to enclose
+      // it, and the export stops rather than certify a package without it.
       const thumbnail = listDerivedFilesForCase(fixture.caseId).find(
         (file) => file.exhibitId === fixture.captureId
       )!
@@ -4852,24 +4949,13 @@ describe('export', () => {
       lines[0] = JSON.stringify(edited)
       writeFileSync(manifestPath, lines.join('\n') + '\n')
 
-      const entries = await exportMixed('mixed-broken-chain-gone.zip')
-      expect(entries.has(fixture.thumbnailPackagePath)).toBe(false)
-      const evidence = JSON.parse(entries.get('evidence.json')!.toString('utf-8')) as {
-        exhibits: Array<{ id: string; derivedFiles: unknown[] }>
-      }
-      expect(evidence.exhibits.find((e) => e.id === fixture.captureId)!.derivedFiles).toEqual([])
-
-      const certification = entries.get('certification.html')!.toString('utf-8')
-      expect(certification).not.toContain('1 derived file enclosed')
-      expect(certification).toContain(
-        '1 derived file named by a manifest entry whose stored bytes could not be read and are ' +
-          'not enclosed'
+      await expect(exportMixed('mixed-broken-chain-gone.zip')).rejects.toThrow(
+        new Error(
+          `No package was written: could not read the thumbnail Derived File of Capture ` +
+            `${fixture.captureId} (${fixture.thumbnailPackagePath}), which a signed entry records.`
+        )
       )
-      // And the anchoring gap is still disclosed, over that same file.
-      expect(certification).toContain(
-        '1 derived file counted above whose anchoring could not be established because the ' +
-          'chain did not verify'
-      )
+      expect(existsSync(join(tempDir, 'mixed-broken-chain-gone.zip'))).toBe(false)
     })
 
     it('says nothing about enclosure in a standalone HTML report', async () => {
@@ -5029,10 +5115,10 @@ describe('export', () => {
       }
     })
 
-    it('names no page archive when the one read of it returns nothing', async () => {
+    it('fails the export when the one read of a page archive returns nothing', async () => {
       // The file stays in the Case directory, so a separate existence check
-      // would still find it. The report and the index take the path from the
-      // read that fills the package, so neither names a member the zip lacks.
+      // would still find it. The read that fills the package decides, and a
+      // signed page archive it does not return stops the export (#2225).
       const originalRead = defaultCaptureStore.readArtifact.bind(defaultCaptureStore)
       const read = vi
         .spyOn(defaultCaptureStore, 'readArtifact')
@@ -5040,30 +5126,64 @@ describe('export', () => {
           id === fixture.captureId && type === 'mhtml' ? null : originalRead(caseId, id, type)
         )
       try {
-        const entries = await exportMixed('no-page-archive.zip', {
-          include: {
-            captures: true,
-            screenshots: true,
-            auditTrail: false,
-            notes: false,
-            annotations: 'none'
-          }
-        })
-        const pagePath = `pages/${fixture.captureId}.mhtml`
+        await expect(
+          exportMixed('no-page-archive.zip', {
+            include: {
+              captures: true,
+              screenshots: true,
+              auditTrail: false,
+              notes: false,
+              annotations: 'none'
+            }
+          })
+        ).rejects.toThrow(
+          new Error(
+            `No package was written: could not read the page archive of Capture ` +
+              `${fixture.captureId} (pages/${fixture.captureId}.mhtml), which a signed entry records.`
+          )
+        )
         expect(
           existsSync(
             defaultCaptureStore.artifactPaths(fixture.caseId, fixture.captureId, 'mhtml').abs
           )
         ).toBe(true)
-        expect(entries.has(pagePath)).toBe(false)
-        expect(entries.get('report.html')!.toString('utf-8')).not.toContain(pagePath)
-        expect(entries.get('evidence.json')!.toString('utf-8')).not.toContain(pagePath)
+        expect(existsSync(join(tempDir, 'no-page-archive.zip'))).toBe(false)
       } finally {
         read.mockRestore()
       }
     })
 
-    it('keeps a screenshot absent when it returns before the manifest snapshot', async () => {
+    // A screenshot the Capture's signed entry anchors and the export's one read
+    // does not return (#2225): no package, no export entry, and an error that
+    // names the Capture and the file Package Verification would find missing.
+    const expectNoPackageForMissingScreenshot = async (name: string, bytes: Buffer) => {
+      const append = vi.spyOn(manifest, 'appendManifestEntry')
+      try {
+        await expect(
+          exportMixed(name, {
+            include: {
+              captures: true,
+              screenshots: true,
+              auditTrail: false,
+              notes: false,
+              annotations: 'none'
+            }
+          })
+        ).rejects.toThrow(
+          new Error(
+            `No package was written: could not read the screenshot of Capture ` +
+              `${fixture.captureId} (screenshots/${sha256Hex(bytes)}.png), ` +
+              'which a signed entry records.'
+          )
+        )
+        expect(existsSync(join(tempDir, name))).toBe(false)
+        expect(append).not.toHaveBeenCalled()
+      } finally {
+        append.mockRestore()
+      }
+    }
+
+    it('fails the export when a signed screenshot returns before the manifest snapshot', async () => {
       const path = defaultCaptureStore.artifactPaths(fixture.caseId, fixture.captureId, 'png').abs
       const bytes = readFileSync(path)
       rmSync(path)
@@ -5074,42 +5194,30 @@ describe('export', () => {
         return originalSnapshot(...args)
       })
       try {
-        const entries = await exportMixed('no-screenshot.zip', {
-          include: {
-            captures: true,
-            screenshots: true,
-            auditTrail: false,
-            notes: false,
-            annotations: 'none'
-          }
-        })
+        await expectNoPackageForMissingScreenshot('no-screenshot.zip', bytes)
+        // One read, before the file came back: the decision is not a second look.
         expect(
           read.mock.calls.filter(([, id, type]) => id === fixture.captureId && type === 'png')
         ).toHaveLength(1)
-        expect([...entries.keys()].filter((name) => name.startsWith('screenshots/'))).toEqual([])
         expect(snapshot).toHaveBeenCalledOnce()
         expect(readFileSync(path)).toEqual(bytes)
-        expect(entries.get('report.html')!.toString('utf-8')).not.toContain(
-          'data:image/png;base64,'
-        )
-        const dir = join(tempDir, 'restored-screenshot-unpacked')
-        for (const [name, data] of entries) {
-          mkdirSync(dirname(join(dir, name)), { recursive: true })
-          writeFileSync(join(dir, name), data)
-        }
-        const result = verifyEvidencePackage(dir)
-        expect(result.pass).toBe(false)
-        expect(
-          result.checks.find((check) => check.name === `capture ${fixture.captureId} screenshot`)
-            ?.status
-        ).toBe('fail')
       } finally {
         read.mockRestore()
         snapshot.mockRestore()
       }
     })
 
+    it('fails the export when a signed screenshot stays absent', async () => {
+      const path = defaultCaptureStore.artifactPaths(fixture.caseId, fixture.captureId, 'png').abs
+      const bytes = readFileSync(path)
+      rmSync(path)
+
+      await expectNoPackageForMissingScreenshot('screenshot-gone.zip', bytes)
+    })
+
     it('remembers a missing stored file shared by two exhibit rows', async () => {
+      // A Working Copy, which carries on past a file it cannot read: an
+      // Evidence Package stops at the first row instead (#2225).
       const stored = listExhibits(fixture.caseId).find((e) => e.id === fixture.document.id)!
       getDb()
         .prepare('UPDATE exhibits SET path = ? WHERE id = ?')
@@ -5119,6 +5227,7 @@ describe('export', () => {
       const resolve = vi.spyOn(defaultCaptureStore, 'resolveAbsolute')
       try {
         const entries = await exportMixed('shared-missing-file.zip', {
+          exportClass: 'working-copy',
           include: {
             captures: true,
             screenshots: true,
@@ -5130,11 +5239,11 @@ describe('export', () => {
         expect(resolve.mock.calls.filter(([file]) => file === stored.path)).toHaveLength(1)
         expect(entries.has(fixture.document.packagePath)).toBe(false)
         expect(entries.has(fixture.image.packagePath)).toBe(false)
-        const evidence = JSON.parse(entries.get('evidence.json')!.toString('utf-8')) as {
+        const marker = JSON.parse(entries.get('WORKING-COPY.json')!.toString('utf-8')) as {
           exhibits: Array<{ id: string; path: string | null }>
         }
         for (const id of [fixture.document.id, fixture.image.id]) {
-          expect(evidence.exhibits.find((exhibit) => exhibit.id === id)?.path).toBeNull()
+          expect(marker.exhibits.find((exhibit) => exhibit.id === id)?.path).toBeNull()
         }
       } finally {
         resolve.mockRestore()

@@ -74,7 +74,7 @@ export function PinCommentPopover({
             rows={2}
             autoFocus
             placeholder={PLACEHOLDER}
-            className="w-full resize-none rounded border border-border-strong bg-canvas px-2 py-1.5 text-[11px] leading-normal text-text-primary outline-none"
+            className="w-full resize-none rounded border border-input bg-canvas px-2 py-1.5 text-[11px] leading-normal text-text-primary outline-none"
           />
           <div className="mt-2 flex justify-end gap-1.5">
             <button

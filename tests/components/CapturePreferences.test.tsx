@@ -62,11 +62,11 @@ describe('CapturePreferences screenshots toggle', () => {
   // Each assertion therefore fails for its own reason.
   it('draws the box from theme tokens in both states', () => {
     renderPanel()
-    const { className } = screenshotsCheckbox()
-    expect(className).toContain('border-border-strong')
-    expect(className).toContain('bg-canvas')
-    expect(className).toContain('checked:border-accent-fill')
-    expect(className).toContain('checked:bg-accent-fill')
+    const classes = screenshotsCheckbox().className.split(/\s+/)
+    expect(classes).toContain('border-control')
+    expect(classes).toContain('bg-canvas')
+    expect(classes).toContain('checked:border-accent-fill')
+    expect(classes).toContain('checked:bg-accent-fill')
   })
 
   // The class list opts out of the UA outline, so the replacement ring carries

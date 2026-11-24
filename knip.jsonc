@@ -10,6 +10,8 @@
     // Copied or served as files rather than imported by a module.
     "extension/theme-preinit.js!",
     "src/renderer/public/theme-init.js!",
+    // Named as a string in stryker.config.mjs and loaded by Stryker's Vitest runner.
+    "vitest.mutation.config.ts",
     // Bundled by scripts whose entry paths are computed at runtime.
     "scripts/demo-fixture/build.ts",
     "scripts/dev-seed/run.ts",

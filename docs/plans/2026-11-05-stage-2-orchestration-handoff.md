@@ -127,23 +127,24 @@ to prepare #600 for the maintainer's queue. It built nothing.
 - **Next command.** `gh issue list --label queued --state open`, to see whether the maintainer
   queued #1833 or #600. An unattended run picks up neither until one carries `queued`.
 
+### 2026-11-24
+
+- **Answered.** The maintainer answered two of #1832's four questions, recorded in comment
+  7140881445 on #1832. A `launched` record keeps leaving out the bodies the browser returns as
+  text and adds no marker, and the zero pinning counts are accepted with no change to the record
+  format. Both answers carry to the `launched-passive` records #600 adds.
+- **Still open.** Questions 2 and 4 on #1832, and the order of #1833 and #600.
+
 ## Open questions
 
 - Where does Claude Design run, so the session can send it the 1440 correction?
 - May the session delete the remote branch `drafts/2026-11-04-launcher-build-design-review`
   through the GitHub API, given that the skills cannot and a hook blocks `git push --delete`?
-- #1832, question 1: should a `launched` record keep text response bodies such as pages, scripts
-  and data, and with what marker? Today the record leaves out every body the browser returns as
-  text and counts each one.
 - #1832, question 2: should a Capture of a tab hidden behind another bring that tab to the front
   itself, instead of refusing with a message?
-- #1832, question 3: a `launched` Capture runs no image pinning but signs zero for both pinning
-  counts, which reads the same as "pinned none". Does the maintainer accept that, or does the
-  record format need an answer later?
 - #1832, question 4: does the maintainer confirm that the window for catching duplicate manual
   Captures does not apply to the launched browser?
 - Does #1833 merge before #600, as #600's brief orders the three report files, or does the
-  maintainer reverse that order? Questions 1 and 3 change what every `launched` and
-  `launched-passive` record holds, so do they get an answer before #600 is queued?
+  maintainer reverse that order?
 - Which session owns this file now? The orchestrating session of 2026-11-05 has not updated it
   since that day.

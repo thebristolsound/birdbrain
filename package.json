@@ -46,6 +46,7 @@
     "lint:adr": "node scripts/check-adr-numbers.mjs",
     "db:migration:new": "node scripts/new-migration.mjs",
     "lint:slop": "node scripts/slop-audit/cli.mjs",
+    "repo-health": "node scripts/repo-health/cli.mjs",
     "audit:check": "node scripts/audit-check.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p extension/tsconfig.json && tsc --noEmit -p tsconfig.test.node.json && tsc --noEmit -p tsconfig.test.web.json && tsc --noEmit -p e2e/tsconfig.json",
     "format": "prettier --write \"src/**/*.{ts,tsx}\" \"tests/**/*.{ts,tsx}\" \"extension/**/*.{ts,tsx}\" \"e2e/**/*.{ts,tsx}\" \"scripts/**/*.{mjs,js,ts}\" \"*.{ts,mjs,js}\"",

@@ -130,7 +130,7 @@ const DECLARATION = /\.d\.(ts|mts|cts)$/
 // Co-located package tests: vitest.config.ts excludes them from instrumentation, so a
 // changed one is absent from coverage-final.json for the same reason tests/ is.
 const PACKAGE_TESTS = /^src\/packages\/[^/]+\/tests\//
-const INSTRUMENTED_SCRIPTS = ['scripts/slop-audit/', 'scripts/jev-lens/']
+const INSTRUMENTED_SCRIPTS = ['scripts/slop-audit/', 'scripts/jev-lens/', 'scripts/repo-health/']
 export const isSourceLike = (path) =>
   SOURCE_LIKE.test(path) &&
   !path.startsWith('tests/') &&

@@ -86,7 +86,7 @@ that needs more of the maintainer's attention is not a saving.
 ## Consequences
 
 - The maintainer gets one issue to read on a Monday, and a notification only when a signal
-  changes status.
+  changes status or the run cannot read the previous values.
 - Runner time is about two minutes a week on a public repository. Most of it is the dependency
   install that `knip` needs.
 - Budgets are a second place a cleanup has to be recorded. A pull request that removes debt

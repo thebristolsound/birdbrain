@@ -355,13 +355,13 @@ describe('red CI runs on main', () => {
     }
   })
 
-  it('asks for completed push runs on main from the last seven days', () => {
+  it('asks for completed push runs on main from exactly seven days before the run', () => {
     const { ctx, calls } = ctxOf(() => ({ total_count: 1, workflow_runs: [run('success')] }))
     expect(measure('red-ci-runs-on-main', ctx)).toMatchObject({ value: 0 })
     expect(calls).toEqual([
       [
         'repos/o/r/actions/workflows/ci.yml/runs?branch=main&event=push&status=completed' +
-          '&created=%3E%3D2026-11-16&per_page=100'
+          '&created=%3E%3D2026-11-16T09:13:00Z&per_page=100'
       ]
     ])
   })

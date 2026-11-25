@@ -194,7 +194,11 @@ export const REMOTE_TEST_SIGNALS = [
     why: 'none of the 40 runs in the week before 2026-11-20 failed; one is a flake, two is a pattern',
     needs: 'gh',
     measure: (ctx) => {
-      const since = new Date(ctx.now - CI_WINDOW_DAYS * DAY_MS).toISOString().slice(0, 10)
+      // The full time, not the date: a date opens the window at midnight, up to a day
+      // early, and a run near the edge would count in two weekly reports.
+      const since = new Date(ctx.now - CI_WINDOW_DAYS * DAY_MS)
+        .toISOString()
+        .replace(/\.\d{3}Z$/, 'Z')
       const query = `branch=main&event=push&status=completed&created=%3E%3D${since}&per_page=100`
       return redRuns(read(ctx, [`repos/${ctx.repo}/actions/workflows/ci.yml/runs?${query}`]))
     }

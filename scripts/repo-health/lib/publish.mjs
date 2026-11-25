@@ -123,11 +123,9 @@ export const publish = ({ gh, repo, owner, report, runUrl = null, dryRun = true 
       payload: { title, body, labels: [LABEL, PROCESS_LABEL], assignees: owner ? [owner] : [] }
     })
   } else {
-    writes.push({
-      summary: `rewrite issue #${issue.number}`,
-      args: ['-X', 'PATCH', `repos/${repo}/issues/${issue.number}`],
-      payload: { title, body }
-    })
+    // The comment goes first. The rewrite stores this run's statuses, so a comment
+    // that failed after it would never be posted: the next run would find nothing
+    // changed. A rewrite that fails after the comment repeats the comment instead.
     if (state === null) comment = uncomparedComment({ report, reason, runUrl })
     else if (changes.length > 0) comment = changeComment({ report, changes, runUrl })
     if (comment !== null) {
@@ -137,6 +135,11 @@ export const publish = ({ gh, repo, owner, report, runUrl = null, dryRun = true 
         payload: { body: comment }
       })
     }
+    writes.push({
+      summary: `rewrite issue #${issue.number}`,
+      args: ['-X', 'PATCH', `repos/${repo}/issues/${issue.number}`],
+      payload: { title, body }
+    })
   }
 
   if (!dryRun) {

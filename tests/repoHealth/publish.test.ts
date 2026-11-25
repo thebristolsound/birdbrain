@@ -181,10 +181,10 @@ describe('with an open issue', () => {
   it('posts one comment naming a crossing, a lost reading and a recovery', () => {
     const { outcome, writes } = run(THIS_WEEK_CHANGED, { [ISSUES]: [previous] })
     expect(writes.map((write) => `${write.method} ${write.endpoint}`)).toEqual([
-      'PATCH repos/o/r/issues/41',
-      'POST repos/o/r/issues/41/comments'
+      'POST repos/o/r/issues/41/comments',
+      'PATCH repos/o/r/issues/41'
     ])
-    const comment = String(writes[1].payload.body)
+    const comment = String(writes[0].payload.body)
     expect(comment).toContain('Status changed in the run of 2026-11-23T09:13:00.000Z:')
     expect(comment).toContain('- **Alpha:** within -> outside (11, budget <= 10)')
     expect(comment).toContain('- **Beta:** within -> not measured (knip is not installed)')
@@ -196,7 +196,7 @@ describe('with an open issue', () => {
 
   it('posts nothing a second time once the new statuses are the stored ones', () => {
     const first = run(THIS_WEEK_CHANGED, { [ISSUES]: [previous] })
-    const stored = issue(41, String(first.writes[0].payload.body))
+    const stored = issue(41, String(first.writes[1].payload.body))
     const second = run(THIS_WEEK_CHANGED, { [ISSUES]: [stored] })
     expect(second.writes.map((write) => write.method)).toEqual(['PATCH'])
   })
@@ -204,8 +204,8 @@ describe('with an open issue', () => {
   it('says it could not compare when the state block is unreadable, and lists what needs a look', () => {
     const edited = issue(41, 'Someone replaced this body by hand.')
     const { outcome, writes } = run(THIS_WEEK_CHANGED, { [ISSUES]: [edited] })
-    expect(writes.map((write) => write.method)).toEqual(['PATCH', 'POST'])
-    const comment = String(writes[1].payload.body)
+    expect(writes.map((write) => write.method)).toEqual(['POST', 'PATCH'])
+    const comment = String(writes[0].payload.body)
     expect(comment).toContain(
       'could not compare with the previous report: the previous report has no state block.'
     )
@@ -213,7 +213,7 @@ describe('with an open issue', () => {
     expect(comment).toContain('- **Beta:** not measured (knip is not installed)')
     expect(comment).not.toContain('Gamma')
     expect(outcome).toMatchObject({ state: null, commented: true, changes: [] })
-    expect(String(writes[0].payload.body)).toContain(
+    expect(String(writes[1].payload.body)).toContain(
       'Compared with: nothing (the previous report has no state block)'
     )
   })
@@ -221,7 +221,7 @@ describe('with an open issue', () => {
   it('treats an issue with no body at all as nothing to compare with', () => {
     const { outcome, writes } = run(THIS_WEEK_SAME, { [ISSUES]: [issue(41, null as never)] })
     expect(outcome.stateReason).toBe('no previous report was found')
-    expect(writes.map((write) => write.method)).toEqual(['PATCH', 'POST'])
+    expect(writes.map((write) => write.method)).toEqual(['POST', 'PATCH'])
   })
 
   it('uses the lowest-numbered issue when two are open, and reports the other', () => {
@@ -273,7 +273,7 @@ describe('dry run', () => {
     const previous = issue(41, renderMarkdown(LAST_WEEK))
     const { outcome, writes } = run(THIS_WEEK_CHANGED, { [ISSUES]: [previous] }, { dryRun: true })
     expect(writes).toEqual([])
-    expect(outcome.writes).toEqual(['rewrite issue #41', 'comment on issue #41'])
+    expect(outcome.writes).toEqual(['comment on issue #41', 'rewrite issue #41'])
   })
 
   it('is the default when the caller does not say', () => {
@@ -308,6 +308,36 @@ describe('when GitHub cannot be read or written', () => {
     expect(() =>
       publish({ gh, repo: 'o/r', owner: 'x', report: THIS_WEEK_SAME, dryRun: false })
     ).toThrow('HTTP 403')
+  })
+})
+
+describe('a write that fails partway', () => {
+  const previous = issue(41, renderMarkdown(LAST_WEEK))
+  const failing = (method: string) => {
+    const sent: string[] = []
+    const gh = (args: string[]) => {
+      if (args[0] !== '-X') return [previous]
+      if (args[1] === method) throw new Error(`gh api ${args[2]} failed (exit 1): HTTP 502`)
+      sent.push(args[1])
+      return {}
+    }
+    return { gh, sent }
+  }
+
+  it('leaves the stored statuses alone when the comment fails, so the next run comments', () => {
+    const { gh, sent } = failing('POST')
+    expect(() =>
+      publish({ gh, repo: 'o/r', owner: 'x', report: THIS_WEEK_CHANGED, dryRun: false })
+    ).toThrow('HTTP 502')
+    expect(sent).toEqual([])
+  })
+
+  it('has already commented when the rewrite fails, so a retry repeats the comment', () => {
+    const { gh, sent } = failing('PATCH')
+    expect(() =>
+      publish({ gh, repo: 'o/r', owner: 'x', report: THIS_WEEK_CHANGED, dryRun: false })
+    ).toThrow('HTTP 502')
+    expect(sent).toEqual(['POST'])
   })
 })
 

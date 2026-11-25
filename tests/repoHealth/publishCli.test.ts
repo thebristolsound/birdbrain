@@ -152,10 +152,10 @@ describe('repo-health --publish, end to end', () => {
     )
     expect(status).toBe(0)
     expect(writes.map((write) => `${write.method} ${write.endpoint}`)).toEqual([
-      `PATCH repos/${REPO}/issues/41`,
-      `POST repos/${REPO}/issues/41/comments`
+      `POST repos/${REPO}/issues/41/comments`,
+      `PATCH repos/${REPO}/issues/41`
     ])
-    expect(String(writes[1].payload.body)).toContain('could not compare with the previous report')
+    expect(String(writes[0].payload.body)).toContain('could not compare with the previous report')
   })
 
   it('exits 2 and writes nothing when the issue list cannot be read', () => {

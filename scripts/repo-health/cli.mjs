@@ -126,6 +126,15 @@ export const main = (argv, deps = {}) => {
     return 2
   }
 
+  const writeSummary = (compared, notes) => {
+    if (!env.GITHUB_STEP_SUMMARY) return
+    const summary = renderMarkdown(report, { ...compared, runUrl: env.RUN_URL || null })
+    appendFile(
+      env.GITHUB_STEP_SUMMARY,
+      `${summary}\n${notes.map((line) => `- ${line}`).join('\n')}\n`
+    )
+  }
+
   let outcome = null
   if (options.publish) {
     try {
@@ -141,7 +150,9 @@ export const main = (argv, deps = {}) => {
         dryRun: env.DRY_RUN !== 'false'
       })
     } catch (error) {
+      // The report was measured, so the run's summary still shows it.
       log(`could not publish: ${error.message}`)
+      writeSummary({ state: null, stateReason: null }, [`could not publish: ${error.message}`])
       return 2
     }
   }
@@ -159,11 +170,7 @@ export const main = (argv, deps = {}) => {
       stdout(`::warning title=Repository health::${signal.label}: ${signal.status}`)
     }
   }
-  if (env.GITHUB_STEP_SUMMARY) {
-    const summary = renderMarkdown(report, { ...compared, runUrl: env.RUN_URL || null })
-    const notes = outcomeLines.map((line) => `- ${line}`).join('\n')
-    appendFile(env.GITHUB_STEP_SUMMARY, `${summary}\n${notes}\n`)
-  }
+  writeSummary(compared, outcomeLines)
   return 0
 }
 

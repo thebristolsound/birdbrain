@@ -511,4 +511,16 @@ describe('main --publish', () => {
     expect(writes).toEqual([])
     expect(err).toEqual(['repo-health: could not publish: gh api issues failed (exit 1): HTTP 502'])
   })
+
+  it('still puts the report in the step summary when it cannot publish', () => {
+    const { gh } = recordingGh(new Error('gh api issues failed (exit 1): HTTP 502'))
+    const env = { ...PUBLISH_ENV, DRY_RUN: 'false', GITHUB_STEP_SUMMARY: '/tmp/s.md' }
+    const { appended, deps } = harness({ env, gh })
+    expect(main(['--publish'], deps)).toBe(2)
+    expect(appended).toHaveLength(1)
+    expect(appended[0].text).toContain('| code | Signal steady | 3 | <= 5 |')
+    expect(appended[0].text).toContain(
+      '- could not publish: gh api issues failed (exit 1): HTTP 502'
+    )
+  })
 })

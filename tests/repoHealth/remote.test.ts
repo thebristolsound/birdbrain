@@ -251,6 +251,12 @@ describe('line coverage on main', () => {
     })
     const whole = { ...BADGE, message: '96%' }
     expect(badgeCoverage(badgeFile(whole), badgeCommit(1), NOW).value).toBe(96)
+    for (const [message, value] of [
+      ['100%', 100],
+      ['0%', 0]
+    ] as const) {
+      expect(badgeCoverage(badgeFile({ ...BADGE, message }), badgeCommit(1), NOW).value).toBe(value)
+    }
   })
 
   it('is not measured when the file is missing, not JSON, or holds no percentage', () => {
@@ -260,7 +266,7 @@ describe('line coverage on main', () => {
     expect(() => badgeCoverage(badgeFile('<html>'), badgeCommit(1), NOW)).toThrow(
       'the coverage badge file is not JSON'
     )
-    for (const message of ['unknown', '', '95.93', '-3%', undefined]) {
+    for (const message of ['unknown', '', '95.93', '-3%', '100.01%', '101%', undefined]) {
       expect(() => badgeCoverage(badgeFile({ ...BADGE, message }), badgeCommit(1), NOW)).toThrow(
         'the coverage badge holds no percentage'
       )

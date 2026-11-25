@@ -82,7 +82,9 @@ export const badgeCoverage = (file, commits, now) => {
     throw new Unmeasured('the coverage badge file is not JSON')
   }
   const match = /^(\d+(?:\.\d+)?)%$/.exec(String(badge?.message ?? ''))
-  if (!match) throw new Unmeasured('the coverage badge holds no percentage')
+  if (!match || Number(match[1]) > 100) {
+    throw new Unmeasured('the coverage badge holds no percentage')
+  }
   const published = Array.isArray(commits) ? commits[0]?.commit?.committer?.date : undefined
   if (!published) throw new Unmeasured('the coverage badge has no commit date')
   const age = ageInDays(published, now)

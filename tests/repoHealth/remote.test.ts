@@ -320,6 +320,11 @@ describe('red CI runs on main', () => {
     expect(redRuns(response)).toEqual({ value: 3, note: 'of 7 completed run(s)' })
   })
 
+  it('does not count a cancelled run, even one that was on its second attempt', () => {
+    const response = { total_count: 2, workflow_runs: [run('cancelled', 2), run('cancelled')] }
+    expect(redRuns(response)).toEqual({ value: 0, note: 'of 2 completed run(s)' })
+  })
+
   it('reads a week of green runs as zero', () => {
     expect(redRuns({ total_count: 2, workflow_runs: [run('success'), run('success')] })).toEqual({
       value: 0,

@@ -111,7 +111,9 @@ export const redRuns = (response) => {
     throw new Unmeasured(`more than ${runs.length} CI runs on main in the window`)
   }
   const red = runs.filter(
-    (run) => RED_CONCLUSIONS.includes(run.conclusion) || (run.run_attempt ?? 1) > 1
+    (run) =>
+      run.conclusion !== 'cancelled' &&
+      (RED_CONCLUSIONS.includes(run.conclusion) || (run.run_attempt ?? 1) > 1)
   )
   return { value: red.length, note: `of ${runs.length} completed run(s)` }
 }

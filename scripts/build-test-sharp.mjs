@@ -17,6 +17,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } fr
 import { createRequire } from 'module'
 import { basename, dirname, join, resolve } from 'path'
 import { fileURLToPath } from 'url'
+import { addonLoadError } from './test-sharp-load.mjs'
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const require = createRequire(import.meta.url)
@@ -130,5 +131,12 @@ const addon = join(
   `sharp-linux-${process.arch}-${sharpPkg.version}.node`
 )
 if (!existsSync(addon)) fail(`the build finished but ${addon} is missing`)
+const loadError = addonLoadError(addon)
+if (loadError) {
+  // Left in place, a broken addon makes every sharp test fail at setup, and pnpm check turns
+  // the system build on whenever the file exists.
+  rmSync(addon)
+  fail(`the build finished but the addon does not load, so it was removed: ${loadError}`)
+}
 console.log(`Built ${addon}`)
 console.log('Run the tests with it: BIRDBRAIN_TEST_SYSTEM_SHARP=1 pnpm test')

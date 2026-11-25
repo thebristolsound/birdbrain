@@ -1,8 +1,8 @@
 # Weekly repository health report
 
-**Status:** active. Slice 1 (the tool and the tree signals) is pull request #2249. Slice 2 (the
-workflow, the publisher and ADR-0058) is built on a branch stacked on it. Both wait on review
-and merge; the after-merge checks under "Verification" are still to run.
+**Status:** active. Slice 1 (the tool and the tree signals) merged as pull request #2249.
+Slice 2 (the workflow, the publisher and ADR-0058) is pull request #2251, in review; the
+after-merge checks under "Verification" are still to run.
 
 ## Context
 

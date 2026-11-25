@@ -73,7 +73,7 @@ describe('repo-health.yml', () => {
     expect(workflow).toContain('run: pnpm install --frozen-lockfile --ignore-scripts')
   })
 
-  it('writes on a schedule, and by hand only from main with dry_run unticked', () => {
+  it('pins the DRY_RUN expression: false on a schedule, or by hand on main with dry_run unticked', () => {
     expect(workflow).toContain(
       "DRY_RUN: ${{ (github.event_name == 'workflow_dispatch' && inputs.dry_run) || github.ref != 'refs/heads/main' }}"
     )

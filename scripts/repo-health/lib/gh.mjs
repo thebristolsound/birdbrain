@@ -14,7 +14,19 @@ const TOKEN_NAMES = ['GH_TOKEN', 'GITHUB_TOKEN']
 // that waits out the job's own time limit.
 const GH_TIMEOUT_MS = 60_000
 
+// The `gh api` flags this tool passes that take a value, so the value after one
+// is never read as the endpoint.
+const VALUE_FLAGS = ['-X', '--method', '-f', '--raw-field', '-F', '--field', '--input']
+
 export const hasToken = (env) => TOKEN_NAMES.some((name) => Boolean(env[name]))
+
+const endpointOf = (args) => {
+  for (let index = 0; index < args.length; index++) {
+    if (VALUE_FLAGS.includes(args[index])) index++
+    else if (!args[index].startsWith('-')) return args[index]
+  }
+  return 'api'
+}
 
 // Returns gh(args, input): runs `gh api <args>` and parses what it prints. It
 // throws on a failed call, on output that is not JSON, and on no output at all.
@@ -27,7 +39,7 @@ export const createGh = ({ spawn = spawnSync, env = process.env } = {}) => {
       maxBuffer: 64 * 1024 * 1024,
       timeout: GH_TIMEOUT_MS
     })
-    const endpoint = args.find((arg) => !arg.startsWith('-')) ?? 'api'
+    const endpoint = endpointOf(args)
     if (result.error?.code === 'ETIMEDOUT') {
       throw new Error(`gh api ${endpoint} did not finish in ${GH_TIMEOUT_MS / 1000} seconds`)
     }

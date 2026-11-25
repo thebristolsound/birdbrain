@@ -129,6 +129,23 @@ describe('createGh', () => {
     expect(calls[0].options.timeout).toBe(60_000)
   })
 
+  it('names the endpoint of a write that fails or runs out of time, not its method', () => {
+    const write = ['-X', 'PATCH', 'repos/o/r/issues/41', '--input', '-']
+    expect(() => fake({ status: 1, stderr: 'HTTP 502' }).gh(write, '{}')).toThrow(
+      'gh api repos/o/r/issues/41 failed (exit 1): HTTP 502'
+    )
+    const timedOut = Object.assign(new Error('spawnSync gh ETIMEDOUT'), { code: 'ETIMEDOUT' })
+    const comment = ['-X', 'POST', 'repos/o/r/issues/41/comments', '--input', '-']
+    expect(() => fake({ error: timedOut }).gh(comment, '{}')).toThrow(
+      'gh api repos/o/r/issues/41/comments did not finish in 60 seconds'
+    )
+    const query = ['graphql', '-f', 'query=x', '-f', 'owner=o']
+    expect(() => fake({ stdout: '' }).gh(query)).toThrow('gh api graphql printed no JSON')
+    expect(() => fake({ stdout: '' }).gh(['--paginate', '--slurp', 'repos/o/r/pulls'])).toThrow(
+      'gh api repos/o/r/pulls printed no JSON'
+    )
+  })
+
   it('defaults to the real spawn and the process environment', () => {
     expect(typeof createGh()).toBe('function')
   })

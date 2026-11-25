@@ -253,8 +253,9 @@ Reading the issue:
 - **`outside`** is a value past its budget. It is something to look at, not a failure.
 - **`not measured`** is a signal the run could not read, with the reason beside it. It is never
   shown as zero. The raw error is in the run log.
-- **A comment** means a signal changed status since the last run. A value that moves while its
-  status holds gets none.
+- **A comment** means a signal changed status since the last run, or the run could not read
+  the previous values and compared with nothing. A value that moves while its status holds gets
+  none.
 
 Working with it:
 

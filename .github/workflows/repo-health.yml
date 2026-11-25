@@ -4,7 +4,8 @@ name: Repo health
 # dependency decisions, plans with no status, broken links, skipped tests,
 # coverage and red runs on main, branches left behind. Each number has a budget in
 # scripts/repo-health/lib/. The run rewrites one open issue labelled `repo-health`
-# and comments on it only when a signal changes status (ADR-0058).
+# and comments on it when a signal changes status or when last week's values cannot
+# be read (ADR-0058).
 #
 # It is a report, not a gate: a signal outside its budget never fails this run.
 # The run goes red only when the tool cannot run or cannot publish, and two red

@@ -4,8 +4,9 @@
 // The pattern is .github/scripts/health/alert.sh with two differences. The issue
 // never closes itself, because the next run reads last week's values out of its
 // body, and a signal outside its budget is not an alarm. And a comment is posted
-// only when a signal changes status, so a standing condition is one notification
-// and a value that drifts inside its budget is none.
+// when a signal changes status or the previous values cannot be read, so a
+// standing condition is one notification and a value that drifts inside its
+// budget is none.
 //
 // `process` keeps the issue out of the dispatch frontier (ADR-0028), and the stale
 // sweep closes only issues the machine account filed, which this is not: the

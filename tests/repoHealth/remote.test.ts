@@ -71,7 +71,11 @@ describe('hasToken', () => {
 })
 
 describe('createGh', () => {
-  type Call = { command: string; args: string[]; options: { input?: string; env: unknown } }
+  type Call = {
+    command: string
+    args: string[]
+    options: { input?: string; env: unknown; timeout?: number }
+  }
   const fake = (result: Record<string, unknown>) => {
     const calls: Call[] = []
     const gh = createGh({
@@ -114,6 +118,15 @@ describe('createGh', () => {
     expect(() => fake({ status: 1, stderr: undefined }).gh(['--paginate'])).toThrow(
       'gh api api failed (exit 1): '
     )
+  })
+
+  it('gives each call a minute, and names the call that ran out of time', () => {
+    const timedOut = Object.assign(new Error('spawnSync gh ETIMEDOUT'), { code: 'ETIMEDOUT' })
+    const { gh, calls } = fake({ error: timedOut })
+    expect(() => gh(['repos/o/r/pulls'])).toThrow(
+      'gh api repos/o/r/pulls did not finish in 60 seconds'
+    )
+    expect(calls[0].options.timeout).toBe(60_000)
   })
 
   it('defaults to the real spawn and the process environment', () => {

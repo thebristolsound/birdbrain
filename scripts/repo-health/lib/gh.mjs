@@ -9,6 +9,10 @@
 import { spawnSync } from 'node:child_process'
 
 const TOKEN_NAMES = ['GH_TOKEN', 'GITHUB_TOKEN']
+// A call still running after a minute is stuck. Stopping it turns a hung signal
+// read into "not measured" and a hung publish call into exit 2, instead of a run
+// that waits out the job's own time limit.
+const GH_TIMEOUT_MS = 60_000
 
 export const hasToken = (env) => TOKEN_NAMES.some((name) => Boolean(env[name]))
 
@@ -20,9 +24,13 @@ export const createGh = ({ spawn = spawnSync, env = process.env } = {}) => {
       encoding: 'utf8',
       env,
       input,
-      maxBuffer: 64 * 1024 * 1024
+      maxBuffer: 64 * 1024 * 1024,
+      timeout: GH_TIMEOUT_MS
     })
     const endpoint = args.find((arg) => !arg.startsWith('-')) ?? 'api'
+    if (result.error?.code === 'ETIMEDOUT') {
+      throw new Error(`gh api ${endpoint} did not finish in ${GH_TIMEOUT_MS / 1000} seconds`)
+    }
     if (result.error) throw new Error(`gh could not be started: ${result.error.message}`)
     if (result.status !== 0) {
       const detail = (result.stderr ?? '').trim().split('\n')[0]

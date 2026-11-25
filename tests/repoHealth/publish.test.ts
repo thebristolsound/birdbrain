@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   LABEL,
+  REPORT_MARKER,
   changeComment,
   publish,
   uncomparedComment
@@ -56,19 +57,24 @@ const THIS_WEEK_CHANGED = reportOf(
   { id: 'c', label: 'Gamma', value: 9 }
 )
 
-const ISSUES = `repos/o/r/issues?state=open&labels=${LABEL}&per_page=100`
+const ISSUES = 'repos/o/r/issues?state=open&creator=github-actions%5Bbot%5D&per_page=100'
 const LABEL_READ = `repos/o/r/labels/${LABEL}`
 
 type Write = { method: string; endpoint: string; payload: Record<string, unknown> }
 
 // A recording gh: reads answer from `reads`, writes are logged with their payload.
+// The issue listing is paged, so a list given for it comes back as one page.
 const fakeGh = (reads: Record<string, unknown>) => {
   const writes: Write[] = []
   const gh = (args: string[], input?: string) => {
     const method = args[0] === '-X' ? args[1] : 'GET'
-    const endpoint = method === 'GET' ? args[0] : args[2]
+    const endpoint = method === 'GET' ? args[args.length - 1] : args[2]
     if (method === 'GET') {
       if (!(endpoint in reads)) throw new Error(`gh api ${endpoint} failed (exit 1): Not Found`)
+      if (endpoint === ISSUES) {
+        expect(args.slice(0, 2)).toEqual(['--paginate', '--slurp'])
+        return Array.isArray(reads[endpoint]) ? [reads[endpoint]] : reads[endpoint]
+      }
       return reads[endpoint]
     }
     expect(args.slice(3)).toEqual(['--input', '-'])
@@ -78,10 +84,13 @@ const fakeGh = (reads: Record<string, unknown>) => {
   return { gh, writes }
 }
 
-const issue = (number: number, body: string, over: Record<string, unknown> = {}) => ({
+// An issue as the report writes it: the workflow's author, the label and the
+// marker at the top of its body.
+const issue = (number: number, body: string | null, over: Record<string, unknown> = {}) => ({
   number,
-  body,
+  body: body === null || body.startsWith(REPORT_MARKER) ? body : `${REPORT_MARKER}\n${body}`,
   user: { login: 'github-actions[bot]' },
+  labels: [{ name: LABEL }],
   ...over
 })
 
@@ -218,10 +227,17 @@ describe('with an open issue', () => {
     )
   })
 
-  it('treats an issue with no body at all as nothing to compare with', () => {
-    const { outcome, writes } = run(THIS_WEEK_SAME, { [ISSUES]: [issue(41, null as never)] })
-    expect(outcome.stateReason).toBe('no previous report was found')
+  it('compares with nothing when the marker is there but the state block is not', () => {
+    const { outcome, writes } = run(THIS_WEEK_SAME, { [ISSUES]: [issue(41, '')] })
+    expect(outcome.stateReason).toBe('the previous report has no state block')
     expect(writes.map((write) => write.method)).toEqual(['POST', 'PATCH'])
+  })
+
+  it('writes the marker at the top of every body it sends', () => {
+    const fresh = run(THIS_WEEK_SAME, { [ISSUES]: [], [LABEL_READ]: { name: LABEL } })
+    expect(String(fresh.writes[0].payload.body).startsWith(`${REPORT_MARKER}\n`)).toBe(true)
+    const rewrite = run(THIS_WEEK_SAME, { [ISSUES]: [previous] })
+    expect(String(rewrite.writes[0].payload.body).startsWith(`${REPORT_MARKER}\n`)).toBe(true)
   })
 
   it('uses the lowest-numbered issue when two are open, and reports the other', () => {
@@ -251,6 +267,27 @@ describe('with an open issue', () => {
       'PATCH repos/o/r/issues/41'
     ])
     expect(outcome).toMatchObject({ issue: 41, duplicates: [] })
+  })
+
+  it("never rewrites another workflow's issue, such as the health alert, even with the label", () => {
+    const alert = issue(20, null, { body: 'Health check failed: the dispatch token expires soon.' })
+    const { outcome, writes } = run(THIS_WEEK_SAME, { [ISSUES]: [alert, previous] })
+    expect(writes.map((write) => `${write.method} ${write.endpoint}`)).toEqual([
+      'PATCH repos/o/r/issues/41'
+    ])
+    expect(outcome).toMatchObject({ issue: 41, duplicates: [] })
+    const alone = run(THIS_WEEK_SAME, { [ISSUES]: [alert], [LABEL_READ]: { name: LABEL } })
+    expect(alone.writes.map((write) => `${write.method} ${write.endpoint}`)).toEqual([
+      'POST repos/o/r/issues'
+    ])
+  })
+
+  it('needs the label as well: its own body on an unlabelled issue is not the report', () => {
+    const unlabelled = issue(20, renderMarkdown(LAST_WEEK), { labels: [] })
+    const { outcome } = run(THIS_WEEK_SAME, { [ISSUES]: [unlabelled, previous] })
+    expect(outcome).toMatchObject({ issue: 41, duplicates: [] })
+    const named = issue(41, renderMarkdown(LAST_WEEK), { labels: [LABEL] })
+    expect(run(THIS_WEEK_SAME, { [ISSUES]: [named] }).outcome.issue).toBe(41)
   })
 
   it('ignores pull requests and malformed entries in the issue list', () => {
@@ -293,17 +330,19 @@ describe('when GitHub cannot be read or written', () => {
     expect(writes).toEqual([])
   })
 
-  it('throws when the issue list is not a list', () => {
-    const { gh } = fakeGh({ [ISSUES]: { message: 'Bad credentials' } })
-    expect(() =>
-      publish({ gh, repo: 'o/r', owner: 'x', report: THIS_WEEK_SAME, dryRun: false })
-    ).toThrow('GitHub returned no issue list')
+  it('throws when the issue list is not a list of pages, or has no page', () => {
+    for (const listed of [{ message: 'Bad credentials' }, [], [{}]]) {
+      const gh = () => listed
+      expect(() =>
+        publish({ gh, repo: 'o/r', owner: 'x', report: THIS_WEEK_SAME, dryRun: false })
+      ).toThrow('GitHub returned no issue list')
+    }
   })
 
   it('throws when a write fails', () => {
     const gh = (args: string[]) => {
       if (args[0] === '-X') throw new Error('gh api repos/o/r/issues/41 failed (exit 1): HTTP 403')
-      return [issue(41, renderMarkdown(LAST_WEEK))]
+      return [[issue(41, renderMarkdown(LAST_WEEK))]]
     }
     expect(() =>
       publish({ gh, repo: 'o/r', owner: 'x', report: THIS_WEEK_SAME, dryRun: false })
@@ -316,7 +355,7 @@ describe('a write that fails partway', () => {
   const failing = (method: string) => {
     const sent: string[] = []
     const gh = (args: string[]) => {
-      if (args[0] !== '-X') return [previous]
+      if (args[0] !== '-X') return [[previous]]
       if (args[1] === method) throw new Error(`gh api ${args[2]} failed (exit 1): HTTP 502`)
       sent.push(args[1])
       return {}

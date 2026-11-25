@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 // the payloads it sends, without a network.
 const SCRIPT = resolve(__dirname, '..', '..', 'scripts', 'repo-health', 'cli.mjs')
 const REPO = 'o/r'
-const ISSUES = `repos/${REPO}/issues?state=open&labels=repo-health&per_page=100`
+const ISSUES = `repos/${REPO}/issues?state=open&creator=github-actions%5Bbot%5D&per_page=100`
 
 // Answers `gh api <endpoint>` from fixtures.json and fails on a read it has no
 // answer for. A write (`-X <method>`) is appended to `writes` as one JSON line
@@ -105,7 +105,7 @@ describe('repo-health --publish, end to end', () => {
       { DRY_RUN: '' }
     ]
     for (const env of environments) {
-      const { status, stderr, writes } = run({ [ISSUES]: [] }, env)
+      const { status, stderr, writes } = run({ [ISSUES]: [[]] }, env)
       expect(status).toBe(0)
       expect(writes).toEqual([])
       expect(stderr).toContain('repo-health: would open the repo-health issue')
@@ -114,7 +114,7 @@ describe('repo-health --publish, end to end', () => {
   })
 
   it('opens the issue with DRY_RUN=false, sending the title and body on standard input', () => {
-    const { status, stderr, writes } = run({ [ISSUES]: [] }, { DRY_RUN: 'false' })
+    const { status, stderr, writes } = run({ [ISSUES]: [[]] }, { DRY_RUN: 'false' })
     expect(status).toBe(0)
     expect(writes.map((write) => `${write.method} ${write.endpoint}`)).toEqual([
       `POST repos/${REPO}/labels`,
@@ -130,7 +130,7 @@ describe('repo-health --publish, end to end', () => {
 
   it('still publishes when a signal cannot read GitHub, and shows it as not measured', () => {
     // No fixture answers the pull request, coverage, run or branch reads.
-    const { status, stdout, writes } = run({ [ISSUES]: [] }, { DRY_RUN: 'false' })
+    const { status, stdout, writes } = run({ [ISSUES]: [[]] }, { DRY_RUN: 'false' })
     expect(status).toBe(0)
     expect(stdout).toMatch(/not measured\s+dependencies\s+not measured.*Dependabot/)
     expect(stdout).toContain('GitHub could not be read; see the run log')
@@ -141,11 +141,14 @@ describe('repo-health --publish, end to end', () => {
     const { status, writes } = run(
       {
         [ISSUES]: [
-          {
-            number: 41,
-            body: 'A body with no state block.',
-            user: { login: 'github-actions[bot]' }
-          }
+          [
+            {
+              number: 41,
+              body: '<!-- repo-health-report -->\nA body with no state block.',
+              user: { login: 'github-actions[bot]' },
+              labels: [{ name: 'repo-health' }]
+            }
+          ]
         ]
       },
       { DRY_RUN: 'false' }
@@ -166,7 +169,7 @@ describe('repo-health --publish, end to end', () => {
   })
 
   it('exits 2 without a token instead of reporting a publish that did not happen', () => {
-    const { status, stderr, writes } = run({ [ISSUES]: [] }, { GH_TOKEN: '', DRY_RUN: 'false' })
+    const { status, stderr, writes } = run({ [ISSUES]: [[]] }, { GH_TOKEN: '', DRY_RUN: 'false' })
     expect(status).toBe(2)
     expect(writes).toEqual([])
     expect(stderr).toContain('--publish needs GH_TOKEN (or GITHUB_TOKEN) and GITHUB_REPOSITORY')

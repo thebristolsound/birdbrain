@@ -54,11 +54,13 @@ const harness = (over: Record<string, unknown> = {}) => {
   return { out, err, appended, deps }
 }
 
-const ISSUES = 'repos/o/r/issues?state=open&labels=repo-health&per_page=100'
+const ISSUES = 'repos/o/r/issues?state=open&creator=github-actions%5Bbot%5D&per_page=100'
 const PUBLISH_ENV = { GITHUB_REPOSITORY: 'o/r', GITHUB_REPOSITORY_OWNER: 'o' }
 
 // A gh that answers the issue list and records every write.
 const BOT = { login: 'github-actions[bot]' }
+const LABELS = [{ name: 'repo-health' }]
+const MARKER = '<!-- repo-health-report -->'
 
 const recordingGh = (issues: unknown[] | Error = []) => {
   const writes: string[] = []
@@ -67,9 +69,10 @@ const recordingGh = (issues: unknown[] | Error = []) => {
       writes.push(`${args[1]} ${args[2]}`)
       return {}
     }
-    if (args[0] !== ISSUES) throw new Error(`gh api ${args[0]} failed (exit 1): Not Found`)
+    const endpoint = args[args.length - 1]
+    if (endpoint !== ISSUES) throw new Error(`gh api ${endpoint} failed (exit 1): Not Found`)
     if (issues instanceof Error) throw issues
-    return issues
+    return [issues]
   }
   return { gh, writes }
 }
@@ -449,12 +452,13 @@ describe('main --publish', () => {
 
   it('compares with the open issue in what it prints, and names a duplicate', () => {
     const { gh } = recordingGh([
-      { number: 50, body: 'duplicate', user: BOT },
+      { number: 50, body: `${MARKER}\nduplicate`, user: BOT, labels: LABELS },
       {
         number: 41,
         user: BOT,
+        labels: LABELS,
         body:
-          '<!-- repo-health-state:v1\n' +
+          `${MARKER}\n<!-- repo-health-state:v1\n` +
           '{"schemaVersion":1,"measuredAt":"2026-11-16T09:13:00.000Z","commit":"x",' +
           '"signals":{"steady":{"value":5,"status":"within"}}}\n-->'
       }

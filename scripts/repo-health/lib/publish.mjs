@@ -1,6 +1,5 @@
-// Keeps one open issue, labelled `repo-health` and opened by this workflow,
-// holding the latest report. When two are open it rewrites the lower-numbered
-// one and names the other in the run log.
+// Keeps one open issue holding the latest report. When two are open it rewrites
+// the lower-numbered one and names the other in the run log.
 //
 // The pattern is .github/scripts/health/alert.sh with two differences. The issue
 // never closes itself, because the next run reads last week's values out of its
@@ -12,9 +11,10 @@
 // sweep closes only issues the machine account filed, which this is not: the
 // workflow's own token writes it.
 //
-// A label is something anyone with triage access can put on any issue, so the
-// author decides which issue is the report: one a person filed and labelled is
-// never rewritten.
+// A label is something anyone with triage access can put on any issue, and every
+// workflow's token writes as github-actions[bot], the Health workflow's alert issue
+// included. So an issue is the report only when it carries the label, that author,
+// and the marker this file writes at the top of every body it sends.
 //
 // Everything a person can edit (the issue body) is read through decodeState,
 // which accepts numbers and status names only. A failed read of the issue list
@@ -36,6 +36,8 @@ const LABEL_DESCRIPTION = 'The weekly repository health report; one open issue, 
 const PROCESS_LABEL = 'process'
 // The login GitHub gives anything written with a workflow's own token.
 const AUTHOR = 'github-actions[bot]'
+const LISTING = `issues?state=open&creator=${encodeURIComponent(AUTHOR)}&per_page=100`
+export const REPORT_MARKER = '<!-- repo-health-report -->'
 
 const detailOf = (signal) =>
   signal.value === null
@@ -76,14 +78,29 @@ export const uncomparedComment = ({ report, reason, runUrl }) => {
   ].join('\n')
 }
 
-// The label filter reads GitHub's search index, which lags a direct label read by
-// seconds (CLAUDE.md, "Issue tracker"). At a weekly cadence that lag cannot matter.
+const hasLabel = (issue) =>
+  Array.isArray(issue.labels) &&
+  issue.labels.some((label) => (typeof label === 'string' ? label : label?.name) === LABEL)
+
+const isReport = (issue) =>
+  !issue?.pull_request &&
+  Number.isInteger(issue?.number) &&
+  issue.user?.login === AUTHOR &&
+  hasLabel(issue) &&
+  typeof issue.body === 'string' &&
+  issue.body.startsWith(REPORT_MARKER)
+
+// Every page of open issues the workflow token wrote, with the label read on each
+// one. A label filter on the listing would read GitHub's search index, which
+// lags a direct read (CLAUDE.md, "Issue tracker").
 const openIssues = (gh, repo) => {
-  const listed = gh([`repos/${repo}/issues?state=open&labels=${LABEL}&per_page=100`])
-  if (!Array.isArray(listed)) throw new Error('GitHub returned no issue list')
-  return listed
-    .filter((issue) => !issue.pull_request && Number.isInteger(issue.number))
-    .filter((issue) => issue.user?.login === AUTHOR)
+  const pages = gh(['--paginate', '--slurp', `repos/${repo}/${LISTING}`])
+  if (!Array.isArray(pages) || pages.length === 0 || !pages.every(Array.isArray)) {
+    throw new Error('GitHub returned no issue list')
+  }
+  return pages
+    .flat()
+    .filter(isReport)
     .sort((a, b) => a.number - b.number)
 }
 
@@ -104,7 +121,8 @@ export const publish = ({ gh, repo, owner, report, runUrl = null, dryRun = true 
   const issue = issues[0] ?? null
   const { state, reason } = decodeState(issue?.body)
   const title = titleOf(report)
-  const body = renderMarkdown(report, { state, stateReason: reason, runUrl })
+  const rendered = renderMarkdown(report, { state, stateReason: reason, runUrl })
+  const body = `${REPORT_MARKER}\n${rendered}`
   const changes = statusChanges(report, state)
 
   const writes = []

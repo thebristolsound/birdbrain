@@ -79,6 +79,14 @@ describe('repo-health.yml', () => {
     )
   })
 
+  it('passes every expression through env, never into a run: script', () => {
+    const scripts = code.filter((line) => /^\s*-?\s*run:/.test(line))
+    expect(scripts.length).toBeGreaterThanOrEqual(2)
+    // One-line scripts only, so this line check sees the whole of each script.
+    for (const line of scripts) expect(line).not.toMatch(/run:\s*[|>]/)
+    for (const line of scripts) expect(line).not.toContain('${{')
+  })
+
   it('runs the tool with --publish under the workflow token', () => {
     expect(workflow).toContain('GH_TOKEN: ${{ github.token }}')
     expect(workflow).toContain('run: node scripts/repo-health/cli.mjs --publish')

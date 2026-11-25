@@ -11,8 +11,9 @@ name: Repo health
 # scheduled runs raise the Health workflow's alert (.github/scripts/health/check.sh).
 #
 # No model is called and no stored credential is read: every step uses this
-# workflow's own token. It runs only from the default branch, on a schedule or by
-# hand, and checks out no pull request.
+# workflow's own token. A scheduled run uses the default branch. A manual run uses
+# the branch it is started on, and writes only on main. It checks out no pull
+# request.
 #
 # To pause it, disable the workflow (`gh workflow disable repo-health.yml`). Do
 # not add a job-level `if:` switch: a skipped job ends the run as skipped, and the

@@ -281,10 +281,25 @@ describe('state block', () => {
   })
 
   it('accepts an empty signals object as a readable state', () => {
-    expect(decodeState(block('{"schemaVersion":1,"signals":{}}')).state).toEqual({
+    const payload = '{"schemaVersion":1,"measuredAt":"2026-11-16T09:13:00.000Z","signals":{}}'
+    expect(decodeState(block(payload)).state).toEqual({
       schemaVersion: 1,
+      measuredAt: '2026-11-16T09:13:00.000Z',
       signals: {}
     })
+  })
+
+  it('has no state when the run time is missing or is not a timestamp, since the body prints it', () => {
+    for (const measuredAt of ['', ', "measuredAt":7', ', "measuredAt":{"a":1}']) {
+      expect(decodeState(block(`{"schemaVersion":1,"signals":{}${measuredAt}}`))).toEqual({
+        state: null,
+        reason: 'the state block has no run time'
+      })
+    }
+    for (const text of ['x @someone', '2026-11-16', '2026-11-16T09:13:00.000Z @someone']) {
+      const payload = JSON.stringify({ schemaVersion: 1, measuredAt: text, signals: {} })
+      expect(decodeState(block(payload)).reason).toBe('the state block has no run time')
+    }
   })
 
   it('has no previous value without a state, or for a signal the state does not hold', () => {

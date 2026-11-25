@@ -30,6 +30,20 @@ describe('skipped or focused tests', () => {
     expect(measure(ctx)).toEqual({ value: 9 })
   })
 
+  it('counts a modifier followed by more of the chain, and a suite, in either order', () => {
+    const ctx = ctxOf({
+      'tests/a.test.ts': [
+        'it' + ".skip.each([1, 2])('case %s', () => {})",
+        'describe' + ".only.each([1])('group %s', () => {})",
+        call('test.only', 'concurrent'),
+        call('test.concurrent', 'only'),
+        'test' + ".skip.for([1])('case %s', () => {})",
+        call('suite', 'skip')
+      ].join('\n')
+    })
+    expect(measure(ctx)).toEqual({ value: 6 })
+  })
+
   it('does not count the same text in a string, a comment or a conditional skip', () => {
     const ctx = ctxOf({
       'tests/a.test.ts': [
@@ -37,6 +51,8 @@ describe('skipped or focused tests', () => {
         `// ${call('it', 'skip')}`,
         "it.skipIf(process.platform === 'win32')('case', () => {})",
         "describe.runIf(HAS_JQ)('group', () => {})",
+        "it.skipIf(process.platform === 'win32').each([1])('case %s', () => {})",
+        "test.concurrent.runIf(HAS_JQ)('case', () => {})",
         "it('skip the header row', () => {})",
         'exit(1)'
       ].join('\n')

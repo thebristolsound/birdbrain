@@ -36,6 +36,19 @@ describe('agent instruction drift', () => {
       'CLAUDE.md or AGENTS.md could not be read'
     )
   })
+
+  it('is not measured when either file is empty or only white space, even when both are', () => {
+    const cases = [
+      [{ 'CLAUDE.md': '', 'AGENTS.md': '' }, 'CLAUDE.md is empty'],
+      [{ 'CLAUDE.md': ' \n\t\n', 'AGENTS.md': '\n' }, 'CLAUDE.md is empty'],
+      [{ 'CLAUDE.md': '# Rules\n', 'AGENTS.md': '  \n' }, 'AGENTS.md is empty']
+    ] as const
+    for (const [files, reason] of cases) {
+      const ctx = ctxOf(files)
+      expect(() => measure('agent-instruction-drift', ctx)).toThrow(Unmeasured)
+      expect(() => measure('agent-instruction-drift', ctx)).toThrow(reason)
+    }
+  })
 })
 
 describe('planStatus', () => {
@@ -102,6 +115,25 @@ describe('linkTargets', () => {
       '[real](real.md)'
     ].join('\n')
     expect(linkTargets(text)).toEqual(['real.md'])
+  })
+
+  it('closes a fence only on a run of its own character at least as long, with nothing after', () => {
+    const text = [
+      '````md',
+      '```',
+      '[shown inside](inner-missing.md)',
+      '```',
+      '~~~~',
+      '````js',
+      '````',
+      '[after the close](after.md)',
+      '~~~',
+      '[in a tilde fence](tilde-missing.md)',
+      '~~',
+      '~~~~',
+      '[real](real.md)'
+    ].join('\n')
+    expect(linkTargets(text)).toEqual(['after.md', 'real.md'])
   })
 })
 

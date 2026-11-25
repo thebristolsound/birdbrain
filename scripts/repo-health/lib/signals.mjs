@@ -9,7 +9,7 @@
 //
 // A signal that cannot be read is never a zero and never a pass: collect() turns
 // any throw into { value: null, reason }, and the report renders that as "not
-// measured" and counts it with the signals outside their budget.
+// measured" and gives it a count of its own beside the signals outside their budget.
 
 import { CODE_SIGNALS } from './code.mjs'
 import { DEPENDENCY_SIGNALS } from './deps.mjs'

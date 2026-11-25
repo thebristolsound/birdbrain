@@ -17,7 +17,7 @@ const STATUS_LINE = /^\*\*Status:\*\*[ \t]*(.*)$/m
 
 // Superseded documents and imported design bundles keep the links they had.
 const LINK_EXCLUDED = ['docs/archive/', 'docs/design-handoff/']
-const FENCE = /^\s*(```|~~~)/
+const FENCE = /^\s*(`{3,}|~{3,})/
 const INLINE_CODE = /`[^`\n]*`/g
 // [text](target) and ![alt](target). The target is bare or wrapped in <...>,
 // which is how Markdown writes one with a space in it, and may carry a title.
@@ -32,15 +32,28 @@ export const planStatus = (text) => {
 }
 
 // Link targets in prose: fenced blocks and inline code are examples, not links.
+// A fence closes only on a run of its own character at least as long as the one
+// that opened it, with nothing after it, so a shorter fence shown inside stays
+// inside.
 export const linkTargets = (text) => {
   const targets = []
-  let fenced = false
+  let fence = null
   for (const line of text.split('\n')) {
-    if (FENCE.test(line)) {
-      fenced = !fenced
+    const run = FENCE.exec(line)
+    if (fence === null) {
+      if (run) {
+        fence = run[1]
+        continue
+      }
+    } else {
+      const closes =
+        run !== null &&
+        run[1][0] === fence[0] &&
+        run[1].length >= fence.length &&
+        line.slice(run[0].length).trim() === ''
+      if (closes) fence = null
       continue
     }
-    if (fenced) continue
     for (const match of line.replace(INLINE_CODE, '').matchAll(LINK)) {
       targets.push(match[1] ?? match[2])
     }
@@ -109,6 +122,13 @@ export const DOCS_SIGNALS = [
         right = ctx.read(RIGHT)
       } catch {
         throw new Unmeasured(`${LEFT} or ${RIGHT} could not be read`)
+      }
+      // An empty file holds no instructions, and two of them would read as matching.
+      for (const [name, text] of [
+        [LEFT, left],
+        [RIGHT, right]
+      ]) {
+        if (text.trim() === '') throw new Unmeasured(`${name} is empty`)
       }
       const { onlyInLeft, onlyInRight } = compareDocuments(left, right)
       return { value: onlyInLeft.length + onlyInRight.length }

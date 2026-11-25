@@ -85,7 +85,7 @@ budget and any growth shows. The "Now" column is the 2026-11-20 reading.
 | 12 | Tests | Skipped or focused tests | Line-anchored `it`, `test`, `describe` and `suite` calls with `.skip`, `.only`, `.todo` or `.fixme` anywhere in the chain, plus `xit` and `xdescribe`, in test files. `skipIf` and `runIf` are not counted. | 2 | <= 2 | tree |
 | 13 | Tests | Line coverage on main | `coverage.json` on the `coverage-badge` branch through the contents API. Not measured if malformed or older than 14 days. | 95.93% | >= 95.0 | `gh` |
 | 14 | Tests | Main CI runs red or re-run, 7 days | Completed `ci.yml` push runs on main that failed, timed out or needed a second attempt. `cancelled` is ignored. Zero runs in the window, or more runs than the one page read, is not measured. | 0 | <= 1 | `gh` |
-| 15 | Tests | Stale remote branches | Branches with no open pull request and a tip older than 30 days, from one paged GraphQL query. `main` and `coverage-badge` are allowlisted in code. An empty listing is not measured. | measure in slice 2 | measured value | `gh` |
+| 15 | Repository | Stale remote branches | Branches with no open pull request and a tip older than 30 days, from one paged GraphQL query. `main` and `coverage-badge` are allowlisted in code. An empty listing is not measured. | 80 (2026-11-22) | <= 80 | `gh` |
 
 Left out, with the reason:
 

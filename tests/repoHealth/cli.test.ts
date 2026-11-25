@@ -58,6 +58,8 @@ const ISSUES = 'repos/o/r/issues?state=open&labels=repo-health&per_page=100'
 const PUBLISH_ENV = { GITHUB_REPOSITORY: 'o/r', GITHUB_REPOSITORY_OWNER: 'o' }
 
 // A gh that answers the issue list and records every write.
+const BOT = { login: 'github-actions[bot]' }
+
 const recordingGh = (issues: unknown[] | Error = []) => {
   const writes: string[] = []
   const gh = (args: string[]) => {
@@ -447,9 +449,10 @@ describe('main --publish', () => {
 
   it('compares with the open issue in what it prints, and names a duplicate', () => {
     const { gh } = recordingGh([
-      { number: 50, body: 'duplicate' },
+      { number: 50, body: 'duplicate', user: BOT },
       {
         number: 41,
+        user: BOT,
         body:
           '<!-- repo-health-state:v1\n' +
           '{"schemaVersion":1,"measuredAt":"2026-11-16T09:13:00.000Z","commit":"x",' +

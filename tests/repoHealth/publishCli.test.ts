@@ -139,7 +139,15 @@ describe('repo-health --publish, end to end', () => {
 
   it('rewrites the open issue and comments once when it cannot read the old state', () => {
     const { status, writes } = run(
-      { [ISSUES]: [{ number: 41, body: 'A body with no state block.' }] },
+      {
+        [ISSUES]: [
+          {
+            number: 41,
+            body: 'A body with no state block.',
+            user: { login: 'github-actions[bot]' }
+          }
+        ]
+      },
       { DRY_RUN: 'false' }
     )
     expect(status).toBe(0)

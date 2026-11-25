@@ -1,4 +1,6 @@
-// Keeps exactly one open issue, labelled `repo-health`, holding the latest report.
+// Keeps one open issue, labelled `repo-health` and opened by this workflow,
+// holding the latest report. When two are open it rewrites the lower-numbered
+// one and names the other in the run log.
 //
 // The pattern is .github/scripts/health/alert.sh with two differences. The issue
 // never closes itself, because the next run reads last week's values out of its
@@ -9,6 +11,10 @@
 // `process` keeps the issue out of the dispatch frontier (ADR-0028), and the stale
 // sweep closes only issues the machine account filed, which this is not: the
 // workflow's own token writes it.
+//
+// A label is something anyone with triage access can put on any issue, so the
+// author decides which issue is the report: one a person filed and labelled is
+// never rewritten.
 //
 // Everything a person can edit (the issue body) is read through decodeState,
 // which accepts numbers and status names only. A failed read of the issue list
@@ -28,6 +34,8 @@ export const LABEL = 'repo-health'
 const LABEL_COLOR = '0E8A16'
 const LABEL_DESCRIPTION = 'The weekly repository health report; one open issue, rewritten each run'
 const PROCESS_LABEL = 'process'
+// The login GitHub gives anything written with a workflow's own token.
+const AUTHOR = 'github-actions[bot]'
 
 const detailOf = (signal) =>
   signal.value === null
@@ -75,6 +83,7 @@ const openIssues = (gh, repo) => {
   if (!Array.isArray(listed)) throw new Error('GitHub returned no issue list')
   return listed
     .filter((issue) => !issue.pull_request && Number.isInteger(issue.number))
+    .filter((issue) => issue.user?.login === AUTHOR)
     .sort((a, b) => a.number - b.number)
 }
 

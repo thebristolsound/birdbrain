@@ -50,8 +50,9 @@ the maintainer about drift the way a dead credential should.
    outside the spend guard that `tests/spendGuardWorkflows.test.ts` pins. A manual run is a dry
    run unless the maintainer unticks the input on `main`.
 5. **One rolling issue holds the report.** The run rewrites one open issue labelled
-   `repo-health` and `process`, assigned to the repository owner. It never opens an issue per
-   finding. The issue stays open, because the next run reads the previous values from a state
+   `repo-health` and `process`, assigned to the repository owner, and only one the workflow's
+   own token opened: a label alone does not make an issue the report. It never opens an issue
+   per finding. The issue stays open, because the next run reads the previous values from a state
    block in its body.
 6. **A comment means a status changed.** The run comments when a signal moves into `outside`,
    into `not measured`, or back to `within`. A value that moves while its status holds gets no

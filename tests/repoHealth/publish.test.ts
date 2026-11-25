@@ -81,6 +81,7 @@ const fakeGh = (reads: Record<string, unknown>) => {
 const issue = (number: number, body: string, over: Record<string, unknown> = {}) => ({
   number,
   body,
+  user: { login: 'github-actions[bot]' },
   ...over
 })
 
@@ -229,6 +230,27 @@ describe('with an open issue', () => {
     })
     expect(writes[0].endpoint).toBe('repos/o/r/issues/41')
     expect(outcome).toMatchObject({ issue: 41, duplicates: [77], commented: false })
+  })
+
+  it('never rewrites a labelled issue someone else opened, and opens its own beside it', () => {
+    const filed = issue(30, renderMarkdown(LAST_WEEK), { user: { login: 'thebristolsound' } })
+    const { outcome, writes } = run(THIS_WEEK_CHANGED, {
+      [ISSUES]: [filed, issue(31, 'no author', { user: null })],
+      [LABEL_READ]: { name: 'repo-health' }
+    })
+    expect(writes.map((write) => `${write.method} ${write.endpoint}`)).toEqual([
+      'POST repos/o/r/issues'
+    ])
+    expect(outcome).toMatchObject({ issue: null, duplicates: [], state: null })
+  })
+
+  it('rewrites its own issue when a lower-numbered labelled one belongs to someone else', () => {
+    const filed = issue(30, 'a person filed this', { user: { login: 'thebristolsound' } })
+    const { outcome, writes } = run(THIS_WEEK_SAME, { [ISSUES]: [filed, previous] })
+    expect(writes.map((write) => `${write.method} ${write.endpoint}`)).toEqual([
+      'PATCH repos/o/r/issues/41'
+    ])
+    expect(outcome).toMatchObject({ issue: 41, duplicates: [] })
   })
 
   it('ignores pull requests and malformed entries in the issue list', () => {

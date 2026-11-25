@@ -268,6 +268,8 @@ Working with it:
   true and the run's summary shows the writes it would make. `-f dry_run=false` on `main` writes.
 - **Pause it** with `gh workflow disable repo-health.yml`. Do not add a condition to the job: a
   skipped run counts towards the failure streak the health workflow watches.
+- **Only the workflow's own issue is rewritten.** The run looks for an open `repo-health` issue
+  opened by `github-actions[bot]`; one anyone else opened or labelled is left alone.
 - **Do not close the issue** to clear it. The next run reads the previous values from its body,
   so a closed issue means a new one with nothing to compare against.
 

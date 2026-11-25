@@ -107,7 +107,11 @@ or the machine account opens, on each push, has each model family check the othe
 and posts the `review/fleet` status that `merge-gate` requires
 ([ADR-0057](docs/adr/0057-a-two-family-review-fleet-reads-every-pr-and-gates-the-merge.md)). Its
 limits are the `REVIEW_FLEET_*` repository variables. PR review now runs only when the
-maintainer applies `review:requested` (ADR-0046). Before restarting Doc curator or adding
+maintainer applies `review:requested` (ADR-0046). A weekly Repo health run measures the codebase
+and rewrites one `repo-health` issue; it holds no stored credential, calls no model, and never
+fails on a finding
+([ADR-0058](docs/adr/0058-a-weekly-report-shows-repository-health-and-never-fails-a-build.md)).
+Before restarting Doc curator or adding
 automation machinery, read
 [ADR-0029](docs/adr/0029-measure-before-expanding-agent-automation.md): verify basic spending
 limits and obtain explicit maintainer authorization.

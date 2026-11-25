@@ -14,12 +14,25 @@
 import { CODE_SIGNALS } from './code.mjs'
 import { DEPENDENCY_SIGNALS } from './deps.mjs'
 import { DOCS_SIGNALS } from './docs.mjs'
+import {
+  REMOTE_DEPENDENCY_SIGNALS,
+  REMOTE_REPOSITORY_SIGNALS,
+  REMOTE_TEST_SIGNALS
+} from './remote.mjs'
 import { TEST_SIGNALS } from './tests.mjs'
 import { Unmeasured } from './unmeasured.mjs'
 
 export const UNEXPECTED_FAILURE = 'the measurement failed; see the run log'
 
-export const SIGNALS = [...CODE_SIGNALS, ...DEPENDENCY_SIGNALS, ...DOCS_SIGNALS, ...TEST_SIGNALS]
+export const SIGNALS = [
+  ...CODE_SIGNALS,
+  ...DEPENDENCY_SIGNALS,
+  ...REMOTE_DEPENDENCY_SIGNALS,
+  ...DOCS_SIGNALS,
+  ...TEST_SIGNALS,
+  ...REMOTE_TEST_SIGNALS,
+  ...REMOTE_REPOSITORY_SIGNALS
+]
 
 const describe = ({ id, family, label, unit, better, budget, needs }) => ({
   id,

@@ -165,7 +165,8 @@ export const main = (argv, deps = {}) => {
   const outcomeLines = outcome ? describeOutcome(outcome) : []
   for (const line of outcomeLines) log(line)
 
-  if (env.GITHUB_ACTIONS === 'true') {
+  // An annotation is a line on stdout, so --json output stays parseable without them.
+  if (env.GITHUB_ACTIONS === 'true' && options.format !== 'json') {
     for (const signal of report.signals.filter((entry) => entry.status !== 'within')) {
       stdout(`::warning title=Repository health::${signal.label}: ${signal.status}`)
     }

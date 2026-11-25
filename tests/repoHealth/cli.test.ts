@@ -408,6 +408,15 @@ describe('main under the workflow', () => {
     ])
   })
 
+  it('keeps annotations out of --json, so the whole output parses as JSON', () => {
+    const { out, deps } = harness({
+      env: { GITHUB_ACTIONS: 'true' },
+      signals: [signal('grown', () => ({ value: 9 }))]
+    })
+    expect(main(['--json'], deps)).toBe(0)
+    expect(JSON.parse(out.join('\n')).signals[0]).toMatchObject({ id: 'grown', status: 'outside' })
+  })
+
   it('prints no annotation outside the workflow', () => {
     const { out, deps } = harness({ signals: [signal('grown', () => ({ value: 9 }))] })
     main([], deps)

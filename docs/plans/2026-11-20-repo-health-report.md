@@ -78,14 +78,14 @@ budget and any growth shows. The "Now" column is the 2026-11-20 reading.
 | 5 | Dependencies | Deferred dependency decisions | Entries in `audit-exceptions.json` plus `dependency-name` entries under `ignore` in `.github/dependabot.yml`, not under `allow`. A Dependabot file with no `version` or `updates` key is not measured. | 9 | <= 9 | tree |
 | 6 | Dependencies | Audit exceptions expiring | Entries expired or within 21 days of expiry | 0 | <= 0 | tree |
 | 7 | Dependencies | Unused dependencies | `knip` JSON, `dependencies` plus `devDependencies` | 2 | <= 2 | install |
-| 8 | Dependencies | Dependabot pull requests open over 14 days | Open pull requests by `dependabot[bot]`, age from `created_at` | 0 | <= 0 | `gh` |
+| 8 | Dependencies | Dependabot pull requests open over 14 days | Open pull requests by `dependabot[bot]`, age from `created_at`. A listing with no page, or a pull request with no author, is not measured. | 0 | <= 0 | `gh` |
 | 9 | Docs | Agent instruction drift | Lines only in `CLAUDE.md` plus lines only in `AGENTS.md`. Not measured if either file is missing or empty. | 0 | <= 0 | tree |
 | 10 | Docs | Plans without a documented status | `docs/plans/*.md` with no `**Status:**` line, or a first word outside active, done, parked, abandoned | 74 | <= 74 | tree |
 | 11 | Docs | Broken relative links | Markdown links in `docs/**/*.md` and root `*.md` that resolve to no tracked path, skipping URLs, anchors, code spans, fenced blocks, `docs/archive/` and `docs/design-handoff/`. Inline links only: a reference-style link is not read. | 2 | <= 2 | tree |
 | 12 | Tests | Skipped or focused tests | Line-anchored `it`, `test`, `describe` and `suite` calls with `.skip`, `.only`, `.todo` or `.fixme` anywhere in the chain, plus `xit` and `xdescribe`, in test files. `skipIf` and `runIf` are not counted. | 2 | <= 2 | tree |
 | 13 | Tests | Line coverage on main | `coverage.json` on the `coverage-badge` branch through the contents API. Not measured if malformed or older than 14 days. | 95.93% | >= 95.0 | `gh` |
-| 14 | Tests | Main CI runs red or re-run, 7 days | Completed `ci.yml` push runs on main that failed, timed out or needed a second attempt. `cancelled` is ignored. Zero runs in the window is not measured. | 0 | <= 1 | `gh` |
-| 15 | Tests | Stale remote branches | Branches with no open pull request and a tip older than 30 days, from one paged GraphQL query. `main` and `coverage-badge` are allowlisted in code. | measure in slice 2 | measured value | `gh` |
+| 14 | Tests | Main CI runs red or re-run, 7 days | Completed `ci.yml` push runs on main that failed, timed out or needed a second attempt. `cancelled` is ignored. Zero runs in the window, or more runs than the one page read, is not measured. | 0 | <= 1 | `gh` |
+| 15 | Tests | Stale remote branches | Branches with no open pull request and a tip older than 30 days, from one paged GraphQL query. `main` and `coverage-badge` are allowlisted in code. An empty listing is not measured. | measure in slice 2 | measured value | `gh` |
 
 Left out, with the reason:
 

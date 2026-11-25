@@ -57,11 +57,17 @@ const ageInDays = (iso, now) => {
   return (now - at) / DAY_MS
 }
 
+// `--slurp` prints one array per page, and an empty listing is one empty page, so
+// no page at all means nothing was read.
 export const staleDependabotPulls = (pages, now) => {
-  if (!Array.isArray(pages) || !pages.every(Array.isArray)) {
+  if (!Array.isArray(pages) || pages.length === 0 || !pages.every(Array.isArray)) {
     throw new Unmeasured('GitHub returned no pull request list')
   }
-  const open = pages.flat().filter((pull) => pull?.user?.login === DEPENDABOT_LOGIN)
+  const pulls = pages.flat()
+  if (!pulls.every((pull) => typeof pull?.user?.login === 'string')) {
+    throw new Unmeasured('GitHub returned a pull request with no author')
+  }
+  const open = pulls.filter((pull) => pull.user.login === DEPENDABOT_LOGIN)
   const stale = open.filter((pull) => ageInDays(pull.created_at, now) > DEPENDABOT_MAX_AGE_DAYS)
   return { value: stale.length, note: `of ${open.length} open Dependabot pull request(s)` }
 }
@@ -88,12 +94,19 @@ export const badgeCoverage = (file, commits, now) => {
 
 // A run that was cancelled is someone's choice, or a newer push replacing it, and
 // says nothing about main. A run that needed a second attempt is the nearest
-// thing to a flaky-test count the API exposes.
+// thing to a flaky-test count the API exposes. The listing is one page, so a
+// total past it means runs went unread and the count would read low.
 export const redRuns = (response) => {
   const runs = response?.workflow_runs
   if (!Array.isArray(runs)) throw new Unmeasured('GitHub returned no run list')
   if (runs.length === 0) {
     throw new Unmeasured(`no completed CI run on main in the last ${CI_WINDOW_DAYS} days`)
+  }
+  if (!Number.isInteger(response.total_count)) {
+    throw new Unmeasured('GitHub returned no run total')
+  }
+  if (response.total_count > runs.length) {
+    throw new Unmeasured(`more than ${runs.length} CI runs on main in the window`)
   }
   const red = runs.filter(
     (run) => RED_CONCLUSIONS.includes(run.conclusion) || (run.run_attempt ?? 1) > 1
@@ -101,7 +114,9 @@ export const redRuns = (response) => {
   return { value: red.length, note: `of ${runs.length} completed run(s)` }
 }
 
+// A repository always has its default branch, so an empty listing is a failed read.
 export const staleBranches = (nodes, now) => {
+  if (nodes.length === 0) throw new Unmeasured('GitHub returned no branches')
   const stale = nodes.filter((node) => {
     if (KEPT_BRANCHES.includes(node.name)) return false
     if (typeof node.associatedPullRequests?.totalCount !== 'number') {

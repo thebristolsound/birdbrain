@@ -197,6 +197,15 @@ describe('Dependabot pull requests', () => {
     )
   })
 
+  it('is not measured when no page was read or a pull request has no author', () => {
+    expect(() => staleDependabotPulls([], NOW)).toThrow('GitHub returned no pull request list')
+    for (const pull of [{}, null, { user: {} }, { user: { login: 7 } }]) {
+      expect(() => staleDependabotPulls([[pull]], NOW)).toThrow(
+        'GitHub returned a pull request with no author'
+      )
+    }
+  })
+
   it('asks for every page of open pull requests', () => {
     const { ctx, calls } = ctxOf(() => [[pull('dependabot[bot]', 20)]])
     expect(measure('stale-dependabot-pulls', ctx)).toMatchObject({ value: 1 })
@@ -261,6 +270,7 @@ describe('red CI runs on main', () => {
 
   it('counts failures, timeouts and runs that needed a second attempt', () => {
     const response = {
+      total_count: 7,
       workflow_runs: [
         run('success'),
         run('failure'),
@@ -275,7 +285,7 @@ describe('red CI runs on main', () => {
   })
 
   it('reads a week of green runs as zero', () => {
-    expect(redRuns({ workflow_runs: [run('success'), run('success')] })).toEqual({
+    expect(redRuns({ total_count: 2, workflow_runs: [run('success'), run('success')] })).toEqual({
       value: 0,
       note: 'of 2 completed run(s)'
     })
@@ -294,8 +304,18 @@ describe('red CI runs on main', () => {
     }
   })
 
+  it('is not measured when the window holds more runs than the page it read', () => {
+    const page = { total_count: 101, workflow_runs: [run('success')] }
+    expect(() => redRuns(page)).toThrow('more than 1 CI runs on main in the window')
+    for (const total_count of [undefined, '1', 1.5]) {
+      expect(() => redRuns({ total_count, workflow_runs: [run('failure')] })).toThrow(
+        'GitHub returned no run total'
+      )
+    }
+  })
+
   it('asks for completed push runs on main from the last seven days', () => {
-    const { ctx, calls } = ctxOf(() => ({ workflow_runs: [run('success')] }))
+    const { ctx, calls } = ctxOf(() => ({ total_count: 1, workflow_runs: [run('success')] }))
     expect(measure('red-ci-runs-on-main', ctx)).toMatchObject({ value: 0 })
     expect(calls).toEqual([
       [
@@ -337,6 +357,10 @@ describe('stale branches', () => {
     expect(() => staleBranches(undated, NOW)).toThrow(
       'GitHub returned a date that could not be read'
     )
+  })
+
+  it('is not measured when the listing holds no branch at all', () => {
+    expect(() => staleBranches([], NOW)).toThrow('GitHub returned no branches')
   })
 
   const page = (nodes: unknown[], endCursor: string | null) => ({

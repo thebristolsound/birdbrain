@@ -62,18 +62,24 @@ function alreadyInstalled() {
 }
 
 // bsdtar (shipped as `tar` on Windows 10+ and macOS) reads zips; GNU tar does
-// not, so Linux goes through unzip.
+// not, so Linux goes through unzip. Windows names bsdtar by absolute path: in Git Bash the
+// GNU tar on PATH comes first and reads `C:` in the archive path as a remote host.
+function windowsTar() {
+  const systemRoot = process.env['SystemRoot']
+  return systemRoot ? join(systemRoot, 'System32', 'tar.exe') : 'tar'
+}
+
 function extractWithCli(zipPath) {
   const [tool, args] =
     process.platform === 'win32'
-      ? ['tar', ['-xf', zipPath, '-C', distPath]]
+      ? [windowsTar(), ['-xf', zipPath, '-C', distPath]]
       : ['unzip', ['-oq', zipPath, '-d', distPath]]
   mkdirSync(distPath, { recursive: true })
   try {
     execFileSync(tool, args, { stdio: 'inherit' })
   } catch (err) {
     if (err.code === 'ENOENT') {
-      throw new Error(`\`${tool}\` was not found on PATH`, { cause: err })
+      throw new Error(`\`${tool}\` was not found`, { cause: err })
     }
     throw new Error(`\`${tool}\` failed to extract the archive: ${err.message}`, {
       cause: err

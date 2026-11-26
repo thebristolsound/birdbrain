@@ -12,7 +12,8 @@ import {
 } from 'fs'
 import { tmpdir } from 'os'
 import { join, resolve } from 'path'
-import { gzipSync } from 'zlib'
+import { gunzipSync, gzipSync } from 'zlib'
+import { writeTransactionRecord } from '../src/packages/transaction-record/writer'
 import {
   compare,
   describeMhtml,
@@ -69,7 +70,9 @@ describe('take', () => {
       { encoding: 'utf8', env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' } }
     )
 
-    expect(run.stderr).toContain('capture-proof: the label "../.." is not a plain name')
+    // The message alone: with DEBUG set the script prints the error's stack, which puts
+    // `Error: ` before it.
+    expect(run.stderr).toContain('the label "../.." is not a plain name')
     expect(run.status).toBe(1)
     expect(existsSync(join(outside, 'kept.txt'))).toBe(true)
   })
@@ -302,6 +305,44 @@ describe('describeRecords', () => {
     ])
   })
 
+  it('reads a record the app wrote: every record has a type and none is refused', async () => {
+    const url = 'http://127.0.0.1:29412/'
+    const { bytes } = await writeTransactionRecord({
+      exchanges: [
+        {
+          requestId: 'r1',
+          hop: 0,
+          state: 'complete',
+          complete: true,
+          startedAt: '2026-10-11T20:47:45.500Z',
+          request: { method: 'GET', url, headers: { Accept: '*/*', Cookie: 'sid=1' } },
+          response: {
+            url,
+            status: 200,
+            statusText: 'OK',
+            mimeType: 'text/html',
+            remoteIPAddress: '127.0.0.1',
+            headers: { 'Content-Type': 'text/html' }
+          },
+          responseBody: { data: '<p>page</p>', base64Encoded: false }
+        }
+      ],
+      captureId: 'c1',
+      birdbrainVersion: '1.0.0',
+      browserVersion: 'Chrome/146.0.7680.65',
+      userAgent: 'Mozilla/5.0',
+      egress: 'direct',
+      date: '2026-10-11T20:47:46.000Z'
+    })
+    const described = describeRecords(gunzipSync(bytes).toString('latin1'))
+    expect(described.map((line: string) => line.split(' ')[0])).toEqual([
+      'warcinfo',
+      'request',
+      'response'
+    ])
+    expect(described.join('\n')).toContain(`GET / HTTP/1.1 ${url}`)
+  })
+
   it.each([
     ['empty text', ''],
     ['text that is no WARC record', 'abc'],
@@ -316,6 +357,24 @@ describe('describeRecords', () => {
     expect(() => describeRecords(`${info}WARC/1.1\r\nWARC-Type: response`)).toThrow(
       'has no blank line after the headers of record 2'
     )
+  })
+
+  it('refuses a record whose WARC headers run into the HTTP block with no blank line', () => {
+    const joined = (cookie: string) =>
+      info +
+      record(
+        'WARC/1.1',
+        'WARC-Type: response',
+        'HTTP/1.1 200 OK',
+        `Set-Cookie: sid=${cookie}`,
+        '',
+        'body'
+      )
+    for (const cookie of ['a', 'b']) {
+      expect(() => describeRecords(joined(cookie))).toThrow(
+        'has a line that is no header among the headers of record 2'
+      )
+    }
   })
 
   it('refuses a record that names no type', () => {

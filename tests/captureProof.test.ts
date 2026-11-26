@@ -45,7 +45,7 @@ describe('requireLabel', () => {
   )
 })
 
-describe('take', () => {
+describe('a label on the command line', () => {
   let base: string
 
   beforeEach(() => {
@@ -56,7 +56,7 @@ describe('take', () => {
     rmSync(base, { recursive: true, force: true })
   })
 
-  it('refuses a label that names a folder outside the output folder, and deletes nothing', () => {
+  it('take refuses a label that names a folder outside the output folder, deleting nothing', () => {
     const outside = join(base, 'outside')
     const out = join(outside, 'proof', 'runs')
     const repo = join(base, 'repo')
@@ -75,6 +75,20 @@ describe('take', () => {
     expect(run.stderr).toContain('the label "../.." is not a plain name')
     expect(run.status).toBe(1)
     expect(existsSync(join(outside, 'kept.txt'))).toBe(true)
+  })
+
+  // The check runs where the command line is read, so it has to cover every label of every
+  // command: each of these would build a folder name from `../..` if its label went unchecked.
+  it.each(['compare ../.. b', 'compare a ../..', 'verify ../..'])('refuses `%s`', (command) => {
+    const out = join(base, 'runs')
+    mkdirSync(out)
+    const run = spawnSync(
+      process.execPath,
+      [SCRIPT, ...command.split(' '), '--repo', base, '--out', out],
+      { encoding: 'utf8', env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' } }
+    )
+    expect(run.stderr).toContain('the label "../.." is not a plain name')
+    expect(run.status).toBe(1)
   })
 })
 
@@ -627,6 +641,28 @@ describe('compare', () => {
     expect(() => compare('a', 'b', { out })).toThrow(
       "the run a: the background Capture's warc.gz file does not start with a WARC record"
     )
+  })
+
+  it('describes a Capture whose entry declares no transaction record with no records', () => {
+    for (const label of ['a', 'b']) {
+      writeRun(label, `run-${label}`)
+      unlinkSync(join(out, label, 'case', `run-${label}-launched.warc.gz`))
+      const { file, entries } = entriesOf(label)
+      for (const entry of entries) {
+        if (entry.method !== 'launched') continue
+        entry.inventory.transactionRecord = { present: false }
+        delete entry.transactionRecordHash
+      }
+      writeFileSync(file, `${entries.map((entry) => JSON.stringify(entry)).join('\n')}\n`)
+    }
+    const { background, launched } = describeRun(out, 'a')
+    expect(launched).toMatchObject({
+      records: null,
+      recordHoldsCookieValue: null,
+      recordHoldsPostBody: null
+    })
+    expect(background.records).toHaveLength(2)
+    expect(compare('a', 'b', { out })).toBe(0)
   })
 
   it('refuses a label that was never taken', () => {

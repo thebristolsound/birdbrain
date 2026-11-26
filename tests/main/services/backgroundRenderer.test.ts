@@ -3711,7 +3711,15 @@ describe('a background Capture, known answers for the record, the PDF and the in
         context: Object.keys(context ?? {}),
         error: String(error)
       }))
-    return { id, entry, handed, failures }
+    // What the log file keeps of each failure's error: the logger writes it through
+    // sanitizeError (logger.ts), which drops the message (#2268).
+    const kept = logged.mock.calls
+      .filter(([, code]) => /\.(transaction_record|pdf)_failed$/.test(code))
+      .map(([, code, , error]) => {
+        const { name, code: errorCode } = sanitizeError(error)
+        return { code, error: { name, code: errorCode } }
+      })
+    return { id, entry, handed, failures, kept }
   }
 
   const MHTML_PART = { present: true, pinnedImages: 0, pinnedImagesNotLoaded: 0 }
@@ -3916,7 +3924,8 @@ describe('a background Capture, known answers for the record, the PDF and the in
     ])
   }, 30_000)
 
-  // #2268 gives each PDF refusal a cause the log keeps; these hold what it signs and says.
+  // #2268 gives each PDF refusal a cause the log keeps; these hold what the Capture signs and
+  // the error it hands the logger.
   it('stores the Capture with the PDF failed, and keeps the record, when the page is taller than the PDF bound', async () => {
     ctl.contentHeight = MAX_PDF_CONTENT_HEIGHT_PX + 1
     const { id, entry, handed, failures } = await captureOnce()
@@ -3961,4 +3970,26 @@ describe('a background Capture, known answers for the record, the PDF and the in
       }
     ])
   }, 30_000)
+
+  // The path the report behind #2268 came through: the queue's log line, as the log file has it.
+  it.each([
+    [
+      'a page taller than the PDF bound',
+      () => (ctl.contentHeight = MAX_PDF_CONTENT_HEIGHT_PX + 1),
+      { name: 'Error', code: 'PDF_TOO_TALL' }
+    ],
+    [
+      'a print that does not settle',
+      () => (ctl.printHangs = true),
+      { name: 'PrintTimeout', code: null }
+    ]
+  ] as const)(
+    'logs the cause of the PDF failure for %s',
+    async (_case, arrange, error) => {
+      arrange()
+      const { kept } = await captureOnce()
+      expect(kept).toEqual([{ code: 'backgroundRenderer.pdf_failed', error }])
+    },
+    30_000
+  )
 })

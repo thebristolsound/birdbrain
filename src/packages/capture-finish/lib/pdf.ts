@@ -34,8 +34,8 @@ const PdfPartSchema = CaptureInventorySchema.shape.pdf
  * PDF); the part it signs says so. Never throws: a page the channel's check refuses or one taller
  * than MAX_PDF_CONTENT_HEIGHT_PX is not printed, and that, a print that fails or outlasts the
  * method's bound, and a PDF over MAX_PDF_SIZE each record the PDF absent as `failed`, with the
- * error that names the cause. The log drops an error's message, so each limit's error also
- * carries a code that says which one refused (#2268).
+ * error that names the cause. The log drops an error's message, so the height and size
+ * refusals also carry a code that says which one refused (#2268).
  */
 export async function printPdf(contentHeight: number, channel: PrintChannel): Promise<PdfOutcome> {
   try {

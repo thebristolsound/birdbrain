@@ -12,6 +12,8 @@ const PAGE = 100
 // GitHub lists at most this many files for one pull request.
 const FILE_LIST_LIMIT = 3000
 const OVERRIDE_LABEL = 'break-glass'
+// Dependency updates this account opens are outside the scope, whatever they change.
+const DEPENDENCY_BOT = 'dependabot[bot]'
 // One reviewer per model family, and the second fresh Claude reviewer a trial run adds as its
 // control. A record names all three, with zeros where a reviewer did not run.
 const SLOTS = ['claude', 'codex', 'control']
@@ -19,8 +21,9 @@ const SLOTS = ['claude', 'codex', 'control']
 // it counts a reviewer in each of these.
 const REQUIRED_SLOTS = ['claude', 'codex']
 
-// A merge qualifies when a defect in it can reach a user or a credential: shipped source,
-// and the workflows and scripts that run beside secrets.
+// A merge qualifies when it changed shipped source, a workflow, or a script kept beside the
+// workflows. Scripts elsewhere and the dependency files are outside the scope, although some
+// run with a token.
 export const QUALIFYING_AREAS = ['src/', 'extension/', '.github/workflows/', '.github/scripts/']
 
 export const RECORD_FIRST_LINE = 'Catch-up record'
@@ -36,12 +39,17 @@ export function areasOf(files) {
   return QUALIFYING_AREAS.filter((area) => paths.some((path) => path.startsWith(area)))
 }
 
+const RUN_DATE = /^\d{4}-\d{2}-\d{2}$/
 const isCount = (value) => Number.isInteger(value) && value >= 0
-const isCountOrUnknown = (value) => value === null || isCount(value)
+// A review always costs something, so a measured cost is above zero and an unmeasured one is
+// null. A zero is a guess.
+const isCostOrUnknown = (value) => value === null || (Number.isInteger(value) && value > 0)
 const perSlot = (value) => Boolean(value) && SLOTS.every((slot) => isCount(value[slot]))
+const within = (inner, outer) => SLOTS.every((slot) => inner[slot] <= outer[slot])
 
-// A record's numbers, or null when the block is absent or any field is missing or malformed.
-// Tokens and minutes may be null, which reads as unknown and is never summed as zero.
+// A record's numbers, or null when the block is absent, any field is missing or malformed, or
+// the counts contradict each other. Tokens and minutes may be null, which reads as unknown and
+// is never summed as zero.
 export function numbersOf(body) {
   const match = BLOCK.exec(body)
   if (!match) return null
@@ -51,20 +59,24 @@ export function numbersOf(body) {
   } catch {
     return null
   }
-  const { v, reviewers, blocking, confirmed, other, reproduced, filed } = block
+  const { v, run, reviewers, blocking, confirmed, alone, other, reproduced, filed } = block
   const { private: privately, tokens, minutes } = block
   const valid =
     v === 1 &&
-    [reviewers, blocking, confirmed, other].every(perSlot) &&
+    typeof run === 'string' &&
+    RUN_DATE.test(run) &&
+    [reviewers, blocking, confirmed, alone, other].every(perSlot) &&
+    within(confirmed, blocking) &&
+    within(alone, confirmed) &&
     [reproduced, filed, privately].every(isCount) &&
-    tokens !== undefined &&
-    minutes !== undefined &&
-    [tokens, minutes].every(isCountOrUnknown)
+    [tokens, minutes].every(isCostOrUnknown)
   if (!valid) return null
   return {
+    run,
     reviewers,
     blocking,
     confirmed,
+    alone,
     other,
     reproduced,
     filed,
@@ -74,8 +86,8 @@ export function numbersOf(body) {
   }
 }
 
-// The comment's first line once the disclosure line that opens a comment posted under the
-// maintainer's account is dropped, in its current form and the older two-line alert.
+// The comment's first line once the disclosure that opens a comment posted under the
+// maintainer's account is dropped, in either form: the one-line note or the two-line alert.
 export function firstLineOf(body) {
   const lines = body.replace(/\r\n/g, '\n').split('\n')
   if (/^> \[!NOTE\]/.test(lines[0])) lines.splice(0, 2)
@@ -107,6 +119,16 @@ const sumKnown = (values) => {
   return { sum: known.reduce((total, value) => total + value, 0), unknown: values.length - known.length }
 }
 
+// One entry per run, oldest first. Records that carry the same run date are one run.
+const runsOf = (numbers) => {
+  const runs = new Map()
+  for (const { run, filed } of numbers) {
+    const { merges, filed: sum } = runs.get(run) ?? { merges: 0, filed: 0 }
+    runs.set(run, { run, merges: merges + 1, filed: sum + filed })
+  }
+  return [...runs.values()].sort((a, b) => a.run.localeCompare(b.run))
+}
+
 export function totalsOf(recorded) {
   const numbers = recorded.map(({ record }) => record.numbers)
   const count = (pick) => numbers.reduce((total, entry) => total + pick(entry), 0)
@@ -114,9 +136,11 @@ export function totalsOf(recorded) {
     Object.fromEntries(SLOTS.map((slot) => [slot, count((entry) => entry[field][slot])]))
   return {
     merges: numbers.length,
+    runs: runsOf(numbers),
     reviewers: slots('reviewers'),
     blocking: slots('blocking'),
     confirmed: slots('confirmed'),
+    alone: slots('alone'),
     other: slots('other'),
     reproduced: count((entry) => entry.reproduced),
     filed: count((entry) => entry.filed),
@@ -142,15 +166,23 @@ function pagesOf(gh, endpoint) {
 // seconds. That is close enough for a report read before a release.
 export function collect(gh) {
   const maintainer = gh([API]).owner.login
+  // A pull request with no merge date at all is a read that lost a field, which is not the
+  // same as one closed without merging.
   const merged = pagesOf(gh, `${API}/issues?state=closed&labels=${OVERRIDE_LABEL}`).filter(
-    (issue) => issue.pull_request?.merged_at
+    ({ number, pull_request: pull }) => {
+      if (!pull) return false
+      if (pull.merged_at === undefined) throw new Error(`#${number} has no merge date field`)
+      return pull.merged_at !== null
+    }
   )
   const merges = merged
-    .map(({ number, title, pull_request: pull }) => {
+    .map(({ number, title, user, pull_request: pull }) => {
+      const base = { number, title, mergedAt: pull.merged_at }
+      if (user?.login === DEPENDENCY_BOT) return { ...base, areas: [] }
       const areas = areasOf(pagesOf(gh, `${API}/pulls/${number}/files`))
-      const base = { number, title, mergedAt: pull.merged_at, areas }
-      if (areas.length === 0) return base
-      return { ...base, record: recordOf(pagesOf(gh, `${API}/issues/${number}/comments`), maintainer) }
+      if (areas.length === 0) return { ...base, areas }
+      const comments = pagesOf(gh, `${API}/issues/${number}/comments`)
+      return { ...base, areas, record: recordOf(comments, maintainer) }
     })
     .sort((a, b) => a.mergedAt.localeCompare(b.mergedAt))
   const qualifying = merges.filter(({ areas }) => areas.length > 0)
@@ -173,20 +205,26 @@ const flagOf = ({ state, missing, url }) => {
   return ''
 }
 
+const rowOf = ({ number, mergedAt, title, areas }) =>
+  `  #${number}  ${mergedAt.slice(0, 10)}  ${title}  (${areas.join(', ')})`
+
 export function render({ owed, recorded, outOfScope, totals }) {
   const lines = [`Override merges that owe a catch-up review: ${owed.length}`]
-  for (const { number, mergedAt, title, areas, record } of owed) {
-    lines.push(
-      `  #${number}  ${mergedAt.slice(0, 10)}  ${title}  (${areas.join(', ')})${flagOf(record)}`
-    )
-  }
+  for (const merge of owed) lines.push(`${rowOf(merge)}${flagOf(merge.record)}`)
   lines.push(`Reviewed: ${recorded.length}`)
+  for (const merge of recorded) lines.push(`${rowOf(merge)}  [run ${merge.record.numbers.run}]`)
   if (recorded.length > 0) {
     const each = (field) => SLOTS.map((slot) => `${totals[field][slot]} ${slot}`).join(', ')
+    const runs = totals.runs.map(
+      ({ run, merges, filed }) =>
+        `${run} (${merges} ${merges === 1 ? 'merge' : 'merges'}, ${filed} filed)`
+    )
     lines.push(
+      `  runs: ${runs.join(', ')}`,
       `  reviewers: ${each('reviewers')}`,
       `  blocking candidates: ${each('blocking')}`,
       `  of those reproduced: ${each('confirmed')}`,
+      `  reproduced by that reviewer alone: ${each('alone')}`,
       `  other candidates: ${each('other')}`,
       `  defects reproduced: ${totals.reproduced}, filed: ${totals.filed}, reported privately: ${totals.private}`,
       `  cost: ${withUnknown(totals.tokens, 'tokens')}, ${withUnknown(totals.minutes, 'minutes')}`

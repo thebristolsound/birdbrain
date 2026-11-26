@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { spawnSync } from 'child_process'
+import { readFileSync } from 'fs'
 import { resolve } from 'path'
 import { type GhStub, makeGhStub } from './helpers/ghStub'
 import {
@@ -28,9 +29,11 @@ const MAINTAINER = 'maintainer'
 const DISCLOSURE = '> <sub>**Written by a-model via A Harness on behalf of Matt.**</sub>'
 
 const NUMBERS = {
+  run: '2026-11-24',
   reviewers: { claude: 1, codex: 1, control: 0 },
   blocking: { claude: 1, codex: 0, control: 0 },
   confirmed: { claude: 1, codex: 0, control: 0 },
+  alone: { claude: 1, codex: 0, control: 0 },
   other: { claude: 4, codex: 0, control: 0 },
   reproduced: 1,
   filed: 1,
@@ -56,9 +59,10 @@ const comment = (body: string, login = MAINTAINER, id = 1) => ({
 
 const file = (filename: string, previous_filename?: string) => ({ filename, previous_filename })
 
-const mergedIssue = (number: number, mergedAt: string | null) => ({
+const mergedIssue = (number: number, mergedAt: string | null, login = MAINTAINER) => ({
   number,
   title: `change ${number}`,
+  user: { login },
   pull_request: { merged_at: mergedAt }
 })
 
@@ -135,9 +139,28 @@ describe('numbersOf', () => {
     ['a count written as text', recordBody({ ...NUMBERS, filed: '1' })],
     ['tokens left out', recordBody({ ...NUMBERS, tokens: undefined })],
     ['minutes left out', recordBody({ ...NUMBERS, minutes: undefined })],
-    ['a fractional token count', recordBody({ ...NUMBERS, tokens: 1.5 })]
+    ['a fractional token count', recordBody({ ...NUMBERS, tokens: 1.5 })],
+    ['a token count of zero', recordBody({ ...NUMBERS, tokens: 0 })],
+    ['a longest review of zero minutes', recordBody({ ...NUMBERS, minutes: 0 })],
+    ['no run date', recordBody({ ...NUMBERS, run: undefined })],
+    ['a run date that is not a date', recordBody({ ...NUMBERS, run: 'last night' })],
+    ['no count of defects one reviewer alone raised', recordBody({ ...NUMBERS, alone: undefined })],
+    [
+      'more reproduced candidates than blocking ones',
+      recordBody({ ...NUMBERS, confirmed: { claude: 2, codex: 0, control: 0 } })
+    ],
+    [
+      'more defects raised alone than reproduced',
+      recordBody({ ...NUMBERS, alone: { claude: 1, codex: 1, control: 0 } })
+    ]
   ])('refuses %s', (_name, body) => {
     expect(numbersOf(body)).toBeNull()
+  })
+
+  it('reads the record template the skill gives', () => {
+    const skill = readFileSync(resolve(SCRIPT, '..', '..', 'SKILL.md'), 'utf8')
+    const template = /```markdown\n(Catch-up record.*?)```/s.exec(skill)?.[1] ?? ''
+    expect(recordOf([comment(template)], MAINTAINER).state).toBe('recorded')
   })
 })
 
@@ -148,7 +171,7 @@ describe('firstLineOf', () => {
     )
   })
 
-  it('skips the older two-line alert', () => {
+  it('skips the two-line alert form', () => {
     const body = '> [!NOTE]\n> Written by a-model on behalf of Matt.\n\nCatch-up record: x'
     expect(firstLineOf(body)).toBe('Catch-up record: x')
   })
@@ -237,9 +260,11 @@ describe('totalsOf', () => {
     const recorded = [NUMBERS, unknown].map((numbers) => ({ record: { numbers } }))
     expect(totalsOf(recorded)).toEqual({
       merges: 2,
+      runs: [{ run: '2026-11-24', merges: 2, filed: 2 }],
       reviewers: { claude: 2, codex: 2, control: 0 },
       blocking: { claude: 2, codex: 0, control: 0 },
       confirmed: { claude: 2, codex: 0, control: 0 },
+      alone: { claude: 2, codex: 0, control: 0 },
       other: { claude: 8, codex: 0, control: 0 },
       reproduced: 2,
       filed: 2,
@@ -247,6 +272,15 @@ describe('totalsOf', () => {
       tokens: { sum: 250000, unknown: 1 },
       minutes: { sum: 17, unknown: 1 }
     })
+  })
+
+  it('groups the records by run, oldest run first', () => {
+    const later = { ...NUMBERS, run: '2026-12-02', filed: 0 }
+    const recorded = [later, NUMBERS, later].map((numbers) => ({ record: { numbers } }))
+    expect(totalsOf(recorded).runs).toEqual([
+      { run: '2026-11-24', merges: 1, filed: 1 },
+      { run: '2026-12-02', merges: 2, filed: 0 }
+    ])
   })
 
   it('sums nothing to zero with nothing unknown', () => {
@@ -307,6 +341,22 @@ describe('collect', () => {
     expect(report.totals).toMatchObject({ merges: 0, reproduced: 0 })
   })
 
+  it('puts a dependency update outside the scope without reading its files', () => {
+    const table = routes()
+    table[`${LIST}&page=1`] = [mergedIssue(60, '2026-11-20T00:00:00Z', 'dependabot[bot]')]
+    const { gh, calls } = ghOf(table)
+    const report = collect(gh)
+    expect(report.outOfScope.map(({ number }: { number: number }) => number)).toEqual([60])
+    expect(report.owed).toEqual([])
+    expect(calls.some((call) => call.includes('/60/'))).toBe(false)
+  })
+
+  it('fails on a pull request that came back with no merge date field', () => {
+    const table = routes()
+    table[`${LIST}&page=1`] = [{ number: 70, title: 'change 70', pull_request: {} }]
+    expect(() => collect(ghOf(table).gh)).toThrow(/#70 has no merge date field/)
+  })
+
   it('reads a second page when the first is full', () => {
     const table = routes()
     table[commentsOf(10)] = Array.from({ length: 100 }, () => comment('Noise.'))
@@ -345,9 +395,12 @@ describe('render', () => {
       'Override merges that owe a catch-up review: 1',
       '  #30  2026-11-19  change 30  (src/, extension/)  [record unreadable: https://example.test/comment-9]',
       'Reviewed: 1',
+      '  #10  2026-11-11  change 10  (src/)  [run 2026-11-24]',
+      '  runs: 2026-11-24 (1 merge, 1 filed)',
       '  reviewers: 1 claude, 1 codex, 0 control',
       '  blocking candidates: 1 claude, 0 codex, 0 control',
       '  of those reproduced: 1 claude, 0 codex, 0 control',
+      '  reproduced by that reviewer alone: 1 claude, 0 codex, 0 control',
       '  other candidates: 4 claude, 0 codex, 0 control',
       '  defects reproduced: 1, filed: 1, reported privately: 0',
       '  cost: 250,000 tokens, 0 minutes (1 unknown)',

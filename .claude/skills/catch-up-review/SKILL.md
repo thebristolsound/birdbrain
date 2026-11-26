@@ -7,13 +7,13 @@ disable-model-invocation: true
 # catch-up-review
 
 An **override merge** is a pull request merged under the maintainer's `break-glass` label, so
-the review fleet never finished on it (ADR-0057). This skill finds shipped defects in override
-merges. It runs when the maintainer starts it, normally before a release; nothing schedules it
-and it blocks nothing.
+it merged without a passing review from the review fleet (ADR-0057). This skill finds shipped
+defects in override merges. It runs when the maintainer starts it, normally before a release;
+nothing schedules it and it blocks nothing.
 
 - **Qualifying.** An override merge owes a review when it changed `src/`, `extension/`,
-  `.github/workflows/` or `.github/scripts/`. Documents, tests, tooling and Dependabot merges
-  are outside the scope.
+  `.github/workflows/` or `.github/scripts/`. Documents, tests, tooling, scripts kept
+  elsewhere, dependency files and every Dependabot merge are outside the scope.
 - **Catch-up record.** The comment on the merged pull request that marks it reviewed. Its
   first line and its numbers block are read back by `scripts/debt.mjs`.
 - **Candidate.** A reviewer's finding before anyone has checked it. Write "review finding" or
@@ -27,15 +27,21 @@ node "${CLAUDE_SKILL_DIR}/scripts/debt.mjs"
 
 Take every merge it lists, or the numbers the maintainer named. For each, read the squash
 merge commit with `gh pr view <n> --json mergeCommit`. Tell the maintainer the batch and its
-reviewer count, with the token cost per Claude reviewer that the script's totals give, and
-wait for their go: a run spends.
+reviewer count, with what the reviews so far cost from the script's `reviewers` and `cost`
+lines, and wait for their go: a run spends.
 
 Done when the maintainer has confirmed the batch and you hold a merge commit for each merge.
+Note today's date: it is this run's date in every record the run posts.
 
 ## 2. Make the shared checkout
 
-Create one scratch worktree at `origin/main`, the way "Creating a scratch tree" in the
-`teardown` skill says. Every reviewer reads it and none writes to it.
+Run `git fetch origin main` first: the reviewers may not fetch, and they read each merge
+commit from the local object store. Then create one scratch worktree at `origin/main`, the way
+"Creating a scratch tree" in the `teardown` skill says. Every reviewer reads it and none
+writes to it.
+
+Done when `git cat-file -e <merge commit>^{commit}` succeeds in the scratch tree for every
+merge in the batch.
 
 ## 3. Start the reviewers
 
@@ -56,19 +62,29 @@ A reviewer that returns no report is started once more. Done when every merge ha
 the brief's shape from at least one Claude reviewer and one Codex reviewer. A merge without
 both stays owed: leave it out of the steps below and say so in the run report.
 
-## 4. Add what the fleet left open
+## 4. Add what the fleet reported
 
-Read the fleet's last report on each merge: the last comment on the pull request that starts
-`**Review fleet:`. A Claude `BLOCKING` finding there with no Codex ruling, or a Codex P0 or P1
-finding whose Claude ruling is `owed` or `unclear`, joins that merge's candidates under the
-family that raised it.
+Read the fleet's last report on each merge: the last comment that starts `**Review fleet:`
+among those the machine account `birdbrain-agent` wrote. A comment in that shape from any
+other account is not a fleet report. Two kinds of finding there join that merge's blocking
+candidates:
+
+- a Claude `BLOCKING` finding, unless its Codex ruling is `REFUTED`;
+- a Codex P0 or P1 finding, unless its Claude ruling is `REFUTED`.
+
+That takes in the findings the other family confirmed, which the maintainer merged over, and
+the ones no one ruled on. A fleet finding counts under the family that raised it, and a
+Claude one counts in the `claude` slot, never `control`. When a reviewer in step 3 raised the
+same defect, it is one candidate.
 
 ## 5. Reproduce
 
 Start once every reviewer has reported, because the checkout is shared. Ready the scratch tree
-with `scripts/setup-worktree.sh`. For each blocking candidate whose status on current `main`
-is `present`, write the smallest test that fails because of the defect and run it with
-`pnpm test <path>`.
+with `scripts/setup-worktree.sh`. Write the smallest test that fails because of the defect,
+and run it with `pnpm test <path>`, for each blocking candidate that is one of these:
+
+- a reviewer's candidate whose status on current `main` is `present` or `changed, unclear`;
+- a candidate from the fleet's report, which carries no status.
 
 A candidate is **reproduced** when its test fails for the reason the candidate gives. A test
 that fails for another reason is a broken test: fix it and run it again. Keep each failing
@@ -76,7 +92,8 @@ test's text for step 6, then delete the test files so the tree is clean.
 
 A candidate no unit test can reach, such as one that needs the running app, is **unverified**:
 it goes in the run report and nowhere else. A candidate already `fixed` on `main` is counted
-and dropped.
+and dropped. So is a `changed, unclear` or fleet candidate whose test passes for the reason
+that later work removed the defect.
 
 Done when every blocking candidate is reproduced, unverified or dropped, and
 `git status --porcelain` in the scratch tree prints nothing.
@@ -93,18 +110,21 @@ users and list the rest in the run report.
 - Say why the defect was kept out of the change that carried it: the change had merged before
   this review read it.
 
-**A defect that exposes a credential is reported privately.** The repository is public. Tell
-the maintainer in the session, write nothing about it in an issue, a comment or the record,
-and count it as `private` in the record's numbers.
+**A defect that exposes a credential is reported privately, and its merge gets no record
+yet.** The repository is public, and a record that counts a private defect would point at the
+one merged change that holds the exposure. Tell the maintainer in the session, and write
+nothing about the defect in an issue or a comment. Skip step 7 for that merge: it stays in the
+owed list. Post its record, counting the defect as `private`, only after the maintainer says
+the credential is rotated and the defect is fixed.
 
 ## 7. Post the record
 
 Write the record to a file in this shape, with this merge's own sentences and numbers, lint it
-with the `post-comment` skill's `scripts/check.sh`, and post it on the merged pull request. Posting under the maintainer's
-account puts the disclosure line first.
+with the `post-comment` skill's `scripts/check.sh`, and post it on the merged pull request.
+Posting under the maintainer's account puts the disclosure first.
 
 ```markdown
-Catch-up record: two reviewers read this change after it merged, because it merged under the maintainer's override before the automated review finished.
+Catch-up record: two reviewers read this change after it merged, because it merged under the maintainer's override before the automated review had passed it.
 
 - **Reviewers:** One Claude reviewer and one Codex reviewer, working apart. No second Claude reviewer ran as a control.
 - **Found:** One candidate defect that would block a merge, and four smaller notes. Nobody checked the smaller notes.
@@ -116,23 +136,28 @@ Catch-up record: two reviewers read this change after it merged, because it merg
 
 Merge commit `<merge commit>`. Claude subagent tokens: 250,000. Longest review: 17 minutes.
 
-<!-- catch-up-review:record {"v":1,"reviewers":{"claude":1,"codex":1,"control":0},"blocking":{"claude":1,"codex":0,"control":0},"confirmed":{"claude":1,"codex":0,"control":0},"other":{"claude":4,"codex":0,"control":0},"reproduced":1,"filed":1,"private":0,"tokens":250000,"minutes":17} -->
+<!-- catch-up-review:record {"v":1,"run":"2026-01-31","reviewers":{"claude":1,"codex":1,"control":0},"blocking":{"claude":1,"codex":0,"control":0},"confirmed":{"claude":1,"codex":0,"control":0},"alone":{"claude":1,"codex":0,"control":0},"other":{"claude":4,"codex":0,"control":0},"reproduced":1,"filed":1,"private":0,"tokens":250000,"minutes":17} -->
 
 </details>
 ```
 
-The numbers block holds, for each of `claude`, `codex` and `control`: reviewers that reported,
-blocking candidates, how many of those reproduced (`confirmed`), and other candidates. Then
-for the merge: distinct defects reproduced, issues filed, defects reported privately, Claude
-subagent tokens, and minutes for the longest review. Every field is required. Write `null` for
-tokens or minutes you could not measure; never write a guess or a zero. A record that counts
-no Claude reviewer or no Codex reviewer does not clear the merge: the script lists it as owed.
+The numbers block opens with `run`, the date the run started as `YYYY-MM-DD`: records with
+the same date are one run. It then holds, for each of `claude`, `codex` and `control`:
+reviewers that reported, blocking candidates, how many of those reproduced (`confirmed`), how
+many reproduced defects no other reviewer raised (`alone`), and other candidates. Then for the
+merge: distinct defects reproduced, issues filed, defects reported privately, Claude subagent
+tokens, and minutes for the longest review. Every field is required. Write `null` for tokens
+or minutes you could not measure; never write a guess or a zero.
+
+The script refuses a record whose counts contradict each other, and lists the merge as owed
+with the record marked unreadable. A record that counts no Claude reviewer or no Codex
+reviewer does not clear the merge either.
 
 The record carries counts only. Unchecked candidates are not listed, because the record is
 published under the maintainer's name. It never contains `@claude` or `@codex`: either
 mention in a comment from the maintainer's account starts a model run.
 
-Done when `scripts/debt.mjs` lists the merge under `Reviewed`.
+Done when `scripts/debt.mjs` prints the merge's number in the rows under `Reviewed`.
 
 ## 8. Report and clean up
 
@@ -143,14 +168,16 @@ skill.
 
 ## Keep or retire
 
-The job is kept only while it earns its upkeep (ADR-0029). Review it after three runs have
-left records.
+The job is kept only while it earns its upkeep (ADR-0029). Review it once the script's `runs`
+line names three runs.
 
 - **Keep it** if the three runs filed at least two defects the maintainer chose to fix.
-- **Retire it** if two runs in a row file nothing. Retiring means deleting this directory and
-  `tests/catchUpReviewDebt.test.ts`.
-- **Drop a reviewer** from the totals' `of those reproduced` line: the control, if Codex
-  reproduces defects no Claude reviewer raised; Codex, if the control does as well.
+- **Retire it** if two runs next to each other on the `runs` line show `0 filed`. Retiring
+  means deleting this directory and `tests/catchUpReviewDebt.test.ts`.
+- **Drop a reviewer** from the `reproduced by that reviewer alone` line. Drop Codex if the
+  control's count is above zero and at least Codex's: a second Claude pass found as much.
+  Otherwise drop the control if Codex's count is above zero: the second family found what no
+  Claude reviewer raised.
 
 A schedule, a release that refuses while reviews are owed, or a count in the weekly health
 report each needs its own ADR first (ADR-0029, ADR-0058).

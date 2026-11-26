@@ -105,7 +105,7 @@ jobs:
             printf '%s (#%s)' "$title" "$PR" > "$out/subject.txt"
             awk 'NF {print; exit}' "$out/body.md" > "$out/body.txt"
           else
-            .claude/skills/post-pr-body/scripts/check.sh --any-author "$out/body.md" \
+            .claude/skills/post-pr-body/scripts/check.sh --any-author --posted "$out/body.md" \
               || refuse "the description does not pass the pull request body check"
             node .claude/skills/merge-pr/scripts/compose.mjs "$out/body.md" "$title" "$PR" "$out" >/dev/null \
               || refuse "the description has no Summary section to build the merge message from"

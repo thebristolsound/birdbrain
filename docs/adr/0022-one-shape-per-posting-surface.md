@@ -59,6 +59,18 @@ original rule kept it off the PR entirely, after #1125 posted it in the open as 
 comment); the file-group bullets, the Evidence impact fields and the preflight step list are
 collapsed too, and `scripts/preflight.mjs` writes the block that way.
 
+**Amended 2026-11-26.** The PR body takes the layout of the maintainer's work template, which
+the maintainer asked for in an interactive session on 2026-11-26. After `Closes #N` comes a
+Merge risk notice whose alert colour is its level, then Summary (with an optional collapsed
+Mermaid diagram the squash commit leaves out), Proof (one row per acceptance criterion at the
+head commit), Screenshots, an optional Not done, Blast radius (what merging ships, and how to
+back it out), optional Before merge and After merge checkboxes, Changes (file groups and an
+optional decisions table), Evidence-affecting and Verification as before. The 40-line cap
+counts non-blank lines. The maintainer also asked, in the same session, that screenshots be
+enforced in the body because some had been posted only in PR comments: every body now declares
+its visual effect, images appear only in the Screenshots section, and both merge paths refuse a
+body whose screenshots are not GitHub attachments in that section.
+
 The PR body shape is the same for humans and agents: `.github/pull_request_template.md` is a
 copy of the skill's template. The one difference is the attribution line: an agent ends with
 it, a human omits it, and the `--any-author` mode of the linter (what `merge-pr` runs under

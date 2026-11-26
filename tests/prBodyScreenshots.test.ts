@@ -7,13 +7,16 @@ import { spawnSync } from 'child_process'
 import { lintBody } from '../.claude/skills/post-pr-body/scripts/lint-body.mjs'
 
 const scripts = resolve(__dirname, '../.claude/skills/post-pr-body/scripts')
-const legacyBody = readFileSync(join(scripts, 'fixtures/pass-filled.md'), 'utf8')
+const filled = readFileSync(join(scripts, 'fixtures/pass-filled.md'), 'utf8')
+const SHOTS = /(## Screenshots\n\n)[\s\S]*?\n\n(?=## Blast radius)/
+// The passing body with its Screenshots section emptied: no visual decision at all.
+const undeclared = filled.replace(SHOTS, '$1')
 const noVisualChange = '- Visual changes: No. Changes only the database query.'
 const attachment = (id: string) => `https://github.com/user-attachments/assets/${id}`
 const rows = (before: string, after: string, screen = 'Signals') =>
   `- Before, ${screen}: ![before](${before})\n- After, ${screen}: ![after](${after})`
-const bodyWith = (lines: string) => legacyBody.replace('</details>', `${lines}\n\n</details>`)
-const lint = (lines: string) => lintBody(bodyWith(lines), { screenshots: true })
+const bodyWith = (lines: string) => filled.replace(SHOTS, `$1${lines}\n\n`)
+const lint = (lines: string, posted = false) => lintBody(bodyWith(lines), { posted })
 
 let dir: string
 
@@ -24,11 +27,9 @@ beforeEach(() => {
 afterEach(() => rmSync(dir, { recursive: true, force: true }))
 
 describe('PR screenshot evidence', () => {
-  it('requires an explicit visual decision for authoring but preserves legacy linting', () => {
-    expect(lintBody(legacyBody)).toEqual([])
-    expect(lintBody(legacyBody, { screenshots: true })).toEqual([
-      expect.stringContaining('Visual changes:')
-    ])
+  it('requires an explicit visual decision on every body', () => {
+    expect(lintBody(filled)).toEqual([])
+    expect(lintBody(undeclared)).toEqual([expect.stringContaining('Visual changes:')])
     expect(lint(noVisualChange)).toEqual([])
     expect(lint('- Visual changes: No.')).toEqual([expect.stringContaining('followed by a reason')])
   })
@@ -58,6 +59,10 @@ describe('PR screenshot evidence', () => {
     writeFileSync(before, png)
     writeFileSync(after, png)
     expect(lint(`- Visual changes: Yes\n${rows(`<${before}>`, `<${after}>`)}`)).toEqual([])
+    expect(lint(`- Visual changes: Yes\n${rows(before, after)}`, true)).toEqual([
+      expect.stringContaining('upload the screenshot'),
+      expect.stringContaining('upload the screenshot')
+    ])
     rmSync(after)
     expect(lint(`- Visual changes: Yes\n${rows(before, after)}`)).toEqual([
       expect.stringContaining('cannot be read')
@@ -74,6 +79,17 @@ describe('PR screenshot evidence', () => {
     [attachment('same'), attachment('same')]
   ])('refuses unsupported or reused screenshot references: %s', (before, after) => {
     expect(lint(`- Visual changes: Yes\n${rows(before, after)}`)).not.toEqual([])
+  })
+
+  it('refuses screenshots outside the Screenshots section', () => {
+    const pair = rows(attachment('before'), attachment('after'))
+    const body = undeclared.replace(
+      '## Blast radius',
+      `${noVisualChange}\n\n## Not done\n\n${pair}\n\n## Blast radius`
+    )
+    expect(lintBody(body)).toEqual([
+      expect.stringContaining('images go in the Screenshots section')
+    ])
   })
 
   it('refuses handoffs, hidden screenshots and mismatched screen names', () => {
@@ -116,8 +132,8 @@ describe('PR body hook routing', () => {
     'gh api repos/o/r/pulls --input body.json',
     'gh api repos/o/r/pulls/12 -X PATCH --input body.json'
   ])('enforces the visual decision on %s', (command) => {
-    writeFileSync(join(dir, 'body.md'), legacyBody)
-    writeFileSync(join(dir, 'body.json'), JSON.stringify({ body: legacyBody }))
+    writeFileSync(join(dir, 'body.md'), undeclared)
+    writeFileSync(join(dir, 'body.json'), JSON.stringify({ body: undeclared }))
     expect(check(command).status).toBe(2)
     const body = bodyWith(noVisualChange)
     writeFileSync(join(dir, 'body.md'), body)
@@ -135,17 +151,23 @@ describe('PR body hook routing', () => {
     expect(check('gh pr create --body-file body.md').status).toBe(2)
   })
 
-  it('preserves reads, metadata edits and unbound sessions; binds dispatch', () => {
-    writeFileSync(join(dir, 'body.md'), legacyBody)
+  it('passes reads, metadata edits and unbound sessions; binds dispatch and the merge check', () => {
+    writeFileSync(join(dir, 'body.md'), undeclared)
     expect(check('gh pr view 12').status).toBe(0)
     expect(check('gh pr edit 12 --add-label agent-authored').status).toBe(0)
     expect(check('gh pr create --body-file body.md', '').status).toBe(0)
     expect(check('gh pr create --body-file body.md', '', '1').status).toBe(2)
     expect(
       spawnSync('bash', [join(scripts, 'check.sh'), '--any-author', join(dir, 'body.md')]).status
-    ).toBe(0)
-    expect(
-      spawnSync('bash', [join(scripts, 'check.sh'), '--screenshots', join(dir, 'body.md')]).status
     ).toBe(1)
+    writeFileSync(join(dir, 'body.md'), filled)
+    expect(
+      spawnSync('bash', [
+        join(scripts, 'check.sh'),
+        '--any-author',
+        '--posted',
+        join(dir, 'body.md')
+      ]).status
+    ).toBe(0)
   })
 })

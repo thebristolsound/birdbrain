@@ -14,6 +14,7 @@ node "$here/compose.mjs" "$fx/pass-filled.md" "feat(x): a thing" 12 "$out" >/dev
 [ -s "$out/body.txt" ] && ok "body is not empty" || bad "body is not empty"
 ! grep -q '^## ' "$out/body.txt" && ok "body carries no headings" || bad "body carries no headings"
 ! grep -q 'Pull request description generated' "$out/body.txt" && ok "body carries no attribution line" || bad "attribution line leaked"
+! grep -qi 'mermaid\|<details' "$out/body.txt" && ok "body carries no Diagram block" || bad "Diagram block leaked"
 ! grep -q 'preflight' "$out/body.txt" && ok "body carries no Verification text" || bad "Verification text leaked"
 [ -z "$(awk 'length > 72' "$out/body.txt")" ] && ok "body wraps at 72" || bad "body line over 72"
 

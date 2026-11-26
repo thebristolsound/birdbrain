@@ -26,20 +26,59 @@ review:
 
 ## The shape
 
-Five sections in a fixed order, a hard cap, and one closing line:
+The sections follow a fixed order, three of them optional, under a hard cap and one closing
+line. The layout follows the maintainer's work template, adapted to this repository's gates:
 
 1. Line 1 is `Closes #N` (or `Closes #N, #M`). A PR with no issue writes
    `No issue: <one clause>` instead.
-2. `## Summary`: at most 5 plain sentences. What changed and why, and one sentence naming any
-   handoff (for example, that the dispatch step opens and labels the PR). The dispatcher copies
-   this section into the squash-merge commit body, so it is also the permanent record.
-3. `## Changes`: one `<details>` block holding one bullet per file group, followed by the
-   visual-change block below. No prose or test output outside the blocks.
-4. `## Evidence-affecting`: `Yes` or `No` on its own line. When Yes, a `<details>` block holding
+2. The Merge risk notice, between line 1 and the Summary: a GitHub alert whose colour is the
+   level, then the level in bold and one plain sentence on what merging ships.
+
+   ```markdown
+   > [!WARNING]
+   > **Merge risk: Medium.** The next desktop app release changes how the capture list sorts.
+   ```
+
+   The author sets the level; no script prints it. Use the highest that applies:
+   - **High** (`[!CAUTION]`): the change is evidence-affecting, or it changes a merge gate,
+     a required check, release signing or the update channel.
+   - **Medium** (`[!WARNING]`): it changes what a user of the app, the extension or the docs
+     site sees or does.
+   - **Low** (`[!NOTE]`): it changes code paths users reach without changing what they see,
+     or repository tooling that no gate depends on.
+   - **Minimal** (`[!TIP]`): it changes only tests, comments, or docs outside the docs site.
+3. `## Summary`: at most 5 plain sentences. What changed and why, and one sentence naming any
+   handoff (for example, that the dispatch step opens and labels the PR). The merge copies
+   this section into the squash-merge commit body, so it is also the permanent record. A
+   collapsed `Diagram` block may follow the sentences: when the change alters a flow, a call
+   sequence, a state machine or a dependency, it holds a Mermaid diagram of the state after
+   the merge, at most about 15 nodes, every edge labelled, with what this PR changed marked by
+   the template's `changed` class and no fill colours. The commit stops at that block.
+4. `## Proof`: one `<details>` block holding `Head: <sha>. Merge gate: <link or pending>.` and
+   the `| Acceptance criterion | Proof | Result |` table, one row per acceptance criterion of
+   the closed issue (or per Summary claim when there is none): the test, check or run that
+   proves it at head, and its result. A criterion nothing proves is a Not done bullet, never a
+   row with an empty or hopeful result. A push that moves the head updates the line and every
+   row it touches. Command output stays in Verification.
+5. `## Screenshots`: the visual-change declaration and, for Yes, the before and after rows,
+   as "Screenshots for visual changes" below states. Images appear here and nowhere else in
+   the body.
+6. `## Not done` (optional): one bullet per gap, skipped test, or review finding not fixed here.
+7. `## Blast radius`: two bullets, `- On merge: <what ships>` (the next desktop app release,
+   the extension, the docs site, or repository tooling only) and
+   `- If wrong: <what breaks, how to back it out>`.
+8. `## Before merge` and `## After merge` (optional): one `- [ ] <step, owner>` checkbox per
+   step beyond review and a green merge gate, or owed once the PR merges.
+9. `## Changes`: a `<details>` block holding the `| Area | What changed | Why |` table (or one
+   bullet per file group), and optionally a second `Decisions` block holding the
+   `| Decision | Grade | Source |` table, one row per choice a reviewer could question,
+   graded "in production here", "vendor-documented pattern" or "own judgment". No prose or
+   test output outside the blocks.
+10. `## Evidence-affecting`: `Yes` or `No` on its own line. When Yes, a `<details>` block holding
    the `### Evidence impact` subsection with the four fields from the template. The definition
    and the tiered path list are in `CONTEXT.md` and
    `docs/specs/2026-07-31-evidence-affecting-paths-assessment.md`.
-5. `## Verification`: the block `pnpm preflight` wrote to `.preflight/verification.md`,
+11. `## Verification`: the block `pnpm preflight` wrote to `.preflight/verification.md`,
    pasted verbatim including its `<!-- preflight ... -->` marker, generated at the head sha
    under review (ADR-0018). When the new head only merged the base in and the diff against the
    base is byte-identical, `pnpm preflight --carry` writes the earlier block for the new head,
@@ -51,7 +90,7 @@ Five sections in a fixed order, a hard cap, and one closing line:
    locally (dependabot, a human author) gets its block from
    `scripts/verification-from-ci.sh <n>`, which reads the required checks at head and marks
    the block `source=ci`; it refuses while any of them is not green.
-6. The last authored line is the attribution: exactly
+12. The last authored line is the attribution: exactly
    `Pull request description generated by Claude Code`, or the maintainer's global byline
    `Created with <model name> in <harness> (<app>)`, where ` in <harness>` and ` (<app>)`
    drop out when unknown. A `claude[bot]` platform footer appended after it is tolerated: the
@@ -59,12 +98,11 @@ Five sections in a fixed order, a hard cap, and one closing line:
    `check.sh --any-author` (what `merge-pr` runs under `gh`) accepts both forms, and still
    wants the line last when present.
 
-Everything above `## Verification` fits in 40 top-layer lines; collapsed lines do not count.
-The body has no other `##` sections: no acceptance-criteria walkthroughs and no reviewer notes.
-The visual-change declaration and evidence appear in the block below. Fenced
-blocks appear only inside a `<details>` block. Claims name only actions you took and states
-you observed after taking them; a label another actor applies or a check CI will run is named
-as a handoff, never asserted.
+Everything above `## Verification` fits in 40 non-blank top-layer lines; collapsed lines do not
+count. The body has no other `##` sections: no acceptance-criteria walkthroughs and no reviewer
+notes. Fenced blocks appear only inside a `<details>` block. Claims name only actions you took
+and states you observed after taking them; a label another actor applies or a check CI will
+run is named as a handoff, never asserted.
 
 Every sentence is one the review fleet can settle from its inputs: the diff and the repository
 at head, and the issues, pull requests, comments and reviews of this repository that the body
@@ -76,9 +114,9 @@ comment, or leave it out. No linter checks this: read each sentence for it befor
 
 ## Screenshots for visual changes
 
-A new agent-written body declares its visual effect in a second `<details>` block under
-`## Changes`. Use `- Visual changes: Yes` with the screenshot rows below, or
-`- Visual changes: No. <reason>` explaining why the rendered result stays the same. The
+Every body declares its visual effect in `## Screenshots`. Use `- Visual changes: Yes` with
+the screenshot rows below, or `- Visual changes: No. <reason>` explaining why the rendered
+result stays the same. The
 reviewer checks this decision against the diff. A disappearing bar, a new error notice and
 a changed confirmation value are visual changes even when layout stays the same.
 
@@ -102,19 +140,15 @@ handing its body to the dispatcher. A change with no visual effect carries none.
      session. If capture tooling is unavailable, follow step 4.
    Seed error paths and unusual states with test data or existing test helpers, then capture
    the running UI. A state that needs a forced error still needs its screenshot pair.
-2. **Reference.** In the body file, reference each PNG by its absolute path in a second
-   `<details>` block inside `## Changes`, after the file groups, one bullet per image and one
-   before and after pair per changed screen:
+2. **Reference.** In the body file, reference each PNG by its absolute path under
+   `## Screenshots`, one bullet per image and one before and after pair per changed screen:
 
    ```markdown
-   <details>
-   <summary>Screenshots, before and after</summary>
+   ## Screenshots
 
    - Visual changes: Yes
    - Before, capture viewer: ![before](/tmp/birdbrain-shots/fix-viewer/viewer-before.png)
    - After, capture viewer: ![after](/tmp/birdbrain-shots/fix-viewer/viewer-after.png)
-
-   </details>
    ```
 
 3. **Upload.** One route serves opening a PR and every later update, under the maintainer's
@@ -149,18 +183,20 @@ the PNG paths with its handoff, and the dispatcher runs step 3 with `agh`. A mis
 pair, including a placeholder handed to the maintainer, is a `gate` finding in the reviewer's
 "Screenshots" control (`birdbrain-reviewer`).
 
-Run `scripts/check.sh --screenshots <body-file>` before the authoring handoff. This requires
-the declaration and checks a Yes decision for complete Before/After rows with matching screen
-names. Each image must be a readable local PNG at an absolute path or a GitHub attachment;
-the local form allows capture before the PR exists. The posted body must use uploaded links.
-The authoring hook enables this check for bound agent body writes. Direct checks without
-`--screenshots`, including existing merge-time `--any-author` calls, keep accepting legacy
-bodies so this authoring change does not retroactively block unrelated open PRs.
+The upload comment from step 3 is only the route to an attachment link. Screenshots that sit
+in a comment and not in the body do not count: the merge refuses the PR.
+
+`scripts/check.sh <body-file>` requires the declaration on every body and checks a Yes
+decision for complete Before/After rows with matching screen names. Each image must be a
+readable local PNG at an absolute path or a GitHub attachment; the local form allows capture
+before the PR exists. Both merge paths (`merge-pr` and the `merge` label workflow) add
+`--posted`, which accepts GitHub attachment links only, so a body whose screenshots are
+missing, local, or only in a comment cannot merge.
 
 ## How to open a PR
 
 1. Write the body to a file.
-2. Run `${CLAUDE_SKILL_DIR}/scripts/check.sh --screenshots <file>` and fix the file until it exits 0.
+2. Run `${CLAUDE_SKILL_DIR}/scripts/check.sh <file>` and fix the file until it exits 0.
 3. Open with `gh pr create --draft --body-file <file> ...` (or hand the path to the
    dispatcher, which opens the PR). Never `--body`: the hook blocks it.
 
@@ -189,5 +225,4 @@ POST implicitly):
 linter in `../post-comment/` imports it, so both surfaces read the same rule.
 `scripts/test-check.sh` runs the fixtures under `scripts/fixtures/` through both paths.
 `fail-1117-walkthrough.md` is the body of PR #1117 as it shipped, kept as the example of what
-the cap and the section rule exclude; `fail-verification-open.md` is the pre-2026-09-19 shape
-with the preflight block in the open.
+the cap and the section rule exclude. Every other fixture is `pass-filled.md` with one change.

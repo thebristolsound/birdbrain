@@ -41,15 +41,23 @@ The directory you start in may be another checkout on another commit.
 1. `CLAUDE.md` at the repository root, in full. Its "Code Review Rules" section binds you.
 2. `.github/scripts/review-fleet/prompts/correctness.md`, `claims.md`, `contract.md` and
    `tests.md`. These are the four review passes the automated review would have run. Carry out
-   all four on this change.
+   all four on this change. Where a prompt and this brief differ on what to read, this brief
+   governs.
 3. For a change under `src/` or `extension/`: the sections of `docs/agents/architecture.md`
-   that cover the processes and directories the change touches, and the include-list rows of
-   `docs/specs/2026-07-31-evidence-affecting-paths-assessment.md` for each changed file, which
-   say whether it is a `blocking` evidence-path file. Neither document is assigned in full.
-4. For a change under `.github/`: every workflow and script the change touches, as merged and
-   in full, and `docs/adr/0057-a-two-family-review-fleet-reads-every-pr-and-gates-the-merge.md`
-   when the change touches the review fleet. Of a script a changed job runs that the change
-   does not touch, only the parts the changed code calls are assigned.
+   that cover the processes and directories the change touches, and from
+   `docs/specs/2026-07-31-evidence-affecting-paths-assessment.md` the "List format" and "Tiers"
+   sections with the include-list rows that match each changed path. List the changed paths
+   with `git diff --name-only --no-renames M^ M`, so a file moved off an evidence path still
+   matches its old row. The rest of either document is not assigned.
+4. For a change under `.github/`:
+   - every workflow and script the change touches, in full: as merged, or as it was before
+     (`git show M^:<path>`) when the change deletes it;
+   - for each job of a touched workflow that reads a secret or names an environment, every
+     script that job runs, in full, whether or not the change touches it;
+   - of a script that only other jobs run and the change does not touch, the parts the changed
+     code calls;
+   - `docs/adr/0057-a-two-family-review-fleet-reads-every-pr-and-gates-the-merge.md` when the
+     change touches the review fleet.
 
 ## How to review
 
@@ -104,14 +112,15 @@ Return the report as your final message, in this shape:
    - Failure scenario: required for BLOCKING.
    - Status on current main: as defined above.
    - Reproduction: the smallest test or command that would show the defect if someone ran it.
-3. "Unfinished source checks": reading this brief assigned that you did not do, with the
-   reason. The assigned reading is the whole diff, the items under "What to read first" within
-   the limits stated there, and the call sites of what the diff changes. Write `None` when you
-   did all of it, and leave out what this brief does not assign for this change. A trace you
-   chose to start beyond the assigned reading and did not finish is named in the finding it
-   bears on. A claim you could not check because this brief bars the material goes under
-   item 4.
+3. "Unfinished source checks": every piece of reading and every check this brief assigns that
+   you did not do, with the reason. That covers the whole diff, the items under "What to read
+   first" within the limits stated there, the pull request body, the message of `M`, an issue
+   the pull request closes or links, each changed test with the helpers it calls, and every
+   check under "How to review". Reading you could not do because an allowed command failed
+   belongs here too. Write `None` when you did all of it. Leave out a document this brief does
+   not assign for this change, and material this brief bars, which goes under item 4.
 4. "Runtime limitations": what source review could not settle, and every claim that rests on
    material this brief bars: the pull request's comments and reviews, CI results, screenshots
-   and anything that needs code to run.
+   and anything that needs code to run. A trace you started beyond the assigned reading and
+   did not finish goes here too, with what it would have settled.
 5. If nothing is BLOCKING, say so plainly and list the call sites and paths you traced.

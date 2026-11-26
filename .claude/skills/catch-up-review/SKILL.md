@@ -154,8 +154,8 @@ merge: distinct defects reproduced, issues filed, defects reported privately, Cl
 tokens, and minutes for the longest review. Every field is required. Write `null` for tokens
 or minutes you could not measure; never write a guess or a zero.
 
-The script refuses a record whose counts contradict each other, and lists the merge as owed
-with the record marked unreadable. A record that counts no Claude reviewer or no Codex
+The script refuses a record whose counts contradict each other, such as more issues filed
+than defects reproduced, and lists the merge as owed with the record marked unreadable. A record that counts no Claude reviewer or no Codex
 reviewer does not clear the merge either.
 
 The record carries counts only. Unchecked candidates are not listed, because the record is
@@ -179,10 +179,11 @@ line names three runs.
 - **Keep it** if the three runs filed at least two defects the maintainer chose to fix.
 - **Retire it** if two runs next to each other on the `runs` line show `0 filed`. Retiring
   means deleting this directory and `tests/catchUpReviewDebt.test.ts`.
-- **Drop a reviewer** from the `reproduced by that reviewer alone` line. Drop Codex if the
-  control's count is above zero and at least Codex's: a second Claude pass found as much.
-  Otherwise drop the control if Codex's count is above zero: the second family found what no
-  Claude reviewer raised.
+- **Drop a reviewer** from the `reproduced by one reviewer alone` line, which counts only the
+  merges all three reviewers read. Drop Codex if the control's count is above zero and at
+  least Codex's: a second Claude pass found as much. Otherwise drop the control if Codex's
+  count is above zero: the second family found what no Claude reviewer raised. While the line
+  counts no merge, drop neither.
 
 A schedule, a release that refuses while reviews are owed, or a count in the weekly health
 report each needs its own ADR first (ADR-0029, ADR-0058).

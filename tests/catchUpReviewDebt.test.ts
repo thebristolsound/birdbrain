@@ -150,8 +150,36 @@ describe('numbersOf', () => {
       recordBody({ ...NUMBERS, confirmed: { claude: 2, codex: 0, control: 0 } })
     ],
     [
-      'more defects raised alone than reproduced',
+      'more defects raised alone than one reviewer reproduced',
       recordBody({ ...NUMBERS, alone: { claude: 1, codex: 1, control: 0 } })
+    ],
+    ['more issues filed than defects reproduced', recordBody({ ...NUMBERS, filed: 2 })],
+    [
+      'more issues filed than the cap for one merge',
+      recordBody({
+        ...NUMBERS,
+        blocking: { claude: 3, codex: 0, control: 0 },
+        confirmed: { claude: 3, codex: 0, control: 0 },
+        reproduced: 3,
+        filed: 3
+      })
+    ],
+    [
+      'more defects reproduced than candidates reproduced',
+      recordBody({ ...NUMBERS, reproduced: 2 })
+    ],
+    [
+      'a reproduced candidate but no defect reproduced',
+      recordBody({ ...NUMBERS, reproduced: 0, filed: 0 })
+    ],
+    [
+      'more defects raised alone than defects reproduced',
+      recordBody({
+        ...NUMBERS,
+        blocking: { claude: 1, codex: 1, control: 0 },
+        confirmed: { claude: 1, codex: 1, control: 0 },
+        alone: { claude: 1, codex: 1, control: 0 }
+      })
     ]
   ])('refuses %s', (_name, body) => {
     expect(numbersOf(body)).toBeNull()
@@ -210,7 +238,7 @@ describe('recordOf', () => {
   })
 
   it('lets the last record decide', () => {
-    const later = { ...NUMBERS, filed: 2 }
+    const later = { ...NUMBERS, filed: 0 }
     const comments = [
       comment(recordBody(), MAINTAINER, 1),
       comment(recordBody(later), MAINTAINER, 2)
@@ -264,7 +292,7 @@ describe('totalsOf', () => {
       reviewers: { claude: 2, codex: 2, control: 0 },
       blocking: { claude: 2, codex: 0, control: 0 },
       confirmed: { claude: 2, codex: 0, control: 0 },
-      alone: { claude: 2, codex: 0, control: 0 },
+      matched: { merges: 0, alone: { claude: 0, codex: 0, control: 0 } },
       other: { claude: 8, codex: 0, control: 0 },
       reproduced: 2,
       filed: 2,
@@ -281,6 +309,22 @@ describe('totalsOf', () => {
       { run: '2026-11-24', merges: 1, filed: 1 },
       { run: '2026-12-02', merges: 2, filed: 0 }
     ])
+  })
+
+  it('compares sole finds only across merges all three reviewers read', () => {
+    const withControl = {
+      ...NUMBERS,
+      reviewers: { claude: 1, codex: 1, control: 1 },
+      blocking: { claude: 0, codex: 1, control: 1 },
+      confirmed: { claude: 0, codex: 1, control: 1 },
+      alone: { claude: 0, codex: 1, control: 1 },
+      reproduced: 2
+    }
+    const recorded = [NUMBERS, withControl].map((numbers) => ({ record: { numbers } }))
+    expect(totalsOf(recorded).matched).toEqual({
+      merges: 1,
+      alone: { claude: 0, codex: 1, control: 1 }
+    })
   })
 
   it('sums nothing to zero with nothing unknown', () => {
@@ -400,7 +444,7 @@ describe('render', () => {
       '  reviewers: 1 claude, 1 codex, 0 control',
       '  blocking candidates: 1 claude, 0 codex, 0 control',
       '  of those reproduced: 1 claude, 0 codex, 0 control',
-      '  reproduced by that reviewer alone: 1 claude, 0 codex, 0 control',
+      '  reproduced by one reviewer alone (0 merges all three read): 0 claude, 0 codex, 0 control',
       '  other candidates: 4 claude, 0 codex, 0 control',
       '  defects reproduced: 1, filed: 1, reported privately: 0',
       '  cost: 250,000 tokens, 0 minutes (1 unknown)',

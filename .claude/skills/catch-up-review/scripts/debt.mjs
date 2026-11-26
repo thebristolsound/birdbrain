@@ -46,6 +46,18 @@ const isCount = (value) => Number.isInteger(value) && value >= 0
 const isCostOrUnknown = (value) => value === null || (Number.isInteger(value) && value > 0)
 const perSlot = (value) => Boolean(value) && SLOTS.every((slot) => isCount(value[slot]))
 const within = (inner, outer) => SLOTS.every((slot) => inner[slot] <= outer[slot])
+const sumOf = (value) => SLOTS.reduce((total, slot) => total + value[slot], 0)
+// The skill files at most this many defects for one merge (ADR-0028).
+const FILING_CAP = 2
+
+// The counts for the whole merge agree with the counts for each reviewer: a defect is
+// reproduced only through some reviewer's candidate, and only a reproduced defect is filed.
+const totalsAgree = ({ confirmed, alone, reproduced, filed }) =>
+  reproduced <= sumOf(confirmed) &&
+  (reproduced > 0 || sumOf(confirmed) === 0) &&
+  sumOf(alone) <= reproduced &&
+  filed <= reproduced &&
+  filed <= FILING_CAP
 
 // A record's numbers, or null when the block is absent, any field is missing or malformed, or
 // the counts contradict each other. Tokens and minutes may be null, which reads as unknown and
@@ -69,6 +81,7 @@ export function numbersOf(body) {
     within(confirmed, blocking) &&
     within(alone, confirmed) &&
     [reproduced, filed, privately].every(isCount) &&
+    totalsAgree(block) &&
     [tokens, minutes].every(isCostOrUnknown)
   if (!valid) return null
   return {
@@ -116,7 +129,10 @@ export function recordOf(comments, maintainer) {
 
 const sumKnown = (values) => {
   const known = values.filter((value) => value !== null)
-  return { sum: known.reduce((total, value) => total + value, 0), unknown: values.length - known.length }
+  return {
+    sum: known.reduce((total, value) => total + value, 0),
+    unknown: values.length - known.length
+  }
 }
 
 // One entry per run, oldest first. Records that carry the same run date are one run.
@@ -127,6 +143,16 @@ const runsOf = (numbers) => {
     runs.set(run, { run, merges: merges + 1, filed: sum + filed })
   }
   return [...runs.values()].sort((a, b) => a.run.localeCompare(b.run))
+}
+
+// A reviewer's sole finds are compared only across merges every slot reviewed: on a merge
+// with no control reviewer, the control had no chance to raise what another reviewer found.
+const matchedOf = (numbers) => {
+  const matched = numbers.filter(({ reviewers }) => SLOTS.every((slot) => reviewers[slot] > 0))
+  const alone = Object.fromEntries(
+    SLOTS.map((slot) => [slot, matched.reduce((total, entry) => total + entry.alone[slot], 0)])
+  )
+  return { merges: matched.length, alone }
 }
 
 export function totalsOf(recorded) {
@@ -140,7 +166,7 @@ export function totalsOf(recorded) {
     reviewers: slots('reviewers'),
     blocking: slots('blocking'),
     confirmed: slots('confirmed'),
-    alone: slots('alone'),
+    matched: matchedOf(numbers),
     other: slots('other'),
     reproduced: count((entry) => entry.reproduced),
     filed: count((entry) => entry.filed),
@@ -215,6 +241,7 @@ export function render({ owed, recorded, outOfScope, totals }) {
   for (const merge of recorded) lines.push(`${rowOf(merge)}  [run ${merge.record.numbers.run}]`)
   if (recorded.length > 0) {
     const each = (field) => SLOTS.map((slot) => `${totals[field][slot]} ${slot}`).join(', ')
+    const alone = SLOTS.map((slot) => `${totals.matched.alone[slot]} ${slot}`).join(', ')
     const runs = totals.runs.map(
       ({ run, merges, filed }) =>
         `${run} (${merges} ${merges === 1 ? 'merge' : 'merges'}, ${filed} filed)`
@@ -224,7 +251,7 @@ export function render({ owed, recorded, outOfScope, totals }) {
       `  reviewers: ${each('reviewers')}`,
       `  blocking candidates: ${each('blocking')}`,
       `  of those reproduced: ${each('confirmed')}`,
-      `  reproduced by that reviewer alone: ${each('alone')}`,
+      `  reproduced by one reviewer alone (${totals.matched.merges} merges all three read): ${alone}`,
       `  other candidates: ${each('other')}`,
       `  defects reproduced: ${totals.reproduced}, filed: ${totals.filed}, reported privately: ${totals.private}`,
       `  cost: ${withUnknown(totals.tokens, 'tokens')}, ${withUnknown(totals.minutes, 'minutes')}`

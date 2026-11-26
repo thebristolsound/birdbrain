@@ -64,6 +64,7 @@ describe('printPdf', () => {
       `Error: The page is ${MAX_PDF_CONTENT_HEIGHT_PX + 1} CSS pixels tall, over ` +
         `MAX_PDF_CONTENT_HEIGHT_PX (${MAX_PDF_CONTENT_HEIGHT_PX}), so it was not printed`
     )
+    expect(outcome).toHaveProperty('error.code', 'PDF_TOO_TALL')
     expect(tall.steps).toEqual(['check'])
 
     const at = channel()
@@ -84,6 +85,7 @@ describe('printPdf', () => {
       `Error: The PDF is ${MAX_PDF_SIZE + 1} bytes, over MAX_PDF_SIZE (${MAX_PDF_SIZE}), so it ` +
         'was discarded'
     )
+    expect(over).toHaveProperty('error.code', 'PDF_TOO_LARGE')
     const at = ofLength(MAX_PDF_SIZE)
     await expect(printPdf(100, channel({ print: async () => at }).value)).resolves.toMatchObject({
       present: true,

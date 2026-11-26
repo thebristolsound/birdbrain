@@ -834,17 +834,23 @@ function hiddenWindowPrint(
     const url = wc.getURL()
     return url !== saved.url || navigations() !== saved.navigations ? url : null
   }
+  // Each refusal carries a code because the log drops the message that names it (#2268).
   return {
     check() {
       const before = navigatedTo()
       if (before !== null) {
-        throw new Error(
-          `The page navigated after it was saved, to ${before}, so it was not printed`
+        throw Object.assign(
+          new Error(`The page navigated after it was saved, to ${before}, so it was not printed`),
+          { code: 'NAVIGATED_BEFORE_PRINT' }
         )
       }
     },
     async print() {
-      if (boundMs <= 0) throw new Error('The Recapture timeout left no time for the print')
+      if (boundMs <= 0) {
+        throw Object.assign(new Error('The Recapture timeout left no time for the print'), {
+          code: 'NO_TIME_FOR_PRINT'
+        })
+      }
       let timer: NodeJS.Timeout | undefined
       const bound = new Promise<never>((_, reject) => {
         timer = setTimeout(() => reject(new PrintTimeout(boundMs)), boundMs)
@@ -854,8 +860,9 @@ function hiddenWindowPrint(
       )
       const during = navigatedTo()
       if (during !== null) {
-        throw new Error(
-          `The page navigated while it printed, to ${during}, so the PDF was discarded`
+        throw Object.assign(
+          new Error(`The page navigated while it printed, to ${during}, so the PDF was discarded`),
+          { code: 'NAVIGATED_DURING_PRINT' }
         )
       }
       return bytes

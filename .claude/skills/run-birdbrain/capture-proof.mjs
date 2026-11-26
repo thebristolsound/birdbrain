@@ -325,10 +325,13 @@ const sha = (bytes) => createHash('sha256').update(bytes).digest('hex')
 
 // The transaction record's WARC records without their ids and times: each record's type,
 // request or status line, address, payload digest, header names and credential header lines.
-// Text it cannot read record by record is refused, never described. Unread text gets a
-// description that holds little or none of it: an empty record in two runs would describe
-// alike and compare as identical, and so would two records whose WARC headers run into the
-// HTTP block and differ only in a credential header.
+// It refuses text that does not start with a WARC record, and a record with no blank line
+// after its headers, with a header line that is no WARC header, or with no type. Text read
+// past those faults gets a description that holds little or none of it: an empty record in
+// two runs would describe alike and compare as identical, and so would two records whose
+// WARC headers run into the block under them. It does not hold a record to its declared
+// length.
+const WARC_HEADER = /^(WARC-[A-Za-z-]+|Content-Type|Content-Length):/
 export function describeRecords(text, what = 'the transaction record') {
   const unreadable = (why) => new Error(`${what} ${why}, so its records cannot be compared`)
   if (!text.startsWith('WARC/1.1\r\n')) throw unreadable('does not start with a WARC record')
@@ -338,14 +341,16 @@ export function describeRecords(text, what = 'the transaction record') {
       throw unreadable(`has no blank line after the headers of record ${index + 1}`)
     }
     const head = record.slice(0, blank)
-    // With no blank line of its own, the WARC block would end at the HTTP block's blank line
-    // and take the request or status line as one of its headers.
+    // With no blank line of their own, the WARC headers would end at the next blank line and
+    // take in what stands before it: a request or status line with its HTTP headers, or the
+    // fields of a warcinfo record, which are shaped like headers. So each line must carry a
+    // name a WARC header has.
     const stray = head
       .split('\r\n')
       .slice(1)
-      .find((line) => !/^[A-Za-z0-9-]+:/.test(line))
+      .find((line) => !WARC_HEADER.test(line))
     if (stray !== undefined) {
-      throw unreadable(`has a line that is no header among the headers of record ${index + 1}`)
+      throw unreadable(`has a line that is no WARC header among the headers of record ${index + 1}`)
     }
     const header = (name) => head.match(new RegExp(`^${name}: (.*)$`, 'm'))?.[1]
     const type = header('WARC-Type')

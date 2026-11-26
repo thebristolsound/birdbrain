@@ -372,7 +372,24 @@ describe('describeRecords', () => {
       )
     for (const cookie of ['a', 'b']) {
       expect(() => describeRecords(joined(cookie))).toThrow(
-        'has a line that is no header among the headers of record 2'
+        'has a line that is no WARC header among the headers of record 2'
+      )
+    }
+  })
+
+  it('refuses a warcinfo record whose WARC headers run into its fields with no blank line', () => {
+    for (const software of ['Birdbrain 1.0.0', 'Birdbrain 1.1.0']) {
+      const joined = record(
+        'WARC/1.1',
+        'WARC-Type: warcinfo',
+        'Content-Type: application/warc-fields',
+        `software: ${software}`,
+        'capture-id: c1',
+        '',
+        ''
+      )
+      expect(() => describeRecords(joined + response)).toThrow(
+        'has a line that is no WARC header among the headers of record 1'
       )
     }
   })

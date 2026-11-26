@@ -53,10 +53,7 @@ merge in the batch.
 For each merge start, in parallel and independent of each other:
 
 - one Claude reviewer on the session's own model, prefix `C<PR>`;
-- one Codex reviewer on `gpt-6.1-sol` at `high` effort, prefix `X<PR>`;
-- for a merge that changed `src/` or `extension/`, a second fresh Claude reviewer as the
-  **control**, prefix `K<PR>`. The control runs until the review in "Keep or retire" decides
-  whether the second family or the second pass finds the defects.
+- one Codex reviewer on `gpt-6.1-sol` at `high` effort, prefix `X<PR>`.
 
 Each reviewer's task is the same four parameters and one instruction: the checkout path, the
 pull request number, the merge commit, the prefix, and "read `brief.md` in this skill's
@@ -74,9 +71,15 @@ start pays for a full review and tends to stop at the same place. Add nothing ab
 change. A reviewer that returned no report, or one the session cannot resume, is started once
 more with the same task.
 
-Done when every merge has a complete report from its `C<PR>` reviewer and its `X<PR>`
-reviewer. The control does not stand in for either. A merge without both stays owed: leave it
-out of the steps below and say so in the run report, with the checks that stayed unfinished.
+A Codex report that is still incomplete after that second try, whether the session resumed
+the reviewer or started it again, is **accepted** when the maintainer says it counts. Show
+the maintainer that report's "Unfinished source checks" section, in the session, and ask. An
+accepted report counts as a complete one in every later step, and that merge's record carries
+the acceptance sentence step 7 gives.
+
+Done when every merge has a complete report from its `C<PR>` reviewer and a complete or
+accepted report from its `X<PR>` reviewer. A merge without both stays owed: leave it out of
+the steps below and say so in the run report, with the checks that stayed unfinished.
 
 ## 4. Add what the fleet reported
 
@@ -90,11 +93,10 @@ candidates:
 
 That takes in the findings the other family confirmed, which the maintainer merged over, and
 the ones no one ruled on. A fleet finding that no reviewer in step 3 raised counts under the
-family that raised it, and a Claude one counts in the `claude` slot, never `control`. A fleet
-finding that a reviewer in step 3 also raised is that reviewer's candidate, counted in that
-reviewer's slot and not a second time for the fleet. A finding only the fleet raised never
-counts in `alone`: that number compares the reviewers this run started, and the fleet is none
-of them.
+family that raised it. A fleet finding that a reviewer in step 3 also raised is that
+reviewer's candidate, counted in that reviewer's slot and not a second time for the fleet. A
+finding only the fleet raised never counts in `alone`: that number compares the reviewers
+this run started, and the fleet is none of them.
 
 ## 5. Reproduce
 
@@ -103,6 +105,8 @@ with `scripts/setup-worktree.sh`. Write the smallest test that fails because of 
 and run it with `pnpm test <path>`, for each blocking candidate that is one of these:
 
 - a reviewer's candidate whose status on current `main` is `present` or `changed, unclear`;
+- a reviewer's candidate with no status, which an accepted report can hold when the status
+  check is among what it left unfinished;
 - a candidate from the fleet's report, which carries no status.
 
 A candidate is **reproduced** when its test fails for the reason the candidate gives. A test
@@ -111,8 +115,8 @@ test's text for step 6, then delete the test files so the tree is clean.
 
 A candidate no unit test can reach, such as one that needs the running app, is **unverified**:
 it goes in the run report and nowhere else. A candidate already `fixed` on `main` is counted
-and dropped. So is a `changed, unclear` or fleet candidate whose test passes for the reason
-that later work removed the defect.
+and dropped. So is any other candidate whose test passes for the reason that later work
+removed the defect.
 
 Done when every blocking candidate is reproduced, unverified or dropped, and
 `git status --porcelain` in the scratch tree prints nothing.
@@ -145,7 +149,7 @@ Posting under the maintainer's account puts the disclosure first.
 ```markdown
 Catch-up record: two reviewers read this change after it merged, because it merged under the maintainer's override before the automated review had passed it.
 
-- **Reviewers:** One Claude reviewer and one Codex reviewer, working apart. No second Claude reviewer ran as a control.
+- **Reviewers:** One Claude reviewer and one Codex reviewer, working apart.
 - **Found:** One candidate defect that would block a merge, and four smaller notes. Nobody checked the smaller notes.
 - **Reproduced:** One defect, with a failing test on the current code.
 - **Filed:** #<issue>.
@@ -162,14 +166,16 @@ Merge commit `<merge commit>`. Claude subagent tokens: 250,000. Longest review: 
 
 The numbers block opens with `v`, the block's version, which is `1`, and `run`, the date the
 run started as `YYYY-MM-DD`: records with the same date are one run. It then holds, for each
-of `claude`, `codex` and `control`: reviewers that returned a complete report, blocking
-candidates, how many of those reproduced (`confirmed`), and other candidates. `alone` is how
-many reproduced defects that reviewer raised in this run and no other reviewer in this run
-did; a defect the fleet also raised still counts, and one only the fleet raised counts for
-nobody. Then for the merge: distinct defects reproduced, issues filed, defects reported
-privately, Claude subagent tokens, and minutes for the longest review. An open issue that
-step 6 added a reproduced defect to counts as filed. Every field is required. Write `null`
-for tokens or minutes you could not measure; never write a guess or a zero.
+of `claude`, `codex` and `control`: reviewers whose report counted, complete or accepted,
+blocking candidates, how many of those reproduced (`confirmed`), and other candidates. The
+`control` slot belongs to a reviewer this skill no longer starts ("Keep or retire"): write
+zero in each of its fields. `alone` is how many reproduced defects that reviewer raised in
+this run and no other reviewer in this run did; a defect the fleet also raised still counts,
+and one only the fleet raised counts for nobody. Then for the merge: distinct defects
+reproduced, issues filed, defects reported privately, Claude subagent tokens, and minutes for
+the longest review. An open issue that step 6 added a reproduced defect to counts as filed.
+Every field is required. Write `null` for tokens or minutes you could not measure; never
+write a guess or a zero.
 
 The script checks the counts against each other, and a record that fails a check leaves the
 merge owed, with the record marked unreadable:
@@ -184,9 +190,15 @@ merge owed, with the record marked unreadable:
 
 A record that counts no Claude reviewer or no Codex reviewer does not clear the merge either.
 
-The record carries counts only. Unchecked candidates are not listed, because the record is
-published under the maintainer's name. It never contains `@claude` or `@codex`: either
-mention in a comment from the maintainer's account starts a model run.
+For a merge whose Codex report was accepted under step 3, add this sentence to the
+`Reviewers` line, with the date the maintainer accepted it: "The Codex report listed reading
+it had not finished, and the maintainer accepted it in the review session on 2026-01-31." The
+checks that report left unfinished go in the run report, not in the record.
+
+Beyond that sentence the record carries counts only. Unchecked candidates and unfinished
+reading are not listed, because the record is published under the maintainer's name. It never
+contains `@claude` or `@codex`: either mention in a comment from the maintainer's account
+starts a model run.
 
 Done when `scripts/debt.mjs` prints the merge's number in the rows under `Reviewed`.
 
@@ -194,9 +206,10 @@ Done when `scripts/debt.mjs` prints the merge's number in the rows under `Review
 
 Give the maintainer the run report in the session: one row per merge, each candidate with the
 reviewer that raised it, which reviewers found each reproduced defect, the unverified
-candidates, any private defect, and the cost. For a merge held under step 6, include the
-finished record text, so the maintainer can have it posted later with this run's date and
-numbers. Remove the scratch tree with the `teardown` skill.
+candidates, the checks each accepted report left unfinished, any private defect, and the
+cost. For a merge held under step 6, include the finished record text, so the maintainer can
+have it posted later with this run's date and numbers. Remove the scratch tree with the
+`teardown` skill.
 
 ## Keep or retire
 
@@ -211,11 +224,14 @@ filed an issue or reported a defect privately.
   directory and `tests/catchUpReviewDebt.test.ts`.
 - **Keep it** if it is not retired once the line names three runs, and those runs found at
   least two defects the maintainer chose to fix. If they found fewer, the maintainer decides.
-- **Drop a reviewer** from the `reproduced by one reviewer alone` line, which counts only the
-  merges all three reviewers read. Drop Codex if the control's count is above zero and at
-  least Codex's: a second Claude pass found as much. Otherwise drop the control if Codex's
-  count is above zero: the second family found what no Claude reviewer in the run raised. While
-  the line counts no merge, drop neither.
+- **The control is dropped.** In the runs up to and including 2026-11-26 a second fresh
+  Claude reviewer, the **control**, also read merges that changed `src/` or `extension/`, to
+  show whether a second model family or a second Claude pass finds the defects one Claude
+  reviewer misses. The `reproduced by one reviewer alone` line counts the five merges all
+  three reviewers read: Codex alone raised one reproduced defect there and the control none,
+  so Codex stays and the control went. That line stays as it is while records write zero for
+  the control, and the records and the script keep the `control` slot so the earlier records
+  still read.
 
 A schedule, a release that refuses while reviews are owed, or a count in the weekly health
 report each needs its own ADR first (ADR-0029, ADR-0058).

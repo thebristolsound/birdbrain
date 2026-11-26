@@ -345,6 +345,14 @@ describe('red CI runs on main', () => {
     }
   })
 
+  it('is not measured when a run has no conclusion: an unread result is not a green run', () => {
+    for (const bad of [{}, { conclusion: null }, { conclusion: '' }, { run_attempt: 2 }, null]) {
+      const response = { total_count: 2, workflow_runs: [run('success'), bad] }
+      expect(() => redRuns(response)).toThrow(Unmeasured)
+      expect(() => redRuns(response)).toThrow('GitHub returned a run with no conclusion')
+    }
+  })
+
   it('is not measured when the window holds more runs than the page it read', () => {
     const page = { total_count: 101, workflow_runs: [run('success')] }
     expect(() => redRuns(page)).toThrow('more than 1 CI runs on main in the window')

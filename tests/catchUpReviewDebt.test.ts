@@ -155,6 +155,21 @@ describe('numbersOf', () => {
     ],
     ['more issues filed than defects reproduced', recordBody({ ...NUMBERS, filed: 2 })],
     [
+      'more defects filed and reported privately than reproduced',
+      recordBody({ ...NUMBERS, private: 1 })
+    ],
+    [
+      'a blocking candidate from a reviewer that did not run',
+      recordBody({ ...NUMBERS, blocking: { claude: 1, codex: 0, control: 1 } })
+    ],
+    [
+      'another candidate from a reviewer that did not run',
+      recordBody({ ...NUMBERS, other: { claude: 4, codex: 0, control: 2 } })
+    ],
+    ['no count of blocking candidates', recordBody({ ...NUMBERS, blocking: undefined })],
+    ['no count of other candidates', recordBody({ ...NUMBERS, other: undefined })],
+    ['no count of private defects', recordBody({ ...NUMBERS, private: undefined })],
+    [
       'more issues filed than the cap for one merge',
       recordBody({
         ...NUMBERS,
@@ -226,6 +241,11 @@ describe('recordOf', () => {
     })
   })
 
+  it('reads a record posted under the two-line alert form of the disclosure', () => {
+    const alert = '> [!NOTE]\n> Written by a-model via A Harness on behalf of Matt.'
+    expect(recordOf([comment(recordBody(NUMBERS, alert))], MAINTAINER).state).toBe('recorded')
+  })
+
   it("ignores another account's record", () => {
     expect(recordOf([comment(recordBody(), 'someone-else')], MAINTAINER)).toEqual({
       state: 'none'
@@ -269,7 +289,9 @@ describe('recordOf', () => {
     ['no Claude reviewer', { claude: 0, codex: 1, control: 1 }, ['claude']],
     ['no reviewer at all', { claude: 0, codex: 0, control: 0 }, ['claude', 'codex']]
   ])('reports a record that counts %s as incomplete', (_name, reviewers, missing) => {
-    const body = recordBody({ ...NUMBERS, reviewers })
+    const none = { claude: 0, codex: 0, control: 0 }
+    const quiet = { blocking: none, confirmed: none, alone: none, other: none }
+    const body = recordBody({ ...NUMBERS, ...quiet, reviewers, reproduced: 0, filed: 0 })
     expect(recordOf([comment(body, MAINTAINER, 3)], MAINTAINER)).toEqual({
       state: 'incomplete',
       missing,

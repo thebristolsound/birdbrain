@@ -50,13 +50,24 @@ const sumOf = (value) => SLOTS.reduce((total, slot) => total + value[slot], 0)
 // The skill files at most this many defects for one merge (ADR-0028).
 const FILING_CAP = 2
 
-// The counts for the whole merge agree with the counts for each reviewer: a defect is
-// reproduced only through some reviewer's candidate, and only a reproduced defect is filed.
-const totalsAgree = ({ confirmed, alone, reproduced, filed }) =>
+// The counts for the whole merge agree with the counts for each reviewer. A reviewer that did
+// not run raised nothing, a defect is reproduced only through some reviewer's candidate, and
+// only a reproduced defect is filed or reported privately.
+const totalsAgree = ({
+  reviewers,
+  blocking,
+  confirmed,
+  alone,
+  other,
+  reproduced,
+  filed,
+  private: privately
+}) =>
+  SLOTS.every((slot) => reviewers[slot] > 0 || blocking[slot] + other[slot] === 0) &&
   reproduced <= sumOf(confirmed) &&
   (reproduced > 0 || sumOf(confirmed) === 0) &&
   sumOf(alone) <= reproduced &&
-  filed <= reproduced &&
+  filed + privately <= reproduced &&
   filed <= FILING_CAP
 
 // A record's numbers, or null when the block is absent, any field is missing or malformed, or

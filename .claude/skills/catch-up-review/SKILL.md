@@ -6,10 +6,10 @@ disable-model-invocation: true
 
 # catch-up-review
 
-An **override merge** is a pull request merged under the maintainer's `break-glass` label, so
-it merged without a passing review from the review fleet (ADR-0057). This skill finds shipped
-defects in override merges. It runs when the maintainer starts it, normally before a release;
-nothing schedules it and it blocks nothing.
+An **override merge** is a pull request merged under the maintainer's `break-glass` label,
+which lets a change merge without a passing review from the review fleet (ADR-0057). This
+skill finds shipped defects in override merges. It runs when the maintainer starts it,
+normally before a release; nothing schedules it and it blocks nothing.
 
 - **Qualifying.** An override merge owes a review when it changed `src/`, `extension/`,
   `.github/workflows/` or `.github/scripts/`. Documents, tests, tooling, scripts kept
@@ -25,7 +25,12 @@ nothing schedules it and it blocks nothing.
 node "${CLAUDE_SKILL_DIR}/scripts/debt.mjs"
 ```
 
-Take every merge it lists, or the numbers the maintainer named. For each, read the squash
+The list reads the label as it stands on GitHub's label search. A label taken off after the
+merge hides that merge, and a label applied seconds ago may not show yet.
+
+Take every merge it lists, or the numbers the maintainer named. Leave out a merge the
+maintainer says is held for a private defect (step 6): it is listed as owed although a run
+has read it. For each, read the squash
 merge commit with `gh pr view <n> --json mergeCommit`. Tell the maintainer the batch and its
 reviewer count, with what the reviews so far cost from the script's `reviewers` and `cost`
 lines, and wait for their go: a run spends.
@@ -63,9 +68,9 @@ section lists nothing. What a report lists under "Runtime limitations" does not 
 incomplete: no source review settles those. A reviewer that returns no report, or an
 incomplete one, is started once more with the same task.
 
-Done when every merge has a complete report from at least one Claude reviewer and one Codex
-reviewer. A merge without both stays owed: leave it out of the steps below and say so in the
-run report, with the checks that stayed unfinished.
+Done when every merge has a complete report from its `C<PR>` reviewer and its `X<PR>`
+reviewer. The control does not stand in for either. A merge without both stays owed: leave it
+out of the steps below and say so in the run report, with the checks that stayed unfinished.
 
 ## 4. Add what the fleet reported
 
@@ -146,17 +151,26 @@ Merge commit `<merge commit>`. Claude subagent tokens: 250,000. Longest review: 
 </details>
 ```
 
-The numbers block opens with `run`, the date the run started as `YYYY-MM-DD`: records with
-the same date are one run. It then holds, for each of `claude`, `codex` and `control`:
+The numbers block opens with `v`, the block's version, which is `1`, and `run`, the date the
+run started as `YYYY-MM-DD`: records with the same date are one run. It then holds, for each of `claude`, `codex` and `control`:
 reviewers that returned a complete report, blocking candidates, how many of those reproduced (`confirmed`), how
 many reproduced defects no other reviewer raised (`alone`), and other candidates. Then for the
 merge: distinct defects reproduced, issues filed, defects reported privately, Claude subagent
 tokens, and minutes for the longest review. Every field is required. Write `null` for tokens
 or minutes you could not measure; never write a guess or a zero.
 
-The script refuses a record whose counts contradict each other, such as more issues filed
-than defects reproduced, and lists the merge as owed with the record marked unreadable. A record that counts no Claude reviewer or no Codex
-reviewer does not clear the merge either.
+The script checks the counts against each other, and a record that fails a check leaves the
+merge owed, with the record marked unreadable:
+
+- a reviewer that did not run has no candidates;
+- for each reviewer, `confirmed` is at most `blocking`, and `alone` is at most `confirmed`;
+- the defects reproduced are at most the `confirmed` counts added together, and above zero
+  when any candidate reproduced;
+- the `alone` counts added together are at most the defects reproduced;
+- issues filed plus defects reported privately are at most the defects reproduced, and at
+  most two issues are filed.
+
+A record that counts no Claude reviewer or no Codex reviewer does not clear the merge either.
 
 The record carries counts only. Unchecked candidates are not listed, because the record is
 published under the maintainer's name. It never contains `@claude` or `@codex`: either
@@ -168,8 +182,9 @@ Done when `scripts/debt.mjs` prints the merge's number in the rows under `Review
 
 Give the maintainer the run report in the session: one row per merge, each candidate with the
 reviewer that raised it, which reviewers found each reproduced defect, the unverified
-candidates, any private defect, and the cost. Remove the scratch tree with the `teardown`
-skill.
+candidates, any private defect, and the cost. For a merge held under step 6, include the
+finished record text, so the maintainer can have it posted later with this run's date and
+numbers. Remove the scratch tree with the `teardown` skill.
 
 ## Keep or retire
 

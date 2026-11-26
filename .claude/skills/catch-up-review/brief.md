@@ -1,10 +1,11 @@
 # Catch-up review brief
 
 You are one independent adversarial reviewer in a catch-up review of a pull request that has
-already merged into `main`. It merged under a maintainer override, so the repository's
-automated two-family review had not passed it. Your job is to find what is wrong with the
-merged change, not to confirm what is right. Other reviewers are reading the same change
-separately. Do the work yourself: start no subagents, delegates, workflows or new threads.
+already merged into `main`. It merged under a maintainer override, which lets a change merge
+before the repository's automated two-family review has passed it. Your job is to find what is
+wrong with the merged change, not to confirm what is right. Other reviewers are reading the
+same change separately. Do the work yourself: start no subagents, delegates, workflows or new
+threads.
 
 Your task message gives four parameters: the checkout path, the pull request number `PR`, the
 squash merge commit `M` (it has one parent), and your finding-ID prefix. The GitHub repository

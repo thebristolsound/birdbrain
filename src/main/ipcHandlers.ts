@@ -1403,7 +1403,12 @@ export function registerIpcHandlers(deps: {
     updaterService.applySettingsChange(partial)
     // Await the backfill attempt before answering so refetches see its completed writes.
     // Trusted-time retries start in the background and may finish after the answer.
-    if (!hadOperatorName && trimmedOperatorName() !== '') await deps.onOperatorNameSet?.()
+    if (!hadOperatorName && trimmedOperatorName() !== '') {
+      await deps.onOperatorNameSet?.()
+      // The renderer writes each answer over its whole settings cache, so a save that landed
+      // during the wait must not be undone by values read before it (#2264).
+      return settings.getSettings()
+    }
     return updated
   })
   handle(IPC_CHANNELS.SETTINGS_RESET, () => {

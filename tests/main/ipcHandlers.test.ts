@@ -166,6 +166,7 @@ import { MANIFEST_FILENAME, MAX_BATCH_CAPTURE_IDS } from '@shared/constants'
 import type { BatchCountResult, BatchDeleteResult, SelfTestResult } from '@shared/ipc'
 import { registerIpcHandlers, type PopOutWindowControls } from '@main/ipcHandlers'
 import type {
+  BirdbrainSettings,
   BugReportResult,
   Capture,
   Case,
@@ -2443,6 +2444,40 @@ describe('ipcHandlers — settings', () => {
 
     expectOk(await invoke(IPC_CHANNELS.SETTINGS_UPDATE, { operatorName: 'Agent Jones' }))
     expect(onOperatorNameSet).toHaveBeenCalledTimes(1)
+  })
+
+  // #2264: the renderer writes each answer over its whole settings cache, so the first name
+  // save, answering after the held work, must not carry values from before a later save.
+  it('answers the first operator name save with settings saved during the held work', async () => {
+    let release = (): void => {}
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const selectorLifecycle = createSelectorLifecycle({ emitRematched: vi.fn() })
+    registerIpcHandlers({
+      selectorLifecycle,
+      captureLifecycle: createCaptureLifecycle({ selectorLifecycle }),
+      recaptureService,
+      updaterService,
+      sessionService,
+      sharingService,
+      onOperatorNameSet: () => held
+    })
+    settings.updateSettings({ operatorName: '', tsaEnabled: false })
+
+    const first = invoke<{ ok: boolean; data?: BirdbrainSettings }>(IPC_CHANNELS.SETTINGS_UPDATE, {
+      operatorName: 'Agent Smith'
+    })
+    const second = expectOk<BirdbrainSettings>(
+      await invoke(IPC_CHANNELS.SETTINGS_UPDATE, { tsaEnabled: true })
+    )
+    expect(second.tsaEnabled).toBe(true)
+    release()
+    const answer = expectOk(await first)
+
+    expect(settings.getSettings().tsaEnabled).toBe(true)
+    expect(answer.tsaEnabled).toBe(true)
+    expect(answer.operatorName).toBe('Agent Smith')
   })
 
   // The same save through the hook the app wires, with the real backfill behind it: the seeded

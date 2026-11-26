@@ -58,9 +58,14 @@ pull request number, the merge commit, the prefix, and "read `brief.md` in this 
 directory in full and follow it". Give a reviewer nothing else: your own reading of the
 change, or another reviewer's output, turns its review into a confirmation.
 
-A reviewer that returns no report is started once more. Done when every merge has a report in
-the brief's shape from at least one Claude reviewer and one Codex reviewer. A merge without
-both stays owed: leave it out of the steps below and say so in the run report.
+A report is **complete** when it is in the brief's shape and its "Unfinished source checks"
+section lists nothing. What a report lists under "Runtime limitations" does not make it
+incomplete: no source review settles those. A reviewer that returns no report, or an
+incomplete one, is started once more with the same task.
+
+Done when every merge has a complete report from at least one Claude reviewer and one Codex
+reviewer. A merge without both stays owed: leave it out of the steps below and say so in the
+run report, with the checks that stayed unfinished.
 
 ## 4. Add what the fleet reported
 
@@ -143,7 +148,7 @@ Merge commit `<merge commit>`. Claude subagent tokens: 250,000. Longest review: 
 
 The numbers block opens with `run`, the date the run started as `YYYY-MM-DD`: records with
 the same date are one run. It then holds, for each of `claude`, `codex` and `control`:
-reviewers that reported, blocking candidates, how many of those reproduced (`confirmed`), how
+reviewers that returned a complete report, blocking candidates, how many of those reproduced (`confirmed`), how
 many reproduced defects no other reviewer raised (`alone`), and other candidates. Then for the
 merge: distinct defects reproduced, issues filed, defects reported privately, Claude subagent
 tokens, and minutes for the longest review. Every field is required. Write `null` for tokens

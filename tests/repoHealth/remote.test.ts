@@ -345,6 +345,14 @@ describe('red CI runs on main', () => {
     }
   })
 
+  it('is not measured when a run has no conclusion: an unread result is not a green run', () => {
+    for (const bad of [{}, { conclusion: null }, { conclusion: '' }, { run_attempt: 2 }, null]) {
+      const response = { total_count: 2, workflow_runs: [run('success'), bad] }
+      expect(() => redRuns(response)).toThrow(Unmeasured)
+      expect(() => redRuns(response)).toThrow('GitHub returned a run with no conclusion')
+    }
+  })
+
   it('is not measured when the window holds more runs than the page it read', () => {
     const page = { total_count: 101, workflow_runs: [run('success')] }
     expect(() => redRuns(page)).toThrow('more than 1 CI runs on main in the window')
@@ -432,6 +440,29 @@ describe('stale branches', () => {
     ]) {
       const { ctx } = ctxOf(() => bad)
       expect(() => measure('stale-branches', ctx)).toThrow('GitHub returned no branch list')
+    }
+  })
+
+  it('is not measured when a page does not say whether it is the last', () => {
+    const nodes = [branch('a', 40)]
+    for (const refs of [{ nodes }, { nodes, pageInfo: {} }, { nodes, pageInfo: null }]) {
+      const { ctx, calls } = ctxOf(() => ({ data: { repository: { refs } } }))
+      expect(() => measure('stale-branches', ctx)).toThrow(Unmeasured)
+      expect(() => measure('stale-branches', ctx)).toThrow(
+        'GitHub returned a branch page that does not say whether it is the last'
+      )
+      expect(calls).toHaveLength(2)
+    }
+  })
+
+  it('is not measured when a page has more behind it and hands back no cursor', () => {
+    for (const endCursor of [null, undefined, '']) {
+      const refs = { nodes: [branch('a', 40)], pageInfo: { hasNextPage: true, endCursor } }
+      const { ctx, calls } = ctxOf(() => ({ data: { repository: { refs } } }))
+      expect(() => measure('stale-branches', ctx)).toThrow(
+        'GitHub returned a branch page with no cursor for the next one'
+      )
+      expect(calls).toHaveLength(1)
     }
   })
 

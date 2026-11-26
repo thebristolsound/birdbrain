@@ -97,7 +97,9 @@ export const badgeCoverage = (file, commits, now) => {
 // A run that was cancelled is someone's choice, or a newer push replacing it, and
 // says nothing about main. A run that needed a second attempt is the nearest
 // thing to a flaky-test count the API exposes. The listing is one page, so a
-// total past it means runs went unread and the count would read low.
+// total past it means runs went unread and the count would read low. The listing
+// asks for completed runs, so one with no conclusion is a failed read and not a
+// green run.
 export const redRuns = (response) => {
   const runs = response?.workflow_runs
   if (!Array.isArray(runs)) throw new Unmeasured('GitHub returned no run list')
@@ -109,6 +111,9 @@ export const redRuns = (response) => {
   }
   if (response.total_count > runs.length) {
     throw new Unmeasured(`more than ${runs.length} CI runs on main in the window`)
+  }
+  if (runs.some((run) => typeof run?.conclusion !== 'string' || run.conclusion === '')) {
+    throw new Unmeasured('GitHub returned a run with no conclusion')
   }
   const red = runs.filter(
     (run) =>
@@ -143,8 +148,17 @@ const listBranches = (ctx) => {
     const refs = read(ctx, args)?.data?.repository?.refs
     if (!Array.isArray(refs?.nodes)) throw new Unmeasured('GitHub returned no branch list')
     nodes.push(...refs.nodes)
-    if (!refs.pageInfo?.hasNextPage) return nodes
+    // Only a page that says it is the last one ends the listing. A page that
+    // says nothing may have more behind it, and its branches alone would read
+    // as a short, clean list.
+    if (typeof refs.pageInfo?.hasNextPage !== 'boolean') {
+      throw new Unmeasured('GitHub returned a branch page that does not say whether it is the last')
+    }
+    if (!refs.pageInfo.hasNextPage) return nodes
     after = refs.pageInfo.endCursor
+    if (typeof after !== 'string' || after === '') {
+      throw new Unmeasured('GitHub returned a branch page with no cursor for the next one')
+    }
   }
   throw new Unmeasured(`the repository has more than ${BRANCH_PAGE_LIMIT * 100} branches`)
 }

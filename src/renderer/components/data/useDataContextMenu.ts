@@ -14,7 +14,7 @@ import {
 } from '@renderer/components/data/dataTreeModel'
 import { rowsForNode } from '@renderer/components/data/dataTableModel'
 import { copyCaptureHash } from '@renderer/components/captures/useCopyCaptureHash'
-import { copyValue } from '@renderer/components/data/copy'
+import { copyDigest, copyValue } from '@renderer/components/data/copy'
 
 interface DataContextMenuOptions {
   rows: InventoryRow[]
@@ -66,7 +66,7 @@ export function useDataContextMenu({
           actions: {
             commit: () => onCommit(row.id),
             discard: () => onDiscard({ id: row.id, name: row.name }),
-            copyHash: () => void copyValue(row.hash, 'SHA-256 (not anchored)')
+            copyHash: () => void copyDigest(row.hash, 'SHA-256 (not anchored)')
           }
         }
         return target

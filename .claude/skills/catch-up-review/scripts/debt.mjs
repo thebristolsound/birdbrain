@@ -15,6 +15,9 @@ const OVERRIDE_LABEL = 'break-glass'
 // One reviewer per model family, and the second fresh Claude reviewer a trial run adds as its
 // control. A record names all three, with zeros where a reviewer did not run.
 const SLOTS = ['claude', 'codex', 'control']
+// A review by one family alone leaves the merge owed, so a record clears a merge only when
+// it counts a reviewer in each of these.
+const REQUIRED_SLOTS = ['claude', 'codex']
 
 // A merge qualifies when a defect in it can reach a user or a credential: shipped source,
 // and the workflows and scripts that run beside secrets.
@@ -82,7 +85,8 @@ export function firstLineOf(body) {
 
 // The state of one merge's record: the last comment from the maintainer's account whose
 // first line names a catch-up record decides. A record whose numbers do not read is
-// malformed, and the merge still owes its review.
+// malformed, and one that counts no reviewer from a required family is incomplete. Either
+// way the merge still owes its review.
 export function recordOf(comments, maintainer) {
   const records = comments.filter(
     ({ user, body }) =>
@@ -90,8 +94,12 @@ export function recordOf(comments, maintainer) {
   )
   const last = records.at(-1)
   if (!last) return { state: 'none' }
+  const url = last.html_url
   const numbers = numbersOf(last.body)
-  return numbers ? { state: 'recorded', numbers, url: last.html_url } : { state: 'malformed', url: last.html_url }
+  if (!numbers) return { state: 'malformed', url }
+  const missing = REQUIRED_SLOTS.filter((slot) => numbers.reviewers[slot] === 0)
+  if (missing.length > 0) return { state: 'incomplete', missing, url }
+  return { state: 'recorded', numbers, url }
 }
 
 const sumKnown = (values) => {
@@ -158,11 +166,19 @@ export function collect(gh) {
 const withUnknown = ({ sum, unknown }, unit) =>
   `${sum.toLocaleString('en-US')} ${unit}${unknown ? ` (${unknown} unknown)` : ''}`
 
+// Why a merge that carries a record is still owed.
+const flagOf = ({ state, missing, url }) => {
+  if (state === 'malformed') return `  [record unreadable: ${url}]`
+  if (state === 'incomplete') return `  [record counts no ${missing.join(' or ')} reviewer: ${url}]`
+  return ''
+}
+
 export function render({ owed, recorded, outOfScope, totals }) {
   const lines = [`Override merges that owe a catch-up review: ${owed.length}`]
   for (const { number, mergedAt, title, areas, record } of owed) {
-    const flag = record.state === 'malformed' ? `  [record unreadable: ${record.url}]` : ''
-    lines.push(`  #${number}  ${mergedAt.slice(0, 10)}  ${title}  (${areas.join(', ')})${flag}`)
+    lines.push(
+      `  #${number}  ${mergedAt.slice(0, 10)}  ${title}  (${areas.join(', ')})${flagOf(record)}`
+    )
   }
   lines.push(`Reviewed: ${recorded.length}`)
   if (recorded.length > 0) {

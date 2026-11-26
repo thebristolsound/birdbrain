@@ -125,7 +125,8 @@ The numbers block holds, for each of `claude`, `codex` and `control`: reviewers 
 blocking candidates, how many of those reproduced (`confirmed`), and other candidates. Then
 for the merge: distinct defects reproduced, issues filed, defects reported privately, Claude
 subagent tokens, and minutes for the longest review. Every field is required. Write `null` for
-tokens or minutes you could not measure; never write a guess or a zero.
+tokens or minutes you could not measure; never write a guess or a zero. A record that counts
+no Claude reviewer or no Codex reviewer does not clear the merge: the script lists it as owed.
 
 The record carries counts only. Unchecked candidates are not listed, because the record is
 published under the maintainer's name. It never contains `@claude` or `@codex`: either

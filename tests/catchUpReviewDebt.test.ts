@@ -212,6 +212,23 @@ describe('recordOf', () => {
     const comments = [comment(recordBody(), MAINTAINER, 1), comment(broken, MAINTAINER, 2)]
     expect(recordOf(comments, MAINTAINER).state).toBe('malformed')
   })
+
+  it.each([
+    ['no Codex reviewer', { claude: 1, codex: 0, control: 1 }, ['codex']],
+    ['no Claude reviewer', { claude: 0, codex: 1, control: 1 }, ['claude']],
+    ['no reviewer at all', { claude: 0, codex: 0, control: 0 }, ['claude', 'codex']]
+  ])('reports a record that counts %s as incomplete', (_name, reviewers, missing) => {
+    const body = recordBody({ ...NUMBERS, reviewers })
+    expect(recordOf([comment(body, MAINTAINER, 3)], MAINTAINER)).toEqual({
+      state: 'incomplete',
+      missing,
+      url: 'https://example.test/comment-3'
+    })
+  })
+
+  it('accepts a record with both families and no control reviewer', () => {
+    expect(recordOf([comment(recordBody())], MAINTAINER).state).toBe('recorded')
+  })
 })
 
 describe('totalsOf', () => {
@@ -280,6 +297,16 @@ describe('collect', () => {
     expect(report.recorded).toEqual([])
   })
 
+  it('keeps a merge reviewed by one family in the owed list and out of the totals', () => {
+    const table = routes()
+    const reviewers = { claude: 1, codex: 0, control: 0 }
+    table[commentsOf(10)] = [comment(recordBody({ ...NUMBERS, reviewers }))]
+    const report = collect(ghOf(table).gh)
+    expect(report.owed.map(({ number }: { number: number }) => number)).toEqual([10, 30])
+    expect(report.recorded).toEqual([])
+    expect(report.totals).toMatchObject({ merges: 0, reproduced: 0 })
+  })
+
   it('reads a second page when the first is full', () => {
     const table = routes()
     table[commentsOf(10)] = Array.from({ length: 100 }, () => comment('Noise.'))
@@ -326,6 +353,17 @@ describe('render', () => {
       '  cost: 250,000 tokens, 0 minutes (1 unknown)',
       'Override merges outside the scope: 0'
     ])
+  })
+
+  it('says which reviewer family an incomplete record lacks', () => {
+    const record = { state: 'incomplete', missing: ['codex'], url: 'https://example.test/c' }
+    const owed = [
+      { number: 7, mergedAt: '2026-11-20T00:00:00Z', title: 'change 7', areas: ['src/'], record }
+    ]
+    const report = { owed, recorded: [], outOfScope: [], totals: totalsOf([]) }
+    expect(render(report).split('\n')[1]).toBe(
+      '  #7  2026-11-20  change 7  (src/)  [record counts no codex reviewer: https://example.test/c]'
+    )
   })
 
   it('prints no totals when nothing is reviewed', () => {

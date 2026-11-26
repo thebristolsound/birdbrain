@@ -1,19 +1,78 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createHash } from 'crypto'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'fs'
+import { spawnSync } from 'child_process'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  unlinkSync,
+  writeFileSync
+} from 'fs'
 import { tmpdir } from 'os'
-import { join } from 'path'
+import { join, resolve } from 'path'
 import { gzipSync } from 'zlib'
 import {
   compare,
   describeMhtml,
   describeRun,
   requireArtifacts,
-  requireBothMethods
+  requireBothMethods,
+  requireLabel
   // @ts-expect-error - skill script with no type declarations
 } from '../.claude/skills/run-birdbrain/capture-proof.mjs'
 
+const SCRIPT = resolve(__dirname, '../.claude/skills/run-birdbrain/capture-proof.mjs')
 const sha = (text: string) => createHash('sha256').update(text).digest('hex')
+
+describe('requireLabel', () => {
+  it('accepts a plain name', () => {
+    for (const label of ['main', 'branch', 'v1.2.3', 'run_2', 'after-fix']) {
+      expect(requireLabel(label)).toBe(label)
+    }
+  })
+
+  it.each(['..', '../..', '.', '', 'a/b', '/tmp/a', 'a\\b', '.hidden', '-flag', 'a b'])(
+    'refuses %j, which is not a plain name',
+    (label) => {
+      expect(() => requireLabel(label)).toThrow(
+        `the label ${JSON.stringify(label)} is not a plain name`
+      )
+    }
+  )
+})
+
+describe('take', () => {
+  let base: string
+
+  beforeEach(() => {
+    base = mkdtempSync(join(tmpdir(), 'capture-proof-take-'))
+  })
+
+  afterEach(() => {
+    rmSync(base, { recursive: true, force: true })
+  })
+
+  it('refuses a label that names a folder outside the output folder, and deletes nothing', () => {
+    const outside = join(base, 'outside')
+    const out = join(outside, 'proof', 'runs')
+    const repo = join(base, 'repo')
+    mkdirSync(out, { recursive: true })
+    mkdirSync(repo)
+    writeFileSync(join(outside, 'kept.txt'), 'kept')
+
+    const run = spawnSync(
+      process.execPath,
+      [SCRIPT, 'take', '../..', '--repo', repo, '--out', out],
+      { encoding: 'utf8', env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' } }
+    )
+
+    expect(run.stderr).toContain('capture-proof: the label "../.." is not a plain name')
+    expect(run.status).toBe(1)
+    expect(existsSync(join(outside, 'kept.txt'))).toBe(true)
+  })
+})
 
 describe('requireBothMethods', () => {
   const background = { method: 'background' }

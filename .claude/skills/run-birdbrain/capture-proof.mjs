@@ -40,7 +40,20 @@ function parse(argv) {
   }
   options.out ??= path.join(HERE_REPO, '.preflight', 'capture-proof')
   if (!Number.isInteger(options.port) || options.port < 1024) throw new Error('--port needs a port')
-  return { command: positional[0], labels: positional.slice(1), options }
+  return { command: positional[0], labels: positional.slice(1).map(requireLabel), options }
+}
+
+// A label names a folder under <out>, and `take` deletes that folder before it writes. A label
+// that is a path, such as `../..`, would name a folder outside <out>, so every command refuses
+// one before it reads, writes or deletes anything.
+export function requireLabel(label) {
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(label)) {
+    throw new Error(
+      `the label ${JSON.stringify(label)} is not a plain name: start it with a letter or a ` +
+        'digit, and use only letters, digits, ".", "_" and "-"'
+    )
+  }
+  return label
 }
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))

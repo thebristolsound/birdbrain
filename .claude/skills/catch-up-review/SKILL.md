@@ -65,8 +65,13 @@ change, or another reviewer's output, turns its review into a confirmation.
 
 A report is **complete** when it is in the brief's shape and its "Unfinished source checks"
 section lists nothing. What a report lists under "Runtime limitations" does not make it
-incomplete: no source review settles those. A reviewer that returns no report, or an
-incomplete one, is started once more with the same task.
+incomplete: no source review settles those.
+
+A reviewer whose report is incomplete is sent back once, in the same conversation, with one
+instruction: do the reading the report lists as unfinished and return the whole report again.
+Resuming keeps what the reviewer has read, where a fresh start pays for a full review and
+tends to stop at the same place. Add nothing about the change. A reviewer that returned no
+report, or one the session cannot resume, is started once more with the same task.
 
 Done when every merge has a complete report from its `C<PR>` reviewer and its `X<PR>`
 reviewer. The control does not stand in for either. A merge without both stays owed: leave it

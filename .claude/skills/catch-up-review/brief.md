@@ -12,6 +12,9 @@ squash merge commit `M` (it has one parent), and your finding-ID prefix. The Git
 is `thebristolsound/birdbrain`. The review scope is `git diff M^ M`: that diff is the whole
 pull request.
 
+Run every command from the checkout path: change to it first, or pass `git -C <checkout path>`.
+The directory you start in may be another checkout on another commit.
+
 ## Hard rules
 
 - **Read-only checkout.** Other reviewers are using this same checkout right now. Do not edit,
@@ -39,14 +42,14 @@ pull request.
 2. `.github/scripts/review-fleet/prompts/correctness.md`, `claims.md`, `contract.md` and
    `tests.md`. These are the four review passes the automated review would have run. Carry out
    all four on this change.
-3. For a change under `src/` or `extension/`: `docs/agents/architecture.md` for process
-   boundaries and data access, and
-   `docs/specs/2026-07-31-evidence-affecting-paths-assessment.md` for which files are
-   `blocking` evidence-path files.
-4. For a change under `.github/`: every workflow the change touches, as merged, with the
-   scripts its jobs run, and
-   `docs/adr/0057-a-two-family-review-fleet-reads-every-pr-and-gates-the-merge.md` when the
-   change touches the review fleet.
+3. For a change under `src/` or `extension/`: the sections of `docs/agents/architecture.md`
+   that cover the processes and directories the change touches, and the include-list rows of
+   `docs/specs/2026-07-31-evidence-affecting-paths-assessment.md` for each changed file, which
+   say whether it is a `blocking` evidence-path file. Neither document is assigned in full.
+4. For a change under `.github/`: every workflow and script the change touches, as merged and
+   in full, and `docs/adr/0057-a-two-family-review-fleet-reads-every-pr-and-gates-the-merge.md`
+   when the change touches the review fleet. Of a script a changed job runs that the change
+   does not touch, only the parts the changed code calls are assigned.
 
 ## How to review
 
@@ -56,11 +59,13 @@ pull request.
   `git grep -n <name> M` and check each one still holds.
 - Check error paths. A check, verifier or reconciliation that passes when its input is missing
   (unset variable, absent file, empty list, two empty hashes comparing equal) is a finding.
-- Check every sentence the pull request body and commit message assert against the code as
-  merged. A fix, guard or test said to be present that is absent is a finding, and so is a
-  count that does not match.
+- Check every sentence the pull request body and the message of `M` assert against the code
+  as merged. A fix, guard or test said to be present that is absent is a finding, and so is a
+  count that does not match. The messages of the branch's earlier commits are not assigned:
+  later commits may have replaced what they describe.
 - Read each added or changed test against its title. Ask whether it would still pass if the
-  behaviour it claims to cover were broken.
+  behaviour it claims to cover were broken. A changed test file is assigned as its changed
+  tests and the helpers they call, not as the whole file.
 - For a change to a `blocking` evidence-path file, check that the body has an Evidence impact
   section, that a known-answer test or written justification covers the changed behaviour, and
   whether a package exported by an earlier version would stop verifying.
@@ -100,8 +105,12 @@ Return the report as your final message, in this shape:
    - Status on current main: as defined above.
    - Reproduction: the smallest test or command that would show the defect if someone ran it.
 3. "Unfinished source checks": reading this brief assigned that you did not do, with the
-   reason. Write `None` when you did all of it. A claim you could not check because this brief
-   bars the material goes under item 4, not here.
+   reason. The assigned reading is the whole diff, the items under "What to read first" within
+   the limits stated there, and the call sites of what the diff changes. Write `None` when you
+   did all of it, and leave out what this brief does not assign for this change. A trace you
+   chose to start beyond the assigned reading and did not finish is named in the finding it
+   bears on. A claim you could not check because this brief bars the material goes under
+   item 4.
 4. "Runtime limitations": what source review could not settle, and every claim that rests on
    material this brief bars: the pull request's comments and reviews, CI results, screenshots
    and anything that needs code to run.

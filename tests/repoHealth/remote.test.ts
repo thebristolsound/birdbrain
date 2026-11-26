@@ -443,6 +443,29 @@ describe('stale branches', () => {
     }
   })
 
+  it('is not measured when a page does not say whether it is the last', () => {
+    const nodes = [branch('a', 40)]
+    for (const refs of [{ nodes }, { nodes, pageInfo: {} }, { nodes, pageInfo: null }]) {
+      const { ctx, calls } = ctxOf(() => ({ data: { repository: { refs } } }))
+      expect(() => measure('stale-branches', ctx)).toThrow(Unmeasured)
+      expect(() => measure('stale-branches', ctx)).toThrow(
+        'GitHub returned a branch page that does not say whether it is the last'
+      )
+      expect(calls).toHaveLength(2)
+    }
+  })
+
+  it('is not measured when a page has more behind it and hands back no cursor', () => {
+    for (const endCursor of [null, undefined, '']) {
+      const refs = { nodes: [branch('a', 40)], pageInfo: { hasNextPage: true, endCursor } }
+      const { ctx, calls } = ctxOf(() => ({ data: { repository: { refs } } }))
+      expect(() => measure('stale-branches', ctx)).toThrow(
+        'GitHub returned a branch page with no cursor for the next one'
+      )
+      expect(calls).toHaveLength(1)
+    }
+  })
+
   it('gives up, without a partial count, on a listing that never ends', () => {
     const { ctx, calls } = ctxOf(() => page([branch('a', 40)], 'again'))
     expect(() => measure('stale-branches', ctx)).toThrow(

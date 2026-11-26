@@ -148,8 +148,17 @@ const listBranches = (ctx) => {
     const refs = read(ctx, args)?.data?.repository?.refs
     if (!Array.isArray(refs?.nodes)) throw new Unmeasured('GitHub returned no branch list')
     nodes.push(...refs.nodes)
-    if (!refs.pageInfo?.hasNextPage) return nodes
+    // Only a page that says it is the last one ends the listing. A page that
+    // says nothing may have more behind it, and its branches alone would read
+    // as a short, clean list.
+    if (typeof refs.pageInfo?.hasNextPage !== 'boolean') {
+      throw new Unmeasured('GitHub returned a branch page that does not say whether it is the last')
+    }
+    if (!refs.pageInfo.hasNextPage) return nodes
     after = refs.pageInfo.endCursor
+    if (typeof after !== 'string' || after === '') {
+      throw new Unmeasured('GitHub returned a branch page with no cursor for the next one')
+    }
   }
   throw new Unmeasured(`the repository has more than ${BRANCH_PAGE_LIMIT * 100} branches`)
 }

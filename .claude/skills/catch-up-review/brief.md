@@ -79,11 +79,13 @@ The directory you start in may be another checkout on another commit.
 - Read each added or changed test against its title. Ask whether it would still pass if the
   behaviour it claims to cover were broken. A changed test file is assigned as its changed
   tests, not as the whole file:
-  - a test the change adds, or one whose assertions, mocks or setup it edits, with the setup
-    and mocks that test runs under and the helpers it calls directly. What those helpers call
-    in turn is not assigned;
   - a test the change edits only in the data it passes, such as a fixture value, a renamed
-    field or an argument, as its changed lines and the assertions that read them.
+    field or an argument, as its changed lines and the assertions, mocks and setup steps that
+    read that data;
+  - a test the change deletes, as the behaviour it pinned and whether a test left in that
+    file still covers it;
+  - every other test the change adds or edits, with the setup and mocks that test runs under
+    and the helpers it calls directly. What those helpers call in turn is not assigned.
 - For a change to a `blocking` evidence-path file, check that the body has an Evidence impact
   section, that a known-answer test or written justification covers the changed behaviour, and
   whether a package exported by an earlier version would stop verifying.

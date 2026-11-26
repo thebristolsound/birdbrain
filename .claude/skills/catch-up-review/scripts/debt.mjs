@@ -14,8 +14,8 @@ const FILE_LIST_LIMIT = 3000
 const OVERRIDE_LABEL = 'break-glass'
 // Dependency updates this account opens are outside the scope, whatever they change.
 const DEPENDENCY_BOT = 'dependabot[bot]'
-// One reviewer per model family, and the second fresh Claude reviewer a trial run adds as its
-// control. A record names all three, with zeros where a reviewer did not run.
+// One reviewer per model family, and the second fresh Claude reviewer the runs up to
+// 2026-11-26 added as a control. A record names all three, with zeros where none ran.
 const SLOTS = ['claude', 'codex', 'control']
 // A review by one family alone leaves the merge owed, so a record clears a merge only when
 // it counts a reviewer in each of these.

@@ -85,7 +85,8 @@ candidates:
 That takes in the findings the other family confirmed, which the maintainer merged over, and
 the ones no one ruled on. A fleet finding counts under the family that raised it, and a
 Claude one counts in the `claude` slot, never `control`. When a reviewer in step 3 raised the
-same defect, it is one candidate.
+same defect, it is one candidate. A fleet finding never counts in `alone`: that number
+compares the reviewers this run started, and the fleet is none of them.
 
 ## 5. Reproduce
 
@@ -152,10 +153,12 @@ Merge commit `<merge commit>`. Claude subagent tokens: 250,000. Longest review: 
 ```
 
 The numbers block opens with `v`, the block's version, which is `1`, and `run`, the date the
-run started as `YYYY-MM-DD`: records with the same date are one run. It then holds, for each of `claude`, `codex` and `control`:
-reviewers that returned a complete report, blocking candidates, how many of those reproduced (`confirmed`), how
-many reproduced defects no other reviewer raised (`alone`), and other candidates. Then for the
-merge: distinct defects reproduced, issues filed, defects reported privately, Claude subagent
+run started as `YYYY-MM-DD`: records with the same date are one run. It then holds, for each
+of `claude`, `codex` and `control`: reviewers that returned a complete report, blocking
+candidates, how many of those reproduced (`confirmed`), and other candidates. `alone` is how
+many reproduced defects that reviewer raised in this run and no other reviewer in this run
+did; a defect the fleet also raised still counts, and one only the fleet raised counts for
+nobody. Then for the merge: distinct defects reproduced, issues filed, defects reported privately, Claude subagent
 tokens, and minutes for the longest review. Every field is required. Write `null` for tokens
 or minutes you could not measure; never write a guess or a zero.
 
@@ -188,12 +191,16 @@ numbers. Remove the scratch tree with the `teardown` skill.
 
 ## Keep or retire
 
-The job is kept only while it earns its upkeep (ADR-0029). Review it once the script's `runs`
-line names three runs.
+The job is kept only while it earns its upkeep (ADR-0029). The script's `runs` line gives each
+run's merges, issues filed and defects reported privately. A run **found something** when it
+filed an issue or reported a defect privately.
 
-- **Keep it** if the three runs filed at least two defects the maintainer chose to fix.
-- **Retire it** if two runs next to each other on the `runs` line show `0 filed`. Retiring
-  means deleting this directory and `tests/catchUpReviewDebt.test.ts`.
+- **Retire it** as soon as the two latest runs both found nothing. This rule comes first: it
+  holds whatever earlier runs found. A merge held under step 6 has no record yet, so ask the
+  maintainer whether either run holds one before retiring. Retiring means deleting this
+  directory and `tests/catchUpReviewDebt.test.ts`.
+- **Keep it** if it is not retired once the line names three runs, and those runs found at
+  least two defects the maintainer chose to fix. If they found fewer, the maintainer decides.
 - **Drop a reviewer** from the `reproduced by one reviewer alone` line, which counts only the
   merges all three reviewers read. Drop Codex if the control's count is above zero and at
   least Codex's: a second Claude pass found as much. Otherwise drop the control if Codex's

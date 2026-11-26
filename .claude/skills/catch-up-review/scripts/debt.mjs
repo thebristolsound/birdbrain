@@ -146,12 +146,18 @@ const sumKnown = (values) => {
   }
 }
 
-// One entry per run, oldest first. Records that carry the same run date are one run.
+// One entry per run, oldest first. Records that carry the same run date are one run. A run
+// is judged by the defects it filed and the ones it reported privately, which are never filed.
 const runsOf = (numbers) => {
   const runs = new Map()
-  for (const { run, filed } of numbers) {
-    const { merges, filed: sum } = runs.get(run) ?? { merges: 0, filed: 0 }
-    runs.set(run, { run, merges: merges + 1, filed: sum + filed })
+  for (const { run, filed, private: privately } of numbers) {
+    const sums = runs.get(run) ?? { merges: 0, filed: 0, private: 0 }
+    runs.set(run, {
+      run,
+      merges: sums.merges + 1,
+      filed: sums.filed + filed,
+      private: sums.private + privately
+    })
   }
   return [...runs.values()].sort((a, b) => a.run.localeCompare(b.run))
 }
@@ -254,8 +260,8 @@ export function render({ owed, recorded, outOfScope, totals }) {
     const each = (field) => SLOTS.map((slot) => `${totals[field][slot]} ${slot}`).join(', ')
     const alone = SLOTS.map((slot) => `${totals.matched.alone[slot]} ${slot}`).join(', ')
     const runs = totals.runs.map(
-      ({ run, merges, filed }) =>
-        `${run} (${merges} ${merges === 1 ? 'merge' : 'merges'}, ${filed} filed)`
+      ({ run, merges, filed, private: privately }) =>
+        `${run} (${merges} ${merges === 1 ? 'merge' : 'merges'}, ${filed} filed, ${privately} private)`
     )
     lines.push(
       `  runs: ${runs.join(', ')}`,

@@ -99,6 +99,10 @@ Return the report as your final message, in this shape:
    - Failure scenario: required for BLOCKING.
    - Status on current main: as defined above.
    - Reproduction: the smallest test or command that would show the defect if someone ran it.
-3. "Unfinished source checks": anything in your assignment you did not finish, with the reason.
-4. "Runtime limitations": what source review could not settle.
+3. "Unfinished source checks": reading this brief assigned that you did not do, with the
+   reason. Write `None` when you did all of it. A claim you could not check because this brief
+   bars the material goes under item 4, not here.
+4. "Runtime limitations": what source review could not settle, and every claim that rests on
+   material this brief bars: the pull request's comments and reviews, CI results, screenshots
+   and anything that needs code to run.
 5. If nothing is BLOCKING, say so plainly and list the call sites and paths you traced.

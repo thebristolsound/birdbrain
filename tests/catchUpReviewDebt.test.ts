@@ -310,7 +310,7 @@ describe('totalsOf', () => {
     const recorded = [NUMBERS, unknown].map((numbers) => ({ record: { numbers } }))
     expect(totalsOf(recorded)).toEqual({
       merges: 2,
-      runs: [{ run: '2026-11-24', merges: 2, filed: 2 }],
+      runs: [{ run: '2026-11-24', merges: 2, filed: 2, private: 1 }],
       reviewers: { claude: 2, codex: 2, control: 0 },
       blocking: { claude: 2, codex: 0, control: 0 },
       confirmed: { claude: 2, codex: 0, control: 0 },
@@ -328,8 +328,8 @@ describe('totalsOf', () => {
     const later = { ...NUMBERS, run: '2026-12-02', filed: 0 }
     const recorded = [later, NUMBERS, later].map((numbers) => ({ record: { numbers } }))
     expect(totalsOf(recorded).runs).toEqual([
-      { run: '2026-11-24', merges: 1, filed: 1 },
-      { run: '2026-12-02', merges: 2, filed: 0 }
+      { run: '2026-11-24', merges: 1, filed: 1, private: 0 },
+      { run: '2026-12-02', merges: 2, filed: 0, private: 0 }
     ])
   })
 
@@ -462,7 +462,7 @@ describe('render', () => {
       '  #30  2026-11-19  change 30  (src/, extension/)  [record unreadable: https://example.test/comment-9]',
       'Reviewed: 1',
       '  #10  2026-11-11  change 10  (src/)  [run 2026-11-24]',
-      '  runs: 2026-11-24 (1 merge, 1 filed)',
+      '  runs: 2026-11-24 (1 merge, 1 filed, 0 private)',
       '  reviewers: 1 claude, 1 codex, 0 control',
       '  blocking candidates: 1 claude, 0 codex, 0 control',
       '  of those reproduced: 1 claude, 0 codex, 0 control',

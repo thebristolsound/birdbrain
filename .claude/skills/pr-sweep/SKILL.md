@@ -32,13 +32,14 @@ Classify each PR into exactly one lane:
 - **fix**: red CI, `CONFLICTING`, or a request-changes verdict. A dependabot PR goes here
   when red; fixes push to its existing branch.
 
-Then check who else writes to each branch. Read the PR's commits with
-`gh api repos/thebristolsound/birdbrain/pulls/<n>/commits --paginate`. A commit authored
-`Claude <noreply@anthropic.com>` comes from a cloud Claude session, which pushes under the
-maintainer's login and does not appear in `ListAgents`; this sweep's agents commit as
-`birdbrain-agent`. When the newest commit is a cloud session's, or any commit this sweep did
-not make landed in the last two hours, ask the maintainer whether that session is still
-working the PR, and keep the PR out of **fix** until they answer.
+Then check for other writers: a cloud Claude session pushes under the maintainer's login and
+may not appear in `ListAgents`. Read each PR's commits with
+`gh api repos/thebristolsound/birdbrain/pulls/<n>/commits --paginate` and record its head sha.
+Mark the PR **held** when that read fails or returns no commits, when the newest commit is
+authored `Claude <noreply@anthropic.com>`, or when a commit not authored by `dependabot[bot]`
+has a commit date in the last two hours. Ask the maintainer whether another session is still
+working each held PR. A held PR keeps its lane but gets no fixer, conflict push or merge until
+they answer.
 
 Done with this step when every open PR sits in a lane.
 
@@ -52,11 +53,17 @@ conflicted PR until the clean ones ahead of it have merged, so it is resolved on
   (`.claude/skills/pr-sweep/scripts/post-status.sh <n> pending 'Reviewer pre-pass running.'`),
   then spawn
   `birdbrain-reviewer` with the review prompt in [prompts.md](prompts.md).
-- **fix**: repeat the other-writer check from section 1 on the current head, then spawn
-  `birdbrain-implementer` with the fix prompt in [prompts.md](prompts.md). When
-  it returns, post its replies and body, then send the PR back to **review** as a delta round
-  against the previous reviewed sha.
+- **fix**: spawn `birdbrain-implementer` with the fix prompt in [prompts.md](prompts.md). If it
+  returns having pushed nothing because the head moved, post nothing from it and hold the PR.
+  Otherwise post its replies and body, record its new head, and send the PR back to
+  **review** as a delta round against the previous reviewed sha.
 - **merge**: section 4.
+
+Before every write to a PR branch (spawning a fixer, pushing a conflict resolution,
+merging), re-read the remote head and compare it with the head you recorded at the survey,
+from an agent's return or from your own push. When dependabot alone moved it, record the new
+head and go on. Any other change means someone else pushed: hold the PR and ask the
+maintainer.
 
 Pass each agent the PR number, head sha, labels, and any other worktree holding the branch
 (`git worktree list`) so it stays out of it. Relay review feedback by pointer: the agent

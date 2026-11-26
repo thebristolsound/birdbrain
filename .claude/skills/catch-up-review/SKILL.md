@@ -68,10 +68,11 @@ section lists nothing. What a report lists under "Runtime limitations" does not 
 incomplete: no source review settles those.
 
 A reviewer whose report is incomplete is sent back once, in the same conversation, with one
-instruction: do the reading and the checks the report lists as unfinished and return the whole
-report again. Resuming keeps what the reviewer has read, where a fresh start pays for a full
-review and tends to stop at the same place. Add nothing about the change. A reviewer that
-returned no report, or one the session cannot resume, is started once more with the same task.
+instruction: do the reading and the checks the report lists as unfinished, and return the whole
+report again in the brief's shape. Resuming keeps what the reviewer has read, where a fresh
+start pays for a full review and tends to stop at the same place. Add nothing about the
+change. A reviewer that returned no report, or one the session cannot resume, is started once
+more with the same task.
 
 Done when every merge has a complete report from its `C<PR>` reviewer and its `X<PR>`
 reviewer. The control does not stand in for either. A merge without both stays owed: leave it

@@ -24,7 +24,7 @@ import {
   trimTrailingBackground
 } from '@main/services/backgroundRenderer'
 import { ConsentBlockingUndoFailed } from '@main/services/consentBlocker'
-import { logger } from '@main/services/logger'
+import { disposeLogger, initLogger, logger, readRecentEntries } from '@main/services/logger'
 import { sanitizeError } from '@main/services/logSafe'
 import { ManifestEntrySchema, ScrollToLoadRecordSchema } from '@shared/schemas'
 import { RefusedAddressError } from '@main/services/localAddressPolicy'
@@ -3711,15 +3711,7 @@ describe('a background Capture, known answers for the record, the PDF and the in
         context: Object.keys(context ?? {}),
         error: String(error)
       }))
-    // What the log file keeps of each failure's error: the logger writes it through
-    // sanitizeError (logger.ts), which drops the message (#2268).
-    const kept = logged.mock.calls
-      .filter(([, code]) => /\.(transaction_record|pdf)_failed$/.test(code))
-      .map(([, code, , error]) => {
-        const { name, code: errorCode } = sanitizeError(error)
-        return { code, error: { name, code: errorCode } }
-      })
-    return { id, entry, handed, failures, kept }
+    return { id, entry, handed, failures }
   }
 
   const MHTML_PART = { present: true, pinnedImages: 0, pinnedImagesNotLoaded: 0 }
@@ -3971,7 +3963,8 @@ describe('a background Capture, known answers for the record, the PDF and the in
     ])
   }, 30_000)
 
-  // The path the report behind #2268 came through: the queue's log line, as the log file has it.
+  // The path the report behind #2268 came through: the queue's log line, read back from the log
+  // file the logger wrote.
   it.each([
     [
       'a page taller than the PDF bound',
@@ -3991,8 +3984,19 @@ describe('a background Capture, known answers for the record, the PDF and the in
     'logs the cause of the PDF failure for %s',
     async (_case, arrange, error) => {
       arrange()
-      const { kept } = await captureOnce()
-      expect(kept).toEqual([{ code: 'backgroundRenderer.pdf_failed', error }])
+      initLogger(tempDir, 'pdf-cause-session')
+      try {
+        await captureOnce()
+        const written = readRecentEntries(100)
+          .filter(({ code }) => code === 'backgroundRenderer.pdf_failed')
+          .map(({ code, error: logged }) => ({
+            code,
+            error: { name: logged?.name, code: logged?.code }
+          }))
+        expect(written).toEqual([{ code: 'backgroundRenderer.pdf_failed', error }])
+      } finally {
+        disposeLogger()
+      }
     },
     30_000
   )

@@ -3904,4 +3904,50 @@ describe('a background Capture, known answers for the record, the PDF and the in
       'backgroundRenderer.pdf_failed: Error: Printing failed'
     ])
   }, 30_000)
+
+  // #2268 gives each PDF refusal a cause the log keeps; these hold what it signs and says.
+  it('stores the Capture with the PDF failed, and keeps the record, when the page is taller than the PDF bound', async () => {
+    ctl.contentHeight = MAX_PDF_CONTENT_HEIGHT_PX + 1
+    const { id, entry, handed, failures } = await captureOnce()
+    expect(entry.inventory).toEqual({
+      mhtml: MHTML_PART,
+      transactionRecord: RECORD_PART,
+      screenshot: { ...SCREENSHOT_PART, truncated: true, contentHeight: 50_001 },
+      pdf: FAILED
+    })
+    expect(entry).not.toHaveProperty('pdfHash')
+    expect(existsSync(file(id, 'pdf'))).toBe(false)
+    expect(entry.transactionRecordHash).toBe(sha256(readFileSync(file(id, 'warc.gz'))))
+    expect(finishFields(handed)).toEqual(['inventory', 'transactionRecord', 'boundTls'])
+    expect(failures).toEqual([
+      {
+        code: 'backgroundRenderer.pdf_failed',
+        context: [],
+        error:
+          'Error: The page is 50001 CSS pixels tall, over MAX_PDF_CONTENT_HEIGHT_PX (50000), ' +
+          'so it was not printed'
+      }
+    ])
+  }, 30_000)
+
+  it('stores the Capture with the PDF failed, and keeps the record, when the print does not settle', async () => {
+    ctl.printHangs = true
+    const { id, entry, handed, failures } = await captureOnce()
+    expect(entry.inventory).toEqual({
+      mhtml: MHTML_PART,
+      transactionRecord: RECORD_PART,
+      screenshot: SCREENSHOT_PART,
+      pdf: FAILED
+    })
+    expect(entry).not.toHaveProperty('pdfHash')
+    expect(existsSync(file(id, 'pdf'))).toBe(false)
+    expect(finishFields(handed)).toEqual(['inventory', 'transactionRecord', 'boundTls'])
+    expect(failures).toEqual([
+      {
+        code: 'backgroundRenderer.pdf_failed',
+        context: [],
+        error: 'PrintTimeout: The print did not settle within 5000ms'
+      }
+    ])
+  }, 30_000)
 })

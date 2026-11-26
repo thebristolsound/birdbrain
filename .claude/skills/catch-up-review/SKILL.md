@@ -83,10 +83,12 @@ candidates:
 - a Codex P0 or P1 finding, unless its Claude ruling is `REFUTED`.
 
 That takes in the findings the other family confirmed, which the maintainer merged over, and
-the ones no one ruled on. A fleet finding counts under the family that raised it, and a
-Claude one counts in the `claude` slot, never `control`. When a reviewer in step 3 raised the
-same defect, it is one candidate. A fleet finding never counts in `alone`: that number
-compares the reviewers this run started, and the fleet is none of them.
+the ones no one ruled on. A fleet finding that no reviewer in step 3 raised counts under the
+family that raised it, and a Claude one counts in the `claude` slot, never `control`. A fleet
+finding that a reviewer in step 3 also raised is that reviewer's candidate, counted in that
+reviewer's slot and not a second time for the fleet. A finding only the fleet raised never
+counts in `alone`: that number compares the reviewers this run started, and the fleet is none
+of them.
 
 ## 5. Reproduce
 
@@ -158,9 +160,10 @@ of `claude`, `codex` and `control`: reviewers that returned a complete report, b
 candidates, how many of those reproduced (`confirmed`), and other candidates. `alone` is how
 many reproduced defects that reviewer raised in this run and no other reviewer in this run
 did; a defect the fleet also raised still counts, and one only the fleet raised counts for
-nobody. Then for the merge: distinct defects reproduced, issues filed, defects reported privately, Claude subagent
-tokens, and minutes for the longest review. Every field is required. Write `null` for tokens
-or minutes you could not measure; never write a guess or a zero.
+nobody. Then for the merge: distinct defects reproduced, issues filed, defects reported
+privately, Claude subagent tokens, and minutes for the longest review. An open issue that
+step 6 added a reproduced defect to counts as filed. Every field is required. Write `null`
+for tokens or minutes you could not measure; never write a guess or a zero.
 
 The script checks the counts against each other, and a record that fails a check leaves the
 merge owed, with the record marked unreadable:
@@ -196,16 +199,17 @@ run's merges, issues filed and defects reported privately. A run **found somethi
 filed an issue or reported a defect privately.
 
 - **Retire it** as soon as the two latest runs both found nothing. This rule comes first: it
-  holds whatever earlier runs found. A merge held under step 6 has no record yet, so ask the
-  maintainer whether either run holds one before retiring. Retiring means deleting this
+  holds whatever earlier runs found. A merge held under step 6 has no record, and a run whose
+  merges are all held is missing from the line. Ask the maintainer whether any merge is held
+  before retiring: a held merge means its run found something. Retiring means deleting this
   directory and `tests/catchUpReviewDebt.test.ts`.
 - **Keep it** if it is not retired once the line names three runs, and those runs found at
   least two defects the maintainer chose to fix. If they found fewer, the maintainer decides.
 - **Drop a reviewer** from the `reproduced by one reviewer alone` line, which counts only the
   merges all three reviewers read. Drop Codex if the control's count is above zero and at
   least Codex's: a second Claude pass found as much. Otherwise drop the control if Codex's
-  count is above zero: the second family found what no Claude reviewer raised. While the line
-  counts no merge, drop neither.
+  count is above zero: the second family found what no Claude reviewer in the run raised. While
+  the line counts no merge, drop neither.
 
 A schedule, a release that refuses while reviews are owed, or a count in the weekly health
 report each needs its own ADR first (ADR-0029, ADR-0058).

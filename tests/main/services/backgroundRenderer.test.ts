@@ -3975,12 +3975,16 @@ describe('a background Capture, known answers for the record, the PDF and the in
   it.each([
     [
       'a page taller than the PDF bound',
-      () => (ctl.contentHeight = MAX_PDF_CONTENT_HEIGHT_PX + 1),
+      (): void => {
+        ctl.contentHeight = MAX_PDF_CONTENT_HEIGHT_PX + 1
+      },
       { name: 'Error', code: 'PDF_TOO_TALL' }
     ],
     [
       'a print that does not settle',
-      () => (ctl.printHangs = true),
+      (): void => {
+        ctl.printHangs = true
+      },
       { name: 'PrintTimeout', code: null }
     ]
   ] as const)(

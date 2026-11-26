@@ -98,6 +98,8 @@ coverage/
 !.claude/skills/run-birdbrain/
 # Takes one change to a pull request that is ready to merge, while the maintainer is away.
 !.claude/skills/ship-unit/
+# The after-the-fact review of merges the fleet did not finish, and its debt list.
+!.claude/skills/catch-up-review/
 # The SessionStart hook that settings.json runs.
 !.claude/hooks/
 .codex

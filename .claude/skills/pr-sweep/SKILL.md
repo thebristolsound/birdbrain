@@ -46,8 +46,8 @@ Done with this step when every open PR sits in a lane.
 ## 2. Run the lanes
 
 The machine has 4 cores and every agent runs tests: keep **three agents in flight**, and
-refill a slot the moment one returns. Order the review lane smallest diff first; hold a
-conflicted PR until the clean ones ahead of it have merged, so it is resolved once.
+refill a slot the moment one returns. Order the review lane smallest diff first; keep a
+conflicted PR back until the clean ones ahead of it have merged, so it is resolved once.
 
 - **review**: post `agent/pre-pass` `pending` on the head
   (`.claude/skills/pr-sweep/scripts/post-status.sh <n> pending 'Reviewer pre-pass running.'`),
@@ -62,8 +62,7 @@ conflicted PR until the clean ones ahead of it have merged, so it is resolved on
 Before every write to a PR branch (spawning a fixer, pushing a conflict resolution,
 merging), re-read the remote head and compare it with the head you recorded at the survey,
 from an agent's return or from your own push. When dependabot alone moved it, record the new
-head and go on. Any other change means someone else pushed: hold the PR and ask the
-maintainer.
+head and go on. A failed read, or any other change, holds the PR: ask the maintainer.
 
 Pass each agent the PR number, head sha, labels, and any other worktree holding the branch
 (`git worktree list`) so it stays out of it. Relay review feedback by pointer: the agent

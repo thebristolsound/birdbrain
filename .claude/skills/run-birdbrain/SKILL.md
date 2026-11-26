@@ -110,7 +110,8 @@ app offers no browser or either Capture fails. A label names a folder under the 
 which `take` deletes before it writes, so every command refuses a label that is not a plain
 name, such as `../..`. `compare` and `verify` refuse a run that does not hold one Capture of
 each method, and `compare` refuses a run with a file that is missing or does not hash to the
-value its entry signs, and an MHTML it cannot read part by part.
+value its entry signs, an MHTML it cannot read part by part, and a transaction record it cannot
+read record by record.
 `compare` describes each Capture by its schema version, address, HTTP status, inventory,
 scroll-to-load record, Bound TLS Details, MHTML parts, record structure, PDF page count,
 screenshot and text, and a difference outside that description does not show. It leaves out

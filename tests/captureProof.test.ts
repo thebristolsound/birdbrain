@@ -16,6 +16,7 @@ import { gzipSync } from 'zlib'
 import {
   compare,
   describeMhtml,
+  describeRecords,
   describeRun,
   requireArtifacts,
   requireBothMethods,
@@ -268,6 +269,61 @@ describe('describeMhtml', () => {
   )
 })
 
+describe('describeRecords', () => {
+  const record = (...lines: string[]) => lines.join('\r\n')
+  const info = record(
+    'WARC/1.1',
+    'WARC-Type: warcinfo',
+    'WARC-Record-ID: <urn:uuid:1>',
+    '',
+    'software: Birdbrain',
+    'capture-id: c1',
+    '',
+    ''
+  )
+  const response = record(
+    'WARC/1.1',
+    'WARC-Type: response',
+    'WARC-Target-URI: http://127.0.0.1:29412/',
+    'WARC-Payload-Digest: sha256:aa',
+    '',
+    'HTTP/1.1 200 OK',
+    'Content-Type: text/html',
+    'Set-Cookie: sid=[replaced]',
+    '',
+    'body'
+  )
+
+  it('names each record by type, first line, address, payload digest and header names', () => {
+    expect(describeRecords(info + response)).toEqual([
+      'warcinfo software: Birdbrain | capture-id: ID',
+      'response HTTP/1.1 200 OK http://127.0.0.1:29412/ payload=sha256:aa ' +
+        'headers=[content-type,set-cookie] Set-Cookie: sid=[replaced]'
+    ])
+  })
+
+  it.each([
+    ['empty text', ''],
+    ['text that is no WARC record', 'abc'],
+    ['text before the first record', `abc\r\n${info}`]
+  ])('refuses %s', (_name, text) => {
+    expect(() => describeRecords(text)).toThrow(
+      'the transaction record does not start with a WARC record, so its records cannot be compared'
+    )
+  })
+
+  it('refuses a record with no blank line after its headers', () => {
+    expect(() => describeRecords(`${info}WARC/1.1\r\nWARC-Type: response`)).toThrow(
+      'has no blank line after the headers of record 2'
+    )
+  })
+
+  it('refuses a record that names no type', () => {
+    const untyped = record('WARC/1.1', 'WARC-Record-ID: <urn:uuid:2>', '', 'body')
+    expect(() => describeRecords(info + untyped)).toThrow('names no type for record 2')
+  })
+})
+
 describe('compare', () => {
   let out: string
   const log = vi.spyOn(console, 'log')
@@ -293,7 +349,13 @@ describe('compare', () => {
   const writeRun = (
     label: string,
     id: string,
-    { text = 'Capture proof', page = '<p>page</p>', quote = '"', eol = '\r\n' } = {}
+    {
+      text = 'Capture proof',
+      page = '<p>page</p>',
+      quote = '"',
+      eol = '\r\n',
+      record = undefined as Buffer | undefined
+    } = {}
   ) => {
     const dir = join(out, label, 'case')
     mkdirSync(dir, { recursive: true })
@@ -349,6 +411,7 @@ describe('compare', () => {
           )
         )
       }
+      if (record) files['warc.gz'] = record
       for (const [ext, bytes] of Object.entries(files)) {
         writeFileSync(join(dir, `${captureId}.${ext}`), bytes)
       }
@@ -478,6 +541,15 @@ describe('compare', () => {
     }
     expect(() => compare('a', 'b', { out })).toThrow(
       "the run a: the background Capture's txt file does not hash to the value its entry signs"
+    )
+  })
+
+  it('refuses two runs whose transaction records are both empty', () => {
+    for (const label of ['a', 'b']) {
+      writeRun(label, `run-${label}`, { record: gzipSync(Buffer.alloc(0)) })
+    }
+    expect(() => compare('a', 'b', { out })).toThrow(
+      "the run a: the background Capture's warc.gz file does not start with a WARC record"
     )
   })
 

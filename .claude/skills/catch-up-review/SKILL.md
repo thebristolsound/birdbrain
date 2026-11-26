@@ -74,9 +74,16 @@ start pays for a full review and tends to stop at the same place. Add nothing ab
 change. A reviewer that returned no report, or one the session cannot resume, is started once
 more with the same task.
 
-Done when every merge has a complete report from its `C<PR>` reviewer and its `X<PR>`
-reviewer. The control does not stand in for either. A merge without both stays owed: leave it
-out of the steps below and say so in the run report, with the checks that stayed unfinished.
+A Codex report that is still incomplete after its second start is **accepted** when the
+maintainer says it counts. Show the maintainer that report's "Unfinished source checks"
+section, in the session, and ask. An accepted report counts as a complete one in every later
+step, and that merge's record says the Codex report listed unfinished reading, and where and
+when the maintainer accepted it.
+
+Done when every merge has a complete report from its `C<PR>` reviewer and a complete or
+accepted report from its `X<PR>` reviewer. The control does not stand in for either. A merge
+without both stays owed: leave it out of the steps below and say so in the run report, with
+the checks that stayed unfinished.
 
 ## 4. Add what the fleet reported
 
@@ -162,8 +169,8 @@ Merge commit `<merge commit>`. Claude subagent tokens: 250,000. Longest review: 
 
 The numbers block opens with `v`, the block's version, which is `1`, and `run`, the date the
 run started as `YYYY-MM-DD`: records with the same date are one run. It then holds, for each
-of `claude`, `codex` and `control`: reviewers that returned a complete report, blocking
-candidates, how many of those reproduced (`confirmed`), and other candidates. `alone` is how
+of `claude`, `codex` and `control`: reviewers whose report counted, complete or accepted,
+blocking candidates, how many of those reproduced (`confirmed`), and other candidates. `alone` is how
 many reproduced defects that reviewer raised in this run and no other reviewer in this run
 did; a defect the fleet also raised still counts, and one only the fleet raised counts for
 nobody. Then for the merge: distinct defects reproduced, issues filed, defects reported

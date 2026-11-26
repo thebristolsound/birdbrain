@@ -78,7 +78,12 @@ The directory you start in may be another checkout on another commit.
   later commits may have replaced what they describe.
 - Read each added or changed test against its title. Ask whether it would still pass if the
   behaviour it claims to cover were broken. A changed test file is assigned as its changed
-  tests, the setup and mocks they run under and the helpers they call, not as the whole file.
+  tests, not as the whole file:
+  - a test the change adds, or one whose assertions, mocks or setup it edits, with the setup
+    and mocks that test runs under and the helpers it calls directly. What those helpers call
+    in turn is not assigned;
+  - a test the change edits only in the data it passes, such as a fixture value, a renamed
+    field or an argument, as its changed lines and the assertions that read them.
 - For a change to a `blocking` evidence-path file, check that the body has an Evidence impact
   section, that a known-answer test or written justification covers the changed behaviour, and
   whether a package exported by an earlier version would stop verifying.
@@ -121,11 +126,11 @@ Return the report as your final message, in this shape:
 3. "Unfinished source checks": every piece of reading and every check this brief assigns that
    you did not do, with the reason. That covers the whole diff, the items under "What to read
    first" within the limits stated there, the pull request body, the message of `M`, an issue
-   the pull request closes or links, each changed test with its setup and helpers, every check
-   under "How to review", and the status on current main of each BLOCKING finding. Reading you
-   could not do because an allowed command failed belongs here too. Write `None` when you did
-   all of it. Leave out a document this brief does not assign for this change, and material
-   this brief bars, which goes under item 4.
+   the pull request closes or links, each changed test within the limits stated under "How to
+   review", every other check there, and the status on current main of each BLOCKING finding.
+   Reading you could not do because an allowed command failed belongs here too. Write `None`
+   when you did all of it. Leave out a document this brief does not assign for this change,
+   and material this brief bars, which goes under item 4.
 4. "Runtime limitations": what source review could not settle, and every claim that rests on
    material this brief bars: the pull request's comments and reviews, CI results, screenshots
    and anything that needs code to run. A trace you started beyond the assigned reading and

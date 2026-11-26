@@ -73,6 +73,12 @@ cmd="$(printf '%s' "$cmd" | base64 -d)"
 # through.
 case " $bound " in *" $agent "*) ;; *) [ "${BIRDBRAIN_DISPATCH:-}" = 1 ] || exit 0 ;; esac
 
+# CLAUDE_PROJECT_DIR names the top-level session's tree, but a subagent in its own worktree
+# reports that worktree as the payload's cwd, and only that tree may have node_modules.
+if top="$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null)"; then
+  root="$top"
+fi
+
 # `git merge` and `git revert` write their own commit with a generated message that no file
 # can carry through the linter. Allow only the forms that stop before the commit; the checked
 # `git commit -F <file>` then finishes the job.

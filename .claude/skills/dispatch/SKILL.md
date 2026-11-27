@@ -321,8 +321,10 @@ comments. Classify:
   exactly as you treat a comment of his asking for changes, and vice versa — the form does
   not change the handling.
   Dispatch `birdbrain-implementer` with the PR number, its linked
-  issue, and the re-enumeration instruction; it applies or rejects-with-reason each item per
-  its contract, then pushes. It **must not** post its replies — the REST comment endpoints do
+  issue, and the re-enumeration instruction; it sorts each item by the table in
+  `.claude/skills/ship-unit/SKILL.md`, "Sorting a finding" (ADR-0060), and pushes only when a
+  must-fix item needs it. A round whose items are all non-blocking returns dispositions and no
+  commit. It **must not** post its replies — the REST comment endpoints do
   technically work from a subagent, and the part-two ledger (finding 2) recorded exactly that
   happening — it returns them as text keyed to the comment or thread ids they answer, and
   **you** post them via the write path (locally `gh api .../issues/<n>/comments -X POST
@@ -337,8 +339,11 @@ comments. Classify:
   joins a reply to its finding by that key. `.claude/skills/post-comment/scripts/check.sh
   <file>` runs on each file before it is posted. Your read of that text before posting is the editorial pass; a subagent that posts directly has bypassed it,
   which is a reportable contract violation even when the content was fine — and it lands under
-  the wrong identity, since only the dispatcher holds the machine token. Then run the
-  reviewer pre-pass (section 4).
+  the wrong identity, since only the dispatcher holds the machine token. From the same
+  dispositions, rewrite the description's `## Review findings` section (the counts line and one
+  row per finding, in the `post-pr-body` shape), run that skill's `scripts/check.sh` on the
+  body file, and write it with the REST body write. A body edit starts no review fleet round.
+  Then run the reviewer pre-pass (section 4).
 (Closed and merged PRs never reach this section — an open-PR query cannot return them; their
 hygiene checks run from section 1's empty-queue branch.)
 
@@ -993,7 +998,11 @@ paragraph belongs in the report and the row says which section.
 Post the status alongside it, per "The verdict is a commit status" above — same sha, same
 round, both or neither.
 
-- **approve for human review** → mark the PR ready for review via the write path
+- **approve for human review** → first add the verdict's non-blocking findings to the
+  description's `## Review findings` section, sorted by the table in
+  `.claude/skills/ship-unit/SKILL.md`, "Sorting a finding", with the REST body write; an
+  approving verdict starts no fix round, so none of them is taken. Then mark the PR ready for
+  review via the write path
   (`agh pr ready <n>`), evidence-affecting or not (ADR-0025). Ready means a human should now
   look, and it is what wakes CodeRabbit. An evidence-affecting PR then waits for the human back
   gate; a non-evidence PR proceeds to section 2a. Report and stop.

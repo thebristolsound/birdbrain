@@ -16,7 +16,7 @@
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { createWriteStream, existsSync, mkdirSync, mkdtempSync, renameSync, rmSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname, join, win32 } from 'node:path'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -47,11 +47,15 @@ export const archiveUrl = (version, platform) =>
   `https://storage.googleapis.com/chrome-for-testing-public/${version}/${platform}/chrome-${platform}.zip`
 
 // The tools extractWithCli in scripts/ensure-electron.mjs uses: bsdtar (shipped as `tar` on
-// Windows 10+) reads zips, GNU tar does not, so everything else goes through unzip.
-export const extractCommand = (platform, archivePath, destination) =>
-  platform === 'win32'
-    ? ['tar', ['-xf', archivePath, '-C', destination]]
-    : ['unzip', ['-oq', archivePath, '-d', destination]]
+// Windows 10+) reads zips, GNU tar does not, so everything else goes through unzip. Windows
+// names bsdtar by absolute path: in Git Bash the GNU tar on PATH comes first and reads `C:` in
+// the archive path as a remote host.
+export const extractCommand = (platform, archivePath, destination, env = process.env) => {
+  if (platform !== 'win32') return ['unzip', ['-oq', archivePath, '-d', destination]]
+  const systemRoot = env['SystemRoot']
+  const tar = systemRoot ? win32.join(systemRoot, 'System32', 'tar.exe') : 'tar'
+  return [tar, ['-xf', archivePath, '-C', destination]]
+}
 
 const extract = (archivePath, destination) => {
   const [tool, args] = extractCommand(process.platform, archivePath, destination)
@@ -60,7 +64,7 @@ const extract = (archivePath, destination) => {
     execFileSync(tool, args, { stdio: 'inherit' })
   } catch (err) {
     if (err.code === 'ENOENT') {
-      throw new Error(`\`${tool}\` was not found on PATH`, { cause: err })
+      throw new Error(`\`${tool}\` was not found`, { cause: err })
     }
     throw new Error(`\`${tool}\` failed to extract the archive: ${err.message}`, { cause: err })
   }

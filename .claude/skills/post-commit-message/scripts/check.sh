@@ -14,13 +14,12 @@ root="${CLAUDE_PROJECT_DIR:-$(git -C "$here" rev-parse --show-toplevel)}"
 
 # A branch cut before a linter change runs its own copy, which can disagree with main's: a
 # text that passes here can fail on main, or the reverse. Say so on stderr; never block.
+# Paths are relative to $root, the tree whose linter runs.
 warn_if_stale() {
-  local repo f rel
-  repo="$(git -C "$here" rev-parse --show-toplevel 2>/dev/null)" || return 0
-  for f in "$@"; do
-    rel="${f#"$repo"/}"
-    git -C "$repo" cat-file -e "origin/main:$rel" 2>/dev/null || continue
-    git -C "$repo" diff --quiet origin/main -- "$rel" 2>/dev/null && continue
+  local rel
+  for rel in "$@"; do
+    git -C "$root" cat-file -e "origin/main:$rel" 2>/dev/null || continue
+    git -C "$root" diff --quiet origin/main -- "$rel" 2>/dev/null && continue
     echo "post-commit-message: note: $rel differs from origin/main, so main's linter may judge this file differently. If this branch did not change it, rebase onto origin/main." >&2
   done
 }
@@ -37,7 +36,7 @@ lint() {
     echo "post-commit-message: commitlint is not installed in $root, so the message was not checked. Run scripts/setup-worktree.sh, then re-run the same command." >&2
     return 3
   fi
-  warn_if_stale "$root/commitlint.config.mjs"
+  warn_if_stale commitlint.config.mjs
   if out="$(cd "$root" && pnpm exec commitlint --edit "$file" 2>&1)"; then
     return 0
   fi
@@ -62,8 +61,10 @@ read -r agent cwd cmd < <(printf '%s' "$input" | node -e '
     const agent = j.agent_type || "-"
     const cwd = j.cwd || process.cwd()
     const cmd = (j.tool_input && j.tool_input.command) || ""
-    process.stdout.write(agent + " " + cwd + " " + Buffer.from(cmd).toString("base64") + "\n")
+    const b64 = (v) => Buffer.from(String(v)).toString("base64")
+    process.stdout.write(agent + " " + b64(cwd) + " " + b64(cmd) + "\n")
   })')
+cwd="$(printf '%s' "$cwd" | base64 -d)"
 cmd="$(printf '%s' "$cmd" | base64 -d)"
 
 # The hook is registered in .claude/settings.json, so it sees every session; it acts only for
@@ -72,6 +73,13 @@ cmd="$(printf '%s' "$cmd" | base64 -d)"
 # top-level session posts claims and verdicts under no agent_type. Interactive sessions pass
 # through.
 case " $bound " in *" $agent "*) ;; *) [ "${BIRDBRAIN_DISPATCH:-}" = 1 ] || exit 0 ;; esac
+
+# CLAUDE_PROJECT_DIR names the top-level session's tree, but a subagent in its own worktree
+# reports that worktree as the payload's cwd. Lint there when it has commitlint installed.
+if top="$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null)" \
+  && [ -x "$top/node_modules/.bin/commitlint" ]; then
+  root="$top"
+fi
 
 # `git merge` and `git revert` write their own commit with a generated message that no file
 # can carry through the linter. Allow only the forms that stop before the commit; the checked

@@ -56,6 +56,47 @@ expect 0 "$(hook "git merge main" "")" "hook passes a merge through an interacti
 expect 0 "$(hook "git commit -m 'fix(x): y'" "")" "hook passes through an interactive session"
 expect 0 "$(hook "git commit -m 'fix(x): y'" "birdbrain-reviewer")" "hook passes through an unbound agent"
 expect 2 "$(BIRDBRAIN_DISPATCH=1 hook "git commit -m 'fix(x): y'" "")" "hook binds a headless dispatch session"
+expect 2 "$(node -e 'process.stdout.write(JSON.stringify({tool_name:"Bash",cwd:1,agent_type:"birdbrain-implementer",tool_input:{command:"git commit -m x"}}))' \
+  | "$check" >/dev/null 2>&1; echo $?)" "hook still checks a commit whose payload cwd is not a string"
+
+# A subagent's worktree arrives as the payload's cwd while CLAUDE_PROJECT_DIR, and the hook's
+# own path, name the parent session's tree. The copy below runs from a repository with no
+# node_modules, so a pass shows which tree supplied commitlint.
+bare="$(mktemp -d)"
+git -C "$bare" init -q
+cp "$check" "$bare/check.sh"
+hook_at() {
+  # $1 payload cwd, $2 command, $3 CLAUDE_PROJECT_DIR; prints the bare copy's exit code, or 99
+  # when no payload was produced (the hook passes empty input, which would read as a pass)
+  local payload
+  payload="$(node -e 'process.stdout.write(JSON.stringify({tool_name:"Bash",cwd:process.argv[1],agent_type:"birdbrain-implementer",tool_input:{command:process.argv[2]}}))' "$1" "$2")" \
+    && [ -n "$payload" ] || { echo 99; return; }
+  printf '%s' "$payload" | CLAUDE_PROJECT_DIR="$3" "$bare/check.sh" >/dev/null 2>&1
+  echo $?
+}
+expect 0 "$(hook_at "$fx" "git commit -F pass-body.txt" "$bare")" \
+  "hook lints from the cwd's worktree, not the project directory or its own tree"
+expect 0 "$(hook_at "$bare" "git commit -F $fx/pass-body.txt" "$(git -C "$here" rev-parse --show-toplevel)")" \
+  "hook falls back to the project directory when the cwd's worktree has no commitlint"
+# The ceiling stops git's search at $loose itself, so the lookup fails even when TMPDIR sits
+# inside a repository.
+loose="$(mktemp -d)"
+expect 0 "$(GIT_CEILING_DIRECTORIES="$(dirname "$loose")" hook_at "$loose" "git commit -F $fx/pass-body.txt" "$(git -C "$here" rev-parse --show-toplevel)")" \
+  "hook falls back to the project directory when cwd is outside a repository"
+rmdir "$loose"
+
+# A cwd with a space reaches the hook intact, so the commit is seen and its relative -F path
+# resolves inside that cwd. Split at the space, the command decodes to garbage and passes, which
+# the failing file catches; a -F path resolved anywhere else is not found, which the passing
+# file catches.
+spaced="$bare/my tree"
+mkdir "$spaced"
+cp "$fx/pass-body.txt" "$fx/fail-coauthor.txt" "$spaced/"
+expect 0 "$(hook_at "$spaced" "git commit -F pass-body.txt" "$(git -C "$here" rev-parse --show-toplevel)")" \
+  "hook finds the -F file in a cwd with a space in it"
+expect 2 "$(hook_at "$spaced" "git commit -F fail-coauthor.txt" "$(git -C "$here" rev-parse --show-toplevel)")" \
+  "hook lints the file in a cwd with a space in it"
+rm -rf "$bare"
 
 echo "$fails failure(s)"
 [ "$fails" -eq 0 ]

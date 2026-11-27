@@ -838,7 +838,8 @@ describe.skipIf(!HAS_JQ)('pregate.sh trust list', () => {
   // findings section records when that round read the reviews.
   const ANSWERED = '2026-09-20T13:00:00Z'
   const LATER = '2026-09-20T14:00:00Z'
-  const marker = (at: string) => `## Review findings\n\n<!-- review findings answered through ${at} -->\n`
+  const marker = (at: string) =>
+    `## Review findings\n\n<!-- review findings answered through ${at} -->\n`
   const plus = (base: ReturnType<typeof botActivity>, entry: Comment, surface: Surface) => ({
     comments: [...base.comments, ...(surface === 'comments' ? [entry] : [])],
     reviewComments: [...base.reviewComments, ...(surface === 'reviewComments' ? [entry] : [])],

@@ -116,11 +116,16 @@ describe('PR body script suites', () => {
   it.each([
     join(scripts, 'test-check.sh'),
     resolve(scripts, '../../merge-pr/scripts/test-compose.sh')
-  ])('%s passes', (suite) => {
-    const run = spawnSync('bash', [suite], { encoding: 'utf8' })
-    expect(run.stdout).toContain('0 failure(s)')
-    expect(run.status).toBe(0)
-  })
+  ])(
+    '%s passes',
+    (suite) => {
+      const run = spawnSync('bash', [suite], { encoding: 'utf8' })
+      expect(run.stdout).toContain('0 failure(s)')
+      expect(run.status).toBe(0)
+      // About fifty node runs; under the full parallel suite they take far longer than alone.
+    },
+    120_000
+  )
 })
 
 describe('PR body hook routing', () => {

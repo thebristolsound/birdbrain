@@ -313,6 +313,18 @@ newest_trusted() {
       | .at' <<<"$1" | sort | tail -1
 }
 
+# The time the last round on PR JSON $1 read its reviews, from the line dispatch writes in the
+# description's Review findings section (ADR-0060), or nothing. A time in the future is ignored,
+# so an edited description cannot hold off activity that has not happened yet.
+answered_through() {
+  local at now
+  at="$(jq -r '.body // ""' <<<"$1" \
+    | grep -oE '<!-- review findings answered through [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z -->' \
+    | tail -1 | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]{8}Z')" || return 0
+  now="$(date -u +%FT%TZ)"
+  [[ "$at" > "$now" ]] || printf '%s' "$at"
+}
+
 # Name untrusted activity in $2 on PR $1 newer than $3. It is reported, never counted.
 report_untrusted() {
   jq -r --arg pr "$1" --arg after "$3" \
@@ -517,14 +529,19 @@ for n in $(jq -r '.[]' <<<"$prs"); do
     fi
   elif [ "$state" = success ]; then
     newest="$(newest_trusted "$items" others)"
-    # A round that answers review bots without a push leaves the head where it was (ADR-0060),
-    # so bot activity older than the pipeline's last comment was answered by it. Activity from
-    # the maintainer since the head keeps counting from the head.
-    replied="$(newest_trusted "$items" pipeline)"
-    since_head="$(newest_trusted "$items" maintainer)"
-    if [[ "$replied" > "$head_at" ]] && [[ ! "$since_head" > "$head_at" ]]; then
-      after="$replied"
-      than="the pipeline's last comment ($replied)"
+    # A round answered without a push leaves the head where it was (ADR-0060). The Review
+    # findings section records when that round read the reviews, so only activity after it is
+    # owed, and so is a review/fleet failure posted after it, which no comment announces.
+    through="$(answered_through "$pr")"
+    if [[ "$through" > "$head_at" ]]; then
+      after="$through"
+      than="the review findings answered through $through"
+    fi
+    fleet="$(trusted_statuses "$R" "$sha" "$me" \
+      | jq -c '.["review/fleet"] // {state: "absent", at: ""}')"
+    if [ "$(jq -r .state <<<"$fleet")" = failure ] && [[ "$(jq -r .at <<<"$fleet")" > "$after" ]]; then
+      start "$n" "PR #$n has review/fleet failing at its head since $(jq -r .at <<<"$fleet"), newer than $than" \
+        || continue
     fi
   else
     newest="$(newest_trusted "$items" all)"

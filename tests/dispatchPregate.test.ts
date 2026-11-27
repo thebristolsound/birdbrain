@@ -61,6 +61,8 @@ const REPRO_REMOVED = '2026-09-20T09:40:00Z'
 const OLD_SHA = '0123456789abcdef0123456789abcdef01234567'
 
 type Status = {
+  // The status context; agent/pre-pass when left out.
+  context?: string
   state: 'success' | 'failure' | 'pending' | 'error'
   by: string | null
   at: string
@@ -139,7 +141,8 @@ const fixtures = ({
   events = [],
   headAt = HEAD_AT,
   draft = true,
-  reapplyFails = false
+  reapplyFails = false,
+  body = ''
 }: {
   labels: string[]
   comments: Comment[]
@@ -164,6 +167,8 @@ const fixtures = ({
   draft?: boolean
   // Whether the pre-gate's label writes fail.
   reapplyFails?: boolean
+  // The PR description.
+  body?: string
 }) => ({
   ...lists({
     pulls: [
@@ -171,6 +176,7 @@ const fixtures = ({
         number: PR,
         head: { sha: SHA, ref: BRANCH },
         draft,
+        body,
         user: { login: author },
         labels: labels.map((name) => ({ name }))
       }
@@ -828,46 +834,116 @@ describe.skipIf(!HAS_JQ)('pregate.sh trust list', () => {
     expect(result.outputs).toEqual({ run: 'true', reason: RAN })
   })
 
-  // ADR-0060: a round answers review-bot feedback without a push, so the head stays put.
+  // ADR-0060: a round answered without a push leaves the head where it was, and the Review
+  // findings section records when that round read the reviews.
+  const ANSWERED = '2026-09-20T13:00:00Z'
+  const LATER = '2026-09-20T14:00:00Z'
+  const marker = (at: string) => `## Review findings\n\n<!-- review findings answered through ${at} -->\n`
+  const plus = (base: ReturnType<typeof botActivity>, entry: Comment, surface: Surface) => ({
+    comments: [...base.comments, ...(surface === 'comments' ? [entry] : [])],
+    reviewComments: [...base.reviewComments, ...(surface === 'reviewComments' ? [entry] : [])],
+    reviews: [...base.reviews, ...(surface === 'reviews' ? [entry] : [])]
+  })
+
   it.each(REVIEW_BOTS)(
-    'does not run again for %s feedback the pipeline answered without a push',
+    'does not run again for %s feedback a round answered without a push',
     (login, surface) => {
       const bot = botActivity(login, surface)
-      const replied = '2026-09-20T13:00:00Z'
-      const answered = { ...bot, comments: [...bot.comments, { login: PIPELINE, at: replied }] }
-      const quiet = run(fixtures({ labels: UNPARKED, state: 'success', ...answered }))
+      const quiet = run(
+        fixtures({ labels: UNPARKED, state: 'success', body: marker(ANSWERED), ...bot })
+      )
       expect(quiet.status, quiet.stderr).toBe(0)
       expect(quiet.outputs).toEqual({ run: 'false', reason: NOTHING_OWED })
 
-      const later: Comment = { login, at: '2026-09-20T14:00:00Z', type: 'Bot' }
       const newer = run(
         fixtures({
           labels: UNPARKED,
           state: 'success',
-          comments: [...answered.comments, ...(surface === 'comments' ? [later] : [])],
-          reviewComments: [...answered.reviewComments, ...(surface === 'reviewComments' ? [later] : [])],
-          reviews: [...answered.reviews, ...(surface === 'reviews' ? [later] : [])]
+          body: marker(ANSWERED),
+          ...plus(bot, { login, at: LATER, type: 'Bot' }, surface)
         })
       )
       expect(newer.outputs).toEqual({
         run: 'true',
-        reason: `PR #${PR} has activity at ${later.at} newer than the pipeline's last comment (${replied})`
+        reason: `PR #${PR} has activity at ${LATER} newer than the review findings answered through ${ANSWERED}`
       })
     }
   )
 
-  it('still runs for the maintainer after the pipeline answered the bots without a push', () => {
+  it('does not run again for a maintainer comment a round answered without a push', () => {
+    const asked = { login: MAINTAINER, at: AFTER_HEAD }
+    const quiet = run(
+      fixtures({ labels: UNPARKED, state: 'success', body: marker(ANSWERED), comments: [asked] })
+    )
+    expect(quiet.outputs).toEqual({ run: 'false', reason: NOTHING_OWED })
+    const again = run(
+      fixtures({
+        labels: UNPARKED,
+        state: 'success',
+        body: marker(ANSWERED),
+        comments: [asked, { login: MAINTAINER, at: LATER }]
+      })
+    )
+    expect(again.outputs).toEqual({
+      run: 'true',
+      reason: `PR #${PR} has activity at ${LATER} newer than the review findings answered through ${ANSWERED}`
+    })
+  })
+
+  it('does not let a pipeline comment stand for an answer: only the recorded time does', () => {
     const result = run(
       fixtures({
         labels: UNPARKED,
         state: 'success',
         comments: [
-          { login: MAINTAINER, at: AFTER_HEAD },
-          { login: PIPELINE, at: '2026-09-20T13:00:00Z' }
+          { login: 'coderabbitai[bot]', at: AFTER_HEAD, type: 'Bot' },
+          { login: PIPELINE, at: ANSWERED }
         ]
       })
     )
     expect(result.outputs).toEqual({ run: 'true', reason: RAN })
+  })
+
+  it('ignores an answered-through time that has not happened yet', () => {
+    const result = run(
+      fixtures({
+        labels: UNPARKED,
+        state: 'success',
+        body: marker('2099-01-01T00:00:00Z'),
+        ...botActivity('coderabbitai[bot]', 'comments')
+      })
+    )
+    expect(result.outputs).toEqual({ run: 'true', reason: RAN })
+  })
+
+  it('runs once for a review/fleet failure posted after the last answer', () => {
+    const statuses: Status[] = [
+      { state: 'success', by: PIPELINE, at: VERDICT_AT, description: 'Approved for human review.' },
+      { context: 'review/fleet', state: 'failure', by: PIPELINE, at: LATER }
+    ]
+    const failing = run(
+      fixtures({ labels: UNPARKED, statuses, body: marker(ANSWERED), comments: [] })
+    )
+    expect(failing.status, failing.stderr).toBe(0)
+    expect(failing.outputs).toEqual({
+      run: 'true',
+      reason: `PR #${PR} has review/fleet failing at its head since ${LATER}, newer than the review findings answered through ${ANSWERED}`
+    })
+    const answered = run(
+      fixtures({ labels: UNPARKED, statuses, body: marker('2026-09-20T15:00:00Z'), comments: [] })
+    )
+    expect(answered.outputs).toEqual({ run: 'false', reason: NOTHING_OWED })
+  })
+
+  it('does not count a review/fleet failure from outside the trust list', () => {
+    const statuses: Status[] = [
+      { state: 'success', by: PIPELINE, at: VERDICT_AT, description: 'Approved for human review.' },
+      { context: 'review/fleet', state: 'failure', by: COLLABORATOR, at: LATER }
+    ]
+    const result = run(
+      fixtures({ labels: UNPARKED, statuses, body: marker(ANSWERED), comments: [] })
+    )
+    expect(result.outputs).toEqual({ run: 'false', reason: NOTHING_OWED })
   })
 
   it.each(REVIEW_BOTS)(

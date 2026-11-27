@@ -319,12 +319,13 @@ comments. Classify:
   it were absent and name it in the report. Agent PRs are authored by the machine account
   (ADR-0027), so the maintainer can post a formal `CHANGES_REQUESTED` review; treat one
   exactly as you treat a comment of his asking for changes, and vice versa — the form does
-  not change the handling.
+  not change the handling. A `review/fleet` failure at the head that is newer than the
+  description's answered-through line (below) is feedback too: its findings are in the fleet's
+  state comment for that head.
   Dispatch `birdbrain-implementer` with the PR number, its linked
   issue, and the re-enumeration instruction; it sorts each item by the table in
   `.claude/skills/ship-unit/SKILL.md`, "Sorting a finding" (ADR-0060), and pushes only when a
-  must-fix item needs it. A round whose items are all non-blocking returns dispositions and no
-  commit. It **must not** post its replies — the REST comment endpoints do
+  must-fix item needs it. A round with no must-fix item returns dispositions and no commit. It **must not** post its replies — the REST comment endpoints do
   technically work from a subagent, and the part-two ledger (finding 2) recorded exactly that
   happening — it returns them as text keyed to the comment or thread ids they answer, and
   **you** post them via the write path (locally `gh api .../issues/<n>/comments -X POST
@@ -343,7 +344,12 @@ comments. Classify:
   dispositions, update the description's `## Review findings` section in the `post-pr-body`
   shape. Start from the live description, and carry its rows into any body the implementer
   returned: add a row for each finding this round answered, replace the row of a finding
-  answered again, keep every earlier row, and recount. Run that skill's `scripts/check.sh` on the body
+  answered again, keep every earlier row, and recount. End the section with one line
+  `<!-- review findings answered through <time> -->`, replacing any earlier one, where `<time>`
+  is the UTC time, to the second, at which the implementer says it read the review surface. The
+  pre-gate starts the next cycle only for activity, or a `review/fleet` failure, newer than that
+  time, so a round answered with no push is not started again, and feedback posted while the
+  round ran is. Run that skill's `scripts/check.sh` on the body
   file and write it with the REST body write. A body edit starts no review fleet round.
   Then run the reviewer pre-pass (section 4).
 (Closed and merged PRs never reach this section — an open-PR query cannot return them; their
@@ -1002,13 +1008,12 @@ round, both or neither.
 
 - **approve for human review** → mark the PR ready for review via the write path
   (`agh pr ready <n>`), evidence-affecting or not (ADR-0025). Ready means a human should now
-  look, and it is what wakes CodeRabbit. Then add the verdict's non-blocking findings, and any
-  review-bot finding already on the PR that has no row yet, to the description's
-  `## Review findings` section as rows, sorted by the table in
+  look, and it is what wakes CodeRabbit. Then add the verdict's non-blocking findings to the
+  description's `## Review findings` section as rows, sorted by the table in
   `.claude/skills/ship-unit/SKILL.md`, "Sorting a finding", with the REST body write; an
-  approving verdict starts no fix round, so none of them is taken. The pre-gate counts bot
-  feedback only when it is newer than the pipeline's last comment (ADR-0060), so feedback older
-  than the verdict gets its row here or not at all. A body write that fails is
+  approving verdict starts no fix round, so none of them is taken. Leave the answered-through
+  line as it is: review-bot feedback on the PR that no round has answered stays newer than it,
+  so the pre-gate starts a cycle for it. A body write that fails is
   named in the report and never undoes the ready step. An evidence-affecting PR then waits for
   the human back gate; a non-evidence PR proceeds to section 2a. Report and stop.
 - **request changes** → hand the PR back to `birdbrain-implementer` (pointer, not paraphrase)

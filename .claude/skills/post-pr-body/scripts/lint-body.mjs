@@ -310,7 +310,17 @@ export function lintBody(raw, { anyAuthor = false, posted = false } = {}) {
 
   const shots = section('## Screenshots')
   if (shots) findings.push(...screenshotFindings(shots.lines, posted))
-  const stray = visibleText.findIndex((l, i) => hasImage(l) && !(shots && i > shots.start && i < shots.end))
+  // Lines inside a fenced block are quoted text, such as test output, not images.
+  let fenced = false
+  const inFence = visibleText.map((l) => {
+    const fence = /^\s*```/.test(l)
+    const inside = fenced || fence
+    if (fence) fenced = !fenced
+    return inside
+  })
+  const stray = visibleText.findIndex(
+    (l, i) => hasImage(l) && !inFence[i] && !(shots && i > shots.start && i < shots.end)
+  )
   if (stray >= 0) findings.push(`line ${stray + 1}: images go in the Screenshots section, never elsewhere in the body`)
 
   const notDone = section('## Not done')

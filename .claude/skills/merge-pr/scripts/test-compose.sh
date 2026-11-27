@@ -23,7 +23,7 @@ node -e 'const fs = require("fs"); const [src, dst] = process.argv.slice(1)
 fs.writeFileSync(dst, fs.readFileSync(src, "utf8").replace(/^this pull request\.$/m,
   "this pull request.\n\n<!-- a note\n<details>\nstill a comment -->\n\nA sentence after the comment."))' \
   "$fx/pass-filled.md" "$out/comment.md"
-grep -qx '<details>' "$out/comment.md" || bad "the comment case lost its details line"
+grep -q 'still a comment' "$out/comment.md" || bad "the comment case was not planted"
 node "$here/compose.mjs" "$out/comment.md" "t" 1 "$out" >/dev/null 2>&1
 grep -q 'A sentence after the comment' "$out/body.txt" && ! grep -q '<!--' "$out/body.txt" \
   && ok "a details line inside a comment does not end the Summary" || bad "a comment cut the Summary short"

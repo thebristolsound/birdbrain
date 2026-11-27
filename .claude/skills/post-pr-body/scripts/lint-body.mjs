@@ -310,12 +310,16 @@ export function lintBody(raw, { anyAuthor = false, posted = false } = {}) {
   }
 
   // Lines inside a fenced block are quoted text, such as test output or an example, not images.
-  let fenced = false
+  // A fence closes only on the same character repeated at least as often as it opened with.
+  let open = null
   const inFence = visibleText.map((l) => {
-    const fence = /^\s*```/.test(l)
-    const inside = fenced || fence
-    if (fence) fenced = !fenced
-    return inside
+    const m = l.match(/^\s*(`{3,}|~{3,})/)
+    if (!open) {
+      if (m) open = m[1]
+      return Boolean(m)
+    }
+    if (m && m[1][0] === open[0] && m[1].length >= open.length && l.trim() === m[1]) open = null
+    return true
   })
   const shots = section('## Screenshots')
   if (shots) {
@@ -373,8 +377,9 @@ export function lintBody(raw, { anyAuthor = false, posted = false } = {}) {
         const lines = blockBody(b)
         const rows = tableRows(lines)
         // A header with no rows, or a row of blank cells, is a template left unfilled.
-        if (lines.some((l) => TABLE_ROW.test(l)) && (!rows.length || rows.some((r) => r.every((c) => c === '')))) {
-          findings.push(`the "${b.summary}" block in Changes is an empty table; delete it when there is nothing to list`)
+        const blank = lines.every((l) => l.trim() === '')
+        if (blank || (lines.some((l) => TABLE_ROW.test(l)) && (!rows.length || rows.some((r) => r.every((c) => c === ''))))) {
+          findings.push(`the "${b.summary}" block in Changes is empty; delete it when there is nothing to list`)
         }
       }
     }

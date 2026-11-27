@@ -42,7 +42,7 @@ sed "s#https://github.com/user-attachments/assets/4f5a6b7c-after#$posted_fx/afte
 "$check" --any-author "$posted_fx/local.md" >/dev/null 2>&1; expect 0 $? "direct check accepts a readable local screenshot"
 "$check" --any-author --posted "$posted_fx/local.md" >/dev/null 2>&1; expect 1 $? "direct --posted refuses a readable local screenshot"
 
-# Each fixture for a rule this layout added must fail on that rule, not on another one.
+# Each fixture for a rule this layout added must raise that rule's finding.
 finds() {
   # $1 fixture, $2 expected finding text, $3 extra flags
   local out
@@ -78,10 +78,13 @@ finds fail-not-done-prose.md 'Not done holds only bullets'
 finds fail-blast-radius.md 'Blast radius is two filled bullets'
 finds fail-before-merge-empty.md 'Before merge holds one filled'
 finds fail-checkbox-shape.md 'Before merge holds one filled'
+finds fail-after-merge-shape.md 'After merge holds one filled'
+finds fail-decisions-no-table.md 'block in Changes is empty'
+finds fail-image-after-long-fence.md 'images go in the Screenshots section'
 finds fail-changes-no-file-group.md 'Changes lists no file group'
-finds fail-empty-decisions.md 'is an empty table'
-finds fail-header-only-decisions.md 'is an empty table'
-finds fail-decisions-blank-row.md 'is an empty table'
+finds fail-empty-decisions.md 'block in Changes is empty'
+finds fail-header-only-decisions.md 'block in Changes is empty'
+finds fail-decisions-blank-row.md 'block in Changes is empty'
 finds fail-section-order.md 'sections must be'
 finds fail-screenshots-in-fence.md 'no before/after screenshot pair'
 

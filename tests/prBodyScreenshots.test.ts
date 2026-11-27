@@ -125,12 +125,35 @@ describe('PR body script suites', () => {
         encoding: 'utf8',
         env: { ...process.env, BIRDBRAIN_DISPATCH: '0' }
       })
-      expect(run.stdout).toContain('0 failure(s)')
+      expect(run.stdout).toMatch(/^0 failure\(s\)$/m)
       expect(run.status).toBe(0)
       // Over a hundred node runs; under the full parallel suite they take far longer than alone.
     },
     120_000
   )
+})
+
+describe('the merge label path', () => {
+  it('runs the body check with the flags that refuse a local screenshot', () => {
+    const workflow = readFileSync(
+      resolve(scripts, '../../../../.github/workflows/merge-on-label.yml'),
+      'utf8'
+    )
+    const call = workflow.match(
+      /post-pr-body\/scripts\/check\.sh((?: --[\w-]+)*) "\$out\/body\.md"/
+    )
+    expect(call).not.toBeNull()
+    const flags = (call?.[1] ?? '').trim().split(' ').filter(Boolean)
+    // A readable PNG passes without --posted, so only the workflow's own flags can refuse it.
+    const png = join(dir, 'after.png')
+    writeFileSync(png, Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
+    writeFileSync(join(dir, 'body.md'), filled.replace(attachment('4f5a6b7c-after'), png))
+    const run = spawnSync('bash', [join(scripts, 'check.sh'), ...flags, join(dir, 'body.md')], {
+      encoding: 'utf8'
+    })
+    expect(run.status).toBe(1)
+    expect(run.stderr + run.stdout).toContain('upload the screenshot')
+  })
 })
 
 describe('PR body hook routing', () => {

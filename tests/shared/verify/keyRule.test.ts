@@ -131,7 +131,7 @@ describe('key rule on a chain this build reads in full', () => {
     expect(verdict(selfSigned)).toEqual(accused(1))
   })
 
-  it('splits a two-hop chain into three runs, each closed by the next import', () => {
+  it('splits a two-hop chain into two runs closed by an import and a last run under the local key', () => {
     const steps = [
       { body: capture(0), signer: SOURCE },
       { body: carrying(SOURCE), signer: MIDDLE },
@@ -141,12 +141,16 @@ describe('key rule on a chain this build reads in full', () => {
     ]
     expect(verdict(chain(steps))).toEqual(PASS)
 
-    // Each entry signed by the key of the run before or after its own is
-    // accused at that entry: the runs end exactly at the import boundaries.
+    // Each entry, the import entries included, signed by the key of the run
+    // before or after its own is accused at that entry: the runs end exactly
+    // at the import boundaries.
     const wrongKeys: Array<[number, Keys]> = [
       [0, MIDDLE],
+      [1, SOURCE],
+      [1, LOCAL],
       [2, SOURCE],
       [2, LOCAL],
+      [3, MIDDLE],
       [4, MIDDLE]
     ]
     for (const [at, signer] of wrongKeys) {
@@ -176,6 +180,8 @@ describe('key rule on a chain that ends at an entry from a newer schema (phase C
 
     const wrongKeys: Array<[number, Keys]> = [
       [0, MIDDLE],
+      [1, SOURCE],
+      [1, LOCAL],
       [2, LOCAL],
       [2, SOURCE]
     ]
@@ -195,6 +201,23 @@ describe('key rule on a chain that ends at an entry from a newer schema (phase C
 
     const moved = steps.map((step, i) => (i === 0 ? { ...step, signer: LOCAL } : step))
     expect(verdict(chain(moved))).toEqual(accused(0))
+  })
+
+  it('takes a key only from an unreadable entry of type import', () => {
+    // A newer entry type may carry a field of the same name for a purpose of
+    // its own; it closes no run.
+    const keyed = { ...newerWriter, sourcePublicKeyPem: SOURCE.publicKey }
+    const sourceSigned = chain([
+      { body: capture(0), signer: SOURCE },
+      { body: keyed, signer: LOCAL }
+    ])
+    expect(verdict(sourceSigned)).toEqual(accused(0))
+
+    const localSigned = chain([
+      { body: capture(0), signer: LOCAL },
+      { body: keyed, signer: LOCAL }
+    ])
+    expect(verdict(localSigned)).toEqual({ valid: false, reason: 'too old at 1' })
   })
 
   it('verifies the unreadable entry itself under the local key only', () => {

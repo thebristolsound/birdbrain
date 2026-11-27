@@ -55,6 +55,9 @@ Two paths that sign entries did not wait for a confirmation:
    so the documents agree with the files the package encloses.
 5. **No repair of earlier deletions.** A Case where an earlier release already signed a deletion
    under an id no chain wrote stays as it is: a signed entry cannot be removed.
+6. **The rule applies to a chain that verifies.** On a Case whose chain fails verification, a
+   delete keeps signing the row's own id, as it does today. Nothing on such a chain can be
+   confirmed, and its packages already fail, so the deletion cannot make them worse.
 
 ## Consequences
 

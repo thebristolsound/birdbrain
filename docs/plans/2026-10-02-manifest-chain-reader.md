@@ -80,6 +80,8 @@ A second round the same day settled how the three are carried out.
   short grouped form, which is a prefix of what `verify.sh` prints.
 - **Cases an earlier release already broke stay as they are.** A deletion signed before #1876
   under an id no chain wrote is not repaired or disclosed by this plan.
+- **A chain that does not verify keeps today's delete.** The rule applies only to a chain that
+  verifies; on a broken chain a delete still signs the row's own id.
 
 ### Amendments to the slices
 

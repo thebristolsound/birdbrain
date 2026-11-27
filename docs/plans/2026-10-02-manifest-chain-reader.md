@@ -52,11 +52,11 @@ The re-check raised three questions. The maintainer answered them in an interact
 2026-11-27.
 
 1. **Ruling 3 stands, made precise.** A writer names an Exhibit by its confirmed chain id.
-   Failing that, it names the row's own id only when the chain holds the `capture` or `exhibit`
-   entry that acquired it under that id. Otherwise it refuses and explains why. The writers that
-   shipped (`signedCaptureId`, `signedParentId`) fall back to the row id without that check, so a
-   deletion of a renamed Capture whose rename cannot be confirmed names an id the chain never
-   wrote. Package Verification retires an Exhibit only through a deletion naming the id its own
+   Failing that, it names the row's own id only when one of the Case's chains holds the `capture`
+   or `exhibit` entry that acquired it under that id. Otherwise it refuses and explains why. The
+   writers that shipped (`signedCaptureId`, `signedParentId`) fall back to the row id without that
+   check, so a deletion of a renamed Capture whose rename cannot be confirmed names an id the
+   chain never wrote. Package Verification retires an Exhibit only through a deletion naming the id its own
    entry carries, so the original Exhibit stays active and every later Evidence Package that
    includes it fails for its missing bytes. An edited index on a native row still deletes under
    the row's own id.
@@ -76,8 +76,9 @@ settled a chain that does not verify. ADR-0059 records rulings 1 and 3 as the ru
 writer, and `CONTEXT.md` defines Chain Id and Confirmed Chain Id.
 
 - **Writers and the signed selection go first, in #2283.** The rule covers a single delete, a
-  batch delete and the thumbnail backfill's parent. A refused delete names the Exhibit and the
-  reason, with no override; the backfill skips and logs. A Working Copy of a selection follows
+  batch delete, the thumbnail backfill's parent and the one-time `renumber` entry. A refused
+  delete names the Exhibit and the reason, with no override; the backfill and the renumber skip
+  and log. A selection that includes a legacy Capture with no Manifest Entry refuses too. A Working Copy of a selection follows
   the same rule as an Evidence Package. The fix needs no slice of this plan, so it lands before
   slice 1.
 - **The Sharing fingerprint change is its own pull request.** It switches the roster and join
@@ -85,9 +86,9 @@ writer, and `CONTEXT.md` defines Chain Id and Confirmed Chain Id.
   short grouped form, which is a prefix of what `verify.sh` prints.
 - **Earlier wrong deletions stay as they are.** A deletion any release signed under an id no chain
   wrote, before or after #1876, is not repaired or disclosed by this plan.
-- **A chain that does not verify.** A delete keeps signing the row's own id, with the #1199 risk
-  ADR-0059 rule 6 states. A selection export refuses when a selected Exhibit's row id names no
-  `capture` or `exhibit` entry in the chain; other rows export as today.
+- **A Case whose chains do not all verify.** A delete keeps signing the row's own id, with the
+  #1199 risk ADR-0059 rule 6 states. A selection export refuses when a selected Exhibit's row id
+  names no `capture` or `exhibit` entry in any of the Case's chains; other rows export as today.
 
 ### Amendments to the slices
 
@@ -259,7 +260,9 @@ export function readCaseChain(
 ```
 
 `SignerRun` carries `fromIndex`, `toIndex`, `pem`, `carriedByImportAt`, `pemSha256`, and
-`spkiSha256`. `ChainName.via` is `'own' | 'id-map' | 'inferred'`.
+`spkiSha256`. `ChainName.via` is `'own' | 'id-map' | 'inferred'`. `'own'` means one of the Case's
+chains holds the `capture` or `exhibit` entry that acquired the row under its own id
+(ADR-0059 rule 1); a row with no confirmed rename and no such entry gets no `'own'` answer.
 
 The adapter reads no chain file. Export takes one `ManifestSnapshot` and one `SharedCaseSnapshot`
 with nothing awaited between (`export.ts:625-628`) and packages `manifest.jsonl` from the first
@@ -428,8 +431,10 @@ known-answer test must use a source Case with no thumbnails.
    Verification does, and state how many later lines they left out as unverified.
 3. **When a writer cannot resolve a renamed Exhibit through its own id or the signed id map, the
    app refuses the operation** and explains why. It never signs an id it could not resolve.
-   Made precise on 2026-11-27: a row's own id counts as resolved only when the chain holds the
-   `capture` or `exhibit` entry that acquired it under that id.
+   Made precise on 2026-11-27: a row's own id counts as resolved only when one of the Case's
+   chains holds the `capture` or `exhibit` entry that acquired it under that id. Relaxed the same
+   day for a delete on a Case whose chains do not all verify, which keeps signing the row's own
+   id (ADR-0059 rule 6).
 4. **The Data screen prints the PEM-text key hash** that the Certification and `VERIFY.md` print.
    Extended on 2026-11-27 to the Sharing roster and join requests.
 5. **When the Manifest holds a newer-schema entry, export reads every written line and discloses

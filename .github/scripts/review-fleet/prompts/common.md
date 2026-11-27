@@ -81,6 +81,12 @@ not_checked: the contents of a commit or tag outside `commits.json`, a comment o
 files do not hold, the part of a patch past the limit, a commit list `stack.json` gives as
 `null`.
 
+**The description's `## Review findings` rows are a record of review history (ADR-0060).** Which
+reviewer raised a row's finding, and at what severity, is a record you do not check, and it never
+goes in `not_checked`. Everything else a row says is a claim like any other: the commit it says
+fixed the finding, a `file:line` it cites, a `filed as #N` issue, and whether what it says about
+the code is true at head.
+
 **The repository as it stood before this change is in the inputs.** `base-tree/` holds every
 file at the merge base with `main`. When the base branch is not `main` and has moved past that
 commit, `base-branch-tree/` holds every file at the merge base with the base branch, and that

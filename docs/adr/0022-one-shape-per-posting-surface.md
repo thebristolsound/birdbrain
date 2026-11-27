@@ -74,7 +74,7 @@ that section.
 
 **Amended 2026-11-27 by [ADR-0060](0060-agents-fix-only-must-fix-review-findings-and-list-the-rest.md).**
 A Review findings section follows the Summary: a counts line and one collapsed row per review
-finding, taken or not, each linking the comment or review that raised it. The linter requires
+finding, taken or not, naming its reviewer in words and linking nothing. The linter requires
 and checks it on an agent-written body, and the merge paths check nothing in it, so a PR opened
 before it existed still merges.
 

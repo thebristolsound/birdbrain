@@ -40,12 +40,13 @@ const REQUIRED = SECTIONS.filter((s) => !OPTIONAL.includes(s))
 // reasons are the ones the table in ../../ship-unit/SKILL.md, "Sorting a finding", gives.
 const NO_FINDINGS = 'No review findings yet.'
 const FINDING_COUNTS = /^(\d+) taken, (\d+) not taken\.$/
-const TAKEN_ROW = /^- Taken: \S/
+const TAKEN_ROW = /^- Taken: \S.*\. Fixed in (`[0-9a-f]{7,40}`|the description)\.$/
 const NOT_TAKEN_ROW = /^- Not taken, (out of scope|disputed|test or style only|needs its own push|filed as #[1-9]\d*): \S/
-// The review fleet fails on a description sentence its inputs do not settle, and it reads a
-// review comment only when the description links it (../../../../.github/scripts/review-fleet/
-// inputs.mjs). So every row links the comment or review that raised its finding.
-const FINDING_SOURCE = /\]\(https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/\d+#(issuecomment-|discussion_r|pullrequestreview-)\d+\)/
+// The review fleet loads every issue, pull request or comment a description links as a source it
+// must read, and fails when one is gone, empty or in another repository
+// (../../../../.github/scripts/review-fleet/inputs.mjs). Its prompt reads who raised a row's
+// finding as a record (ADR-0060), so a row needs no such link and carries none.
+const ROW_LINK = /https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/(issues|pull)\/\d+|\bcomment\s+\d{8,}\b/
 const RISK_COLOUR = { High: 'CAUTION', Medium: 'WARNING', Low: 'NOTE', Minimal: 'TIP' }
 const RISK_ALERT = /^> \[!(CAUTION|WARNING|NOTE|TIP)\]$/
 const RISK_LINE = /^> \*\*Merge risk: (High|Medium|Low|Minimal)\.\*\* \S/
@@ -320,13 +321,13 @@ export function lintBody(raw, { anyAuthor = false, posted = false } = {}) {
       const notTaken = rows.filter((l) => NOT_TAKEN_ROW.test(l)).length
       const odd = rows.find((l) => !TAKEN_ROW.test(l) && !NOT_TAKEN_ROW.test(l))
       if (odd) {
-        findings.push(`Review findings rows are "- Taken: ..." or "- Not taken, <reason>: ...", the reason one of out of scope, disputed, test or style only, needs its own push, filed as #N; found: "${odd.slice(0, 60)}"`)
+        findings.push(`Review findings rows are "- Taken: ... Fixed in \`<commit>\`." (or "Fixed in the description.") or "- Not taken, <reason>: ...", the reason one of out of scope, disputed, test or style only, needs its own push, filed as #N; found: "${odd.slice(0, 60)}"`)
       } else if (taken !== Number(counts[1]) || notTaken !== Number(counts[2])) {
         findings.push(`Review findings counts ${counts[1]} taken and ${counts[2]} not taken, but lists ${taken} and ${notTaken}`)
       }
-      const unlinked = rows.find((l) => !FINDING_SOURCE.test(l))
-      if (!odd && unlinked) {
-        findings.push(`Review findings row "${unlinked.slice(0, 60)}" links no comment or review; the review fleet can check a row only from the comment it links`)
+      const linked = rows.find((l) => ROW_LINK.test(l))
+      if (linked) {
+        findings.push(`Review findings row "${linked.slice(0, 60)}" links an issue, pull request or comment; the review fleet would have to load it, so name the reviewer in words and leave the link to the thread reply`)
       }
     }
   }

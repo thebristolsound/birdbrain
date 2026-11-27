@@ -25,15 +25,16 @@ flowchart LR
 
 ## Review findings
 
-1 taken, 3 not taken.
+2 taken, 3 not taken.
 
 <details>
 <summary>Each review finding and what happened to it</summary>
 
-- Taken: [review fleet, blocking](https://github.com/thebristolsound/birdbrain/pull/830#issuecomment-4101): the rescan skipped captures whose selector was renamed. Fixed in `4e5f6a7`.
-- Not taken, test or style only: [CodeRabbit, nitpick](https://github.com/thebristolsound/birdbrain/pull/830#discussion_r4102): a test name could say which selector it rescans.
-- Not taken, out of scope: [Codex, P2](https://github.com/thebristolsound/birdbrain/pull/830#discussion_r4103): the selector list screen repeats the same query on open.
-- Not taken, filed as #2290: [CodeRabbit, major](https://github.com/thebristolsound/birdbrain/pull/830#discussion_r4104): exported reports drop the selector name when it holds a comma.
+- Taken: review fleet, blocking: the rescan skipped captures whose selector was renamed. Fixed in `4e5f6a7`.
+- Taken: Codex, P2: the Summary said the rescan runs on open. Fixed in the description.
+- Not taken, test or style only: CodeRabbit, nitpick: a test name could say which selector it rescans.
+- Not taken, out of scope: Codex, P2: the selector list screen repeats the same query on open.
+- Not taken, filed as #2290: CodeRabbit, major: exported reports drop the selector name when it holds a comma.
 
 </details>
 

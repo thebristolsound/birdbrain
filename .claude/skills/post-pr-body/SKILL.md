@@ -60,18 +60,18 @@ line. The layout follows the maintainer's work template, adapted to this reposit
    "Sorting a finding". The visible line is `No review findings yet.` until a review reports,
    then `<n> taken, <m> not taken.` above one collapsed `<details>` block holding one row per
    finding, each on one line:
-   `- Taken: [<reviewer>, <severity>](<link>): <finding>. Fixed in <commit>.`
+   ``- Taken: <reviewer>, <severity>: <finding>. Fixed in `<commit>`.``
    (`Fixed in the description.` for a finding against the description) or
-   `- Not taken, <reason>: [<reviewer>, <severity>](<link>): <finding>. <why>`, where the reason
-   is `out of scope`, `disputed` (with the `file:line` at head that shows it),
-   `test or style only`, `needs its own push` or `filed as #N`. The counts match the rows. Each
-   row links the comment or review that raised its finding (`#issuecomment-`, `#discussion_r` or
-   `#pullrequestreview-` on this PR; the review fleet's own state comment for a fleet finding):
-   the review fleet fails on a sentence its inputs do not settle, and it reads a review comment
-   only when the description links it. Each link, and the `#N` of a filed issue, is a source the
-   fleet must read, so a PR with very many findings can reach its limit of 60 sources. The section sits
-   outside the Summary, so the merge commit leaves it out (ADR-0060). The merge paths do not
-   check it at all, so the record never holds up a merge and a PR opened before it existed
+   `- Not taken, <reason>: <reviewer>, <severity>: <finding>. <why>`, where the reason is
+   `out of scope`, `disputed` (with the `file:line` at head that shows it), `test or style only`,
+   `needs its own push` or `filed as #N`. The counts match the rows. Rows link no issue, pull
+   request or comment: the review fleet loads each such link as a source it must read and fails
+   when one is gone, empty or in another repository. The fleet reads who raised a row's finding
+   as a record and checks the rest of the row (ADR-0060), so the links go in the thread replies.
+   Dispatch also keeps a hidden `<!-- review findings answered through <time> -->` line in the
+   section, which its pre-gate reads. The section sits outside the Summary, so the merge commit
+   leaves it out. The merge paths check nothing in it beyond the well-formed `<details>` blocks
+   every section needs, so the record never holds up a merge and a PR opened before it existed
    still merges; a human author may leave it out.
 5. `## Proof`: one `<details>` block holding `Head: <sha>. Merge gate: <link or pending>.` and
    the `| Acceptance criterion | Proof | Result |` table, one row per acceptance criterion of
@@ -129,7 +129,8 @@ at head, and the issues, pull requests, comments and reviews of this repository 
 names as a bare `#N` outside a code span or links by URL
 (`.github/scripts/review-fleet/inputs.mjs`). A statement about
 anything else, such as a chat, an agent thread or an earlier review round, stays unchecked, and
-one unchecked item fails `review/fleet` (ADR-0057). Link the source, move the sentence to a PR
+one unchecked item fails `review/fleet` (ADR-0057). The one exception is who raised each finding
+in the Review findings rows, which the fleet reads as a record (ADR-0060). Link the source, move the sentence to a PR
 comment, or leave it out. No linter checks this: read each sentence for it before you post.
 
 ## Screenshots for visual changes

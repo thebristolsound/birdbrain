@@ -36,10 +36,11 @@ flowchart LR
 skill, "Sorting a finding". Before any review, the line below stays as it is. After one, it
 becomes "<n> taken, <m> not taken." above one collapsed block, opened with a plain <details>
 line and titled "Each review finding and what happened to it", holding one row per finding on
-one line each, linking the comment or review that raised it so the review fleet can check it:
-- Taken: [<reviewer>, <severity>](<link>): <the finding in one sentence>. Fixed in `<commit>`.
-- Taken: [<reviewer>, <severity>](<link>): <a finding against this description>. Fixed in the description.
-- Not taken, <reason>: [<reviewer>, <severity>](<link>): <the finding>. <why, with file:line for disputed>
+one line each, naming the reviewer in words and linking no issue, pull request or comment (the
+links go in the thread replies):
+- Taken: <reviewer>, <severity>: <the finding in one sentence>. Fixed in `<commit>`.
+- Taken: <reviewer>, <severity>: <a finding against this description>. Fixed in the description.
+- Not taken, <reason>: <reviewer>, <severity>: <the finding>. <why, with file:line for disputed>
 <reason> is one of: out of scope, disputed, test or style only, needs its own push, or
 filed as #N.
 An agent-written description always carries this section; a human author may delete it. -->

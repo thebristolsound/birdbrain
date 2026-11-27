@@ -160,6 +160,14 @@ _Avoid_: audit log, journal, ledger.
 One signed line of the Manifest, of type `capture`, `deletion`, `timestamp`, `export`, `archive-export`, `import`, `exhibit`, `derivation`, `renumber`, `member-add`, `member-revoke`, `merge`, or `exclude`.
 _Avoid_: manifest record, log line.
 
+**Chain Id**:
+The id an Exhibit's own Manifest Entry names it by. It differs from the Exhibit's id only when a Case Archive import renamed the Exhibit to avoid an id collision.
+_Avoid_: signed name, original id.
+
+**Confirmed Chain Id**:
+A Chain Id the id map an `import` entry anchors vouches for. A Chain Id worked out only from an Exhibit's place in the chain and its bytes is inferred, and no Manifest Entry names an Exhibit by an inferred one.
+_Avoid_: resolved id, guessed id.
+
 **Shared Case**:
 A Case held by more than one installation: one Manifest per member, plus `merge` entries naming other members' heads. Verification proves each member's chain under that member's key, that every `merge` names chain states that exist, and that every citation resolves to one Exhibit.
 _Avoid_: team case, synced case, collaborative case (as the term).

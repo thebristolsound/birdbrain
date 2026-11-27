@@ -266,6 +266,9 @@ describe('Data screen context menus (#1151)', () => {
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(HASH_A))
     fireEvent.click(screen.getByTestId('copy-relative-path'))
     await waitFor(() => expect(writeText).toHaveBeenCalledWith('case1/cap-a.mhtml'))
+    // A path is not a digest: its copy takes no shape check (#2117).
+    await waitFor(() => expect(notifySuccess).toHaveBeenCalledWith('Copied relative path'))
+    expect(notifyWarn).not.toHaveBeenCalled()
 
     // The pane header verifies every Exhibit under the node.
     fireEvent.click(screen.getByTestId('node-verify'))
@@ -435,6 +438,28 @@ describe('Data screen context menus (#1151)', () => {
 
     fireEvent.keyDown(row, { key: 'Enter' })
     expect(screen.getByTestId('data-node-title').textContent).toBe('Example page')
+  })
+
+  // A tampered manifest line can parse with any entry hash (#2117).
+  it('ledger row: a malformed entry hash is copied as stored and not announced as a digest', async () => {
+    const [first] = SNAPSHOT.entries
+    if (!first.parsed) throw new Error('the fixture entry is parsed')
+    snapshot.mockResolvedValue({
+      ...SNAPSHOT,
+      entries: [{ ...first, entry: { ...first.entry, entryHash: 'not-a-digest' } }]
+    })
+    renderExplorer()
+    await select('manifest-ledger')
+    const row = await screen.findByTestId('ledger-row-0')
+    fireEvent.click(within(row).getByTitle(/click to copy/))
+
+    await waitFor(() =>
+      expect(notifyWarn).toHaveBeenCalledExactlyOnceWith(
+        "Copied the stored entry hash, but it isn't a 64-character hex digest"
+      )
+    )
+    expect(writeText).toHaveBeenCalledExactlyOnceWith('not-a-digest')
+    expect(notifySuccess).not.toHaveBeenCalled()
   })
 
   it('ledger row: an unreadable line shows no hash and copies none; only a readable first entry reads genesis', async () => {

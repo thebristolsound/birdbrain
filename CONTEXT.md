@@ -165,7 +165,7 @@ The id an Exhibit's own Manifest Entry names it by. It differs from the Exhibit'
 _Avoid_: signed name, original id.
 
 **Confirmed Chain Id**:
-A Chain Id the id map an `import` entry anchors vouches for. A Chain Id worked out only from an Exhibit's place in the chain and its bytes is inferred, and no Manifest Entry names an Exhibit by an inferred one.
+A Chain Id the id map an `import` entry anchors vouches for. A Chain Id worked out only from an Exhibit's place in the chain and its bytes is inferred: it may be right, but nothing signed confirms it.
 _Avoid_: resolved id, guessed id.
 
 **Shared Case**:

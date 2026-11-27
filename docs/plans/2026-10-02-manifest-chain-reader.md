@@ -51,38 +51,43 @@ Re-checked on 2026-11-26. Symbols are named instead of line numbers.
 The re-check raised three questions. The maintainer answered them in an interactive session on
 2026-11-27.
 
-1. **Ruling 3 stands, narrowed.** A writer names an Exhibit by its confirmed chain id. Failing
-   that, it names the row's own id only when the chain holds the `capture` or `exhibit` entry
-   that acquired it under that id. Otherwise it refuses and explains why. The writers that
+1. **Ruling 3 stands, made precise.** A writer names an Exhibit by its confirmed chain id.
+   Failing that, it names the row's own id only when the chain holds the `capture` or `exhibit`
+   entry that acquired it under that id. Otherwise it refuses and explains why. The writers that
    shipped (`signedCaptureId`, `signedParentId`) fall back to the row id without that check, so a
    deletion of a renamed Capture whose rename cannot be confirmed names an id the chain never
-   wrote. Package Verification counts a deletion only for an id a chain authored, so the original
-   Exhibit stays active and every later Evidence Package that includes it fails for its missing
-   bytes. An edited index on a native row still deletes under the row's own id.
+   wrote. Package Verification retires an Exhibit only through a deletion naming the id its own
+   entry carries, so the original Exhibit stays active and every later Evidence Package that
+   includes it fails for its missing bytes. An edited index on a native row still deletes under
+   the row's own id.
 2. **Ruling 4 covers the Sharing screens.** Once its own pull request lands, the Sharing roster
-   and join requests will print the PEM-text hash packages print, as the Data screen does. Until
-   then they print the DER SPKI hash. Packages do not change.
+   and join requests will print the PEM-text hash packages print, which ruling 4 already asks of
+   the Data screen. Until then the roster, join requests and Data screen print the DER SPKI hash.
+   Packages do not change.
 3. **Invariant 4: names yes, signing no.** An inferred chain name may name an Exhibit in any
-   document an export writes. A Manifest Entry never names an Exhibit by an inferred id: the
+   document an export writes. A Manifest Entry never names an Exhibit by an unconfirmed id: the
    selection list of an `export` entry takes confirmed ids only, and a selection export refuses
-   when a selected Exhibit's chain id is only inferred. This follows the same rule as ruling 3.
+   when a selected Exhibit has none, whether export inferred its chain id or could not name it.
+   This follows the same rule as ruling 3.
 
-A second round the same day settled how the three are carried out.
-[ADR-0059](../adr/0059-a-signed-entry-names-an-exhibit-only-by-a-confirmed-id.md) records rulings
-1 and 3 as the rule for every writer, and `CONTEXT.md` defines Chain Id and Confirmed Chain Id.
+A second round the same day settled how the three are carried out, and two more rulings on the
+review of [ADR-0059](../adr/0059-a-signed-entry-names-an-exhibit-only-by-a-confirmed-id.md)
+settled a chain that does not verify. ADR-0059 records rulings 1 and 3 as the rule for every
+writer, and `CONTEXT.md` defines Chain Id and Confirmed Chain Id.
 
-- **Writers and the signed selection go first, in #2283.** The narrowed rule covers a single
-  delete, a batch delete, the interrupted-delete repair and the thumbnail backfill's parent. A
-  refused delete names the Exhibit and the reason, with no override; the backfill skips and logs.
-  A Working Copy of a selection follows the same rule as an Evidence Package. The fix needs no
-  slice of this plan, so it lands before slice 1.
+- **Writers and the signed selection go first, in #2283.** The rule covers a single delete, a
+  batch delete and the thumbnail backfill's parent. A refused delete names the Exhibit and the
+  reason, with no override; the backfill skips and logs. A Working Copy of a selection follows
+  the same rule as an Evidence Package. The fix needs no slice of this plan, so it lands before
+  slice 1.
 - **The Sharing fingerprint change is its own pull request.** It switches the roster and join
   requests to the PEM-text hash outright, with no period showing both, and keeps the roster's
   short grouped form, which is a prefix of what `verify.sh` prints.
-- **Cases an earlier release already broke stay as they are.** A deletion signed before #1876
-  under an id no chain wrote is not repaired or disclosed by this plan.
-- **A chain that does not verify keeps today's delete.** The rule applies only to a chain that
-  verifies; on a broken chain a delete still signs the row's own id.
+- **Earlier wrong deletions stay as they are.** A deletion any release signed under an id no chain
+  wrote, before or after #1876, is not repaired or disclosed by this plan.
+- **A chain that does not verify.** A delete keeps signing the row's own id, with the #1199 risk
+  ADR-0059 rule 6 states. A selection export refuses when a selected Exhibit's row id names no
+  `capture` or `exhibit` entry in the chain; other rows export as today.
 
 ### Amendments to the slices
 
@@ -100,7 +105,7 @@ A second round the same day settled how the three are carried out.
   entries, `signerRuns()` for the Certification and `entriesUnderCarriedKeys`, the break rule, the
   newer-schema disclosure, and one chain walk instead of two. Byte identity also holds against
   `exportKnownAnswer.test.ts`. The signed selection takes confirmed ids only from #2283 on, and
-  slice 4 keeps that by reading `chainName`'s `via`.
+  slice 4 keeps that by signing only a name whose `via` is `'own'` or `'id-map'`.
 - **Slice 5.** `entryDescribesRow` has a third call site in `recapture.ts`, and the newer `rowDescriber`
   answers the same question at five call sites across `exhibits.ts`, `exhibitBackfill.ts`,
   `deletionReconciliation.ts` and `captureLifecycle.ts`.
@@ -423,7 +428,7 @@ known-answer test must use a source Case with no thumbnails.
    Verification does, and state how many later lines they left out as unverified.
 3. **When a writer cannot resolve a renamed Exhibit through its own id or the signed id map, the
    app refuses the operation** and explains why. It never signs an id it could not resolve.
-   Narrowed on 2026-11-27: a row's own id counts as resolved only when the chain holds the
+   Made precise on 2026-11-27: a row's own id counts as resolved only when the chain holds the
    `capture` or `exhibit` entry that acquired it under that id.
 4. **The Data screen prints the PEM-text key hash** that the Certification and `VERIFY.md` print.
    Extended on 2026-11-27 to the Sharing roster and join requests.

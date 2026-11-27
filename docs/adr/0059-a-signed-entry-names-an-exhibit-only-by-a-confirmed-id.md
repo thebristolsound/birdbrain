@@ -6,37 +6,42 @@
 
 This record states rulings the maintainer made in an interactive session on 2026-11-27, while
 answering the questions the re-check of the
-[chain-reader plan](../plans/2026-10-02-manifest-chain-reader.md) raised. It narrows ruling 3 of
-that plan's maintainer rulings of 2026-10-02, and amends the plan's invariant 4. The defect it
-leaves to fix is #2283.
+[chain-reader plan](../plans/2026-10-02-manifest-chain-reader.md) raised, and two more the same
+day on the review of this record. It makes ruling 3 of that plan's maintainer rulings of
+2026-10-02 precise, and amends the plan's invariant 4. The defect it leaves to fix is #2283.
 
 ## Context
 
-A Case Archive import renames a row whose id collides with one the importing Case already holds.
-The inherited Manifest Entry keeps naming the Exhibit by its Chain Id, the id it was signed under,
-and both package verifiers find the Exhibit's file, index rows and place in a signed selection by
-that id. The id map the `import` entry anchors by digest says which row each renamed id became.
-When that map is missing, altered or cannot be composed, the rename cannot be confirmed.
+A Case Archive import always creates a new Case, and renames each row whose id collides with a
+row already on the installation. The inherited Manifest Entry keeps naming the Exhibit by its
+Chain Id, the id it was signed under, and both package verifiers find the Exhibit's file, index
+rows and place in a signed selection by that id. The id map the `import` entry anchors by digest
+says which row each renamed id became. When that map is missing, altered or cannot be composed,
+the rename cannot be confirmed.
 
 Two paths that sign entries did not wait for a confirmation:
 
-- **Writers.** A deletion, the interrupted-delete repair and the thumbnail backfill name an
-  Exhibit by its row id whenever the rename is unconfirmed (#1876, #1872). Package Verification
-  counts a deletion only for an id some chain authored, so a deletion under an id the chain never
-  wrote removes nothing. The original Exhibit stays active, and every later Evidence Package that
-  includes it fails for its missing bytes. A selection that leaves it out does not fail.
+- **Writers.** A deletion and the thumbnail backfill name an Exhibit by its row id whenever the
+  rename is unconfirmed (#1876, #1872). Package Verification retires an Exhibit only through a
+  deletion naming the id its own `capture` or `exhibit` entry carries, so a deletion under an id
+  no chain wrote retires nothing. The original Exhibit stays active, and every later Evidence
+  Package that includes it fails for its missing bytes. A selection that leaves it out does not
+  fail.
 - **Selection export.** The `export` entry of a selection lists the Exhibits it encloses by Chain
-  Id, and export infers a renamed row's Chain Id from the entry at the row's index over the same
-  bytes (#1672). The inference is bounded, but the entry that records it is signed and permanent.
+  Id. Export infers a renamed row's Chain Id from the entry at the row's index over the same bytes
+  (#1672), and falls back to the row id when it cannot. The inference is bounded, but the entry
+  that records it is signed and permanent.
 
 ## Considered options
 
 - **Fall back to the row id.** What shipped. The writer never blocks the Operator, and the
   failure surfaces later, in a package that does not verify, far from the action that caused it.
-- **Refuse whenever a rename is unconfirmed.** Ruling 3 as written on 2026-10-02. It also refuses
-  a native row whose index someone edited on the Database screen, where the chain did write the
-  row's own id and the row id is correct.
-- **Refuse only when no signed record confirms the id.** Chosen.
+- **Refuse whenever a rename is unconfirmed.** It also refuses a native row whose index someone
+  edited on the Database screen, where the chain did write the row's own id and the row id is
+  correct.
+- **Refuse only when no signed record confirms the id.** Chosen. Ruling 3 asked a writer to
+  resolve a renamed Exhibit through its own id or the signed id map; this states what resolving
+  through its own id takes.
 
 ## Decision
 
@@ -44,22 +49,31 @@ Two paths that sign entries did not wait for a confirmation:
    or its own id when the chain holds the `capture` or `exhibit` entry that acquired it under that
    id. Any other entry naming the id, an earlier deletion among them, confirms nothing. An
    inferred Chain Id never goes into a signed entry.
-2. **A writer that has no confirmed id refuses.** This covers a single delete, a batch delete,
-   the interrupted-delete repair and the thumbnail backfill's parent. A refused delete tells the
-   Operator which Exhibit it is and why, and offers no override. The backfill skips that thumbnail
-   and logs why.
-3. **A selection export refuses on an inferred id.** An Evidence Package or a Working Copy of a
-   selection signs confirmed ids only, and refuses when a selected Exhibit's Chain Id is only
-   inferred. A full export signs no list and is unaffected.
+2. **A writer that has no confirmed id refuses.** This covers a single delete, a batch delete and
+   the thumbnail backfill's parent. A refused delete tells the Operator which Exhibit it is and
+   why, and offers no override. The backfill skips that thumbnail and logs why.
+3. **A selection export refuses without a confirmed id.** An Evidence Package or a Working Copy
+   of a selection signs confirmed ids only, and refuses when a selected Exhibit has none, whether
+   export inferred its Chain Id or could not name it at all. A full export signs no list and is
+   unaffected.
 4. **Inferred names may still name.** Every document an export writes, `evidence.json`, notes,
    the report and the Working Copy index among them, may name an Exhibit by an inferred Chain Id,
    so the documents agree with the files the package encloses.
-5. **No repair of earlier deletions.** A Case where an earlier release already signed a deletion
-   under an id no chain wrote stays as it is: a signed entry cannot be removed.
-6. **The rule applies to a chain that verifies.** On a Case whose chain fails verification, a
-   delete keeps signing the row's own id, as it does today. Nothing on such a chain can be
-   confirmed, and its packages already fail verification. The delete still removes the Exhibit's
-   stored bytes, as any delete does.
+5. **No repair of earlier deletions.** A Case where a release already signed a deletion under an
+   id no chain wrote stays as it is: a signed entry cannot be removed.
+6. **A chain that does not verify.** Nothing on such a chain can be confirmed, so rules 2 and 3
+   would refuse everything there. Instead:
+   - A delete keeps signing the row's own id, as it does today. It still removes the Exhibit's
+     stored bytes, as any delete does.
+   - A selection export refuses when a selected Exhibit's row id names no `capture` or `exhibit`
+     entry in the chain, which is true of every row an import renamed. Other rows export as
+     today.
+
+   The delete carries a known risk. A chain this build reads as broken may be genuine and verify
+   under a later build that fixes #1199. A deletion signed meanwhile under an unconfirmed row id
+   then retires nothing, and rule 5 leaves it unrepaired. That shape arises only when an archive
+   from a newer build is imported into an older one, and the maintainer accepted the risk over
+   blocking every delete on a broken Case.
 
 ## Consequences
 

@@ -127,7 +127,8 @@ is not coming back on this evidence.
   matrix, so the ready state hides no unreviewed work.
 - CodeRabbit's findings on an evidence PR arrive during human review and are handled there,
   by the maintainer, rather than relayed to the implementer during the draft loop. The dispatch
-  skill's guidance on reply storms still applies at that point.
+  skill's guidance on reply storms still applies at that point. **Superseded 2026-11-27** by the
+  amendment above: the repository no longer uses CodeRabbit, so this consequence no longer holds.
 - A prose-only fix round costs a claims check and a status read instead of a reviewer run over
   the suite. On the #1181 round-5 shape that is minutes rather than tens of minutes.
 - A delta pass is weaker in one specific way, and the verdict must say so: it trusts the

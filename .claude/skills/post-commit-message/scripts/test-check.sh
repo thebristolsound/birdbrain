@@ -84,10 +84,14 @@ expect 0 "$(GIT_CEILING_DIRECTORIES="$(dirname "$loose")" hook_at "$loose" "git 
 rmdir "$loose"
 
 # A cwd with a space reaches the hook intact, so the commit is seen and its relative -F path
-# resolves inside that cwd. Split at the space, the command decodes to garbage and passes.
+# resolves inside that cwd. Split at the space, the command decodes to garbage and passes, which
+# the failing file catches; a -F path resolved anywhere else is not found, which the passing
+# file catches.
 spaced="$bare/my tree"
 mkdir "$spaced"
-cp "$fx/fail-coauthor.txt" "$spaced/"
+cp "$fx/pass-body.txt" "$fx/fail-coauthor.txt" "$spaced/"
+expect 0 "$(hook_at "$spaced" "git commit -F pass-body.txt" "$(git -C "$here" rev-parse --show-toplevel)")" \
+  "hook finds the -F file in a cwd with a space in it"
 expect 2 "$(hook_at "$spaced" "git commit -F fail-coauthor.txt" "$(git -C "$here" rev-parse --show-toplevel)")" \
   "hook lints the file in a cwd with a space in it"
 rm -rf "$bare"

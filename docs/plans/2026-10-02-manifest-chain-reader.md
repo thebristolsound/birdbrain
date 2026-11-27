@@ -52,15 +52,16 @@ The re-check raised three questions. The maintainer answered them in an interact
 2026-11-27.
 
 1. **Ruling 3 stands, narrowed.** A writer names an Exhibit by its confirmed chain id. Failing
-   that, it names the row's own id only when the chain wrote an entry for that id. Otherwise it
-   refuses and explains why. The writers that shipped (`signedCaptureId`, `signedParentId`) fall
-   back to the row id without that check, so a deletion of a renamed Capture whose rename cannot
-   be confirmed names an id the chain never wrote. Package Verification counts a deletion only for
-   an id a chain authored, so the original Exhibit stays active and every later Evidence Package
-   of the Case fails for its missing bytes. An edited index on a native row still deletes under
-   the row's own id.
-2. **Ruling 4 covers the Sharing screens.** The Sharing roster and join requests print the
-   PEM-text hash packages print, as the Data screen does. Packages do not change.
+   that, it names the row's own id only when the chain holds the `capture` or `exhibit` entry
+   that acquired it under that id. Otherwise it refuses and explains why. The writers that
+   shipped (`signedCaptureId`, `signedParentId`) fall back to the row id without that check, so a
+   deletion of a renamed Capture whose rename cannot be confirmed names an id the chain never
+   wrote. Package Verification counts a deletion only for an id a chain authored, so the original
+   Exhibit stays active and every later Evidence Package that includes it fails for its missing
+   bytes. An edited index on a native row still deletes under the row's own id.
+2. **Ruling 4 covers the Sharing screens.** Once its own pull request lands, the Sharing roster
+   and join requests will print the PEM-text hash packages print, as the Data screen does. Until
+   then they print the DER SPKI hash. Packages do not change.
 3. **Invariant 4: names yes, signing no.** An inferred chain name may name an Exhibit in any
    document an export writes. A Manifest Entry never names an Exhibit by an inferred id: the
    selection list of an `export` entry takes confirmed ids only, and a selection export refuses
@@ -422,8 +423,8 @@ known-answer test must use a source Case with no thumbnails.
    Verification does, and state how many later lines they left out as unverified.
 3. **When a writer cannot resolve a renamed Exhibit through its own id or the signed id map, the
    app refuses the operation** and explains why. It never signs an id it could not resolve.
-   Narrowed on 2026-11-27: a row's own id counts as resolved only when the chain wrote an entry for
-   it.
+   Narrowed on 2026-11-27: a row's own id counts as resolved only when the chain holds the
+   `capture` or `exhibit` entry that acquired it under that id.
 4. **The Data screen prints the PEM-text key hash** that the Certification and `VERIFY.md` print.
    Extended on 2026-11-27 to the Sharing roster and join requests.
 5. **When the Manifest holds a newer-schema entry, export reads every written line and discloses

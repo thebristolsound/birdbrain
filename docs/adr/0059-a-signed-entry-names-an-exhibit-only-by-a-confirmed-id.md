@@ -23,8 +23,8 @@ Two paths that sign entries did not wait for a confirmation:
 - **Writers.** A deletion, the interrupted-delete repair and the thumbnail backfill name an
   Exhibit by its row id whenever the rename is unconfirmed (#1876, #1872). Package Verification
   counts a deletion only for an id some chain authored, so a deletion under an id the chain never
-  wrote removes nothing. The original Exhibit stays active, and every later Evidence Package of the
-  Case fails for its missing bytes.
+  wrote removes nothing. The original Exhibit stays active, and every later Evidence Package that
+  includes it fails for its missing bytes. A selection that leaves it out does not fail.
 - **Selection export.** The `export` entry of a selection lists the Exhibits it encloses by Chain
   Id, and export infers a renamed row's Chain Id from the entry at the row's index over the same
   bytes (#1672). The inference is bounded, but the entry that records it is signed and permanent.
@@ -41,8 +41,9 @@ Two paths that sign entries did not wait for a confirmation:
 ## Decision
 
 1. **A Manifest Entry names an Exhibit only by a confirmed id.** That is its Confirmed Chain Id,
-   or its own id when the chain wrote an entry for that id. An inferred Chain Id never goes into a
-   signed entry.
+   or its own id when the chain holds the `capture` or `exhibit` entry that acquired it under that
+   id. Any other entry naming the id, an earlier deletion among them, confirms nothing. An
+   inferred Chain Id never goes into a signed entry.
 2. **A writer that has no confirmed id refuses.** This covers a single delete, a batch delete,
    the interrupted-delete repair and the thumbnail backfill's parent. A refused delete tells the
    Operator which Exhibit it is and why, and offers no override. The backfill skips that thumbnail
@@ -57,7 +58,8 @@ Two paths that sign entries did not wait for a confirmation:
    under an id no chain wrote stays as it is: a signed entry cannot be removed.
 6. **The rule applies to a chain that verifies.** On a Case whose chain fails verification, a
    delete keeps signing the row's own id, as it does today. Nothing on such a chain can be
-   confirmed, and its packages already fail, so the deletion cannot make them worse.
+   confirmed, and its packages already fail verification. The delete still removes the Exhibit's
+   stored bytes, as any delete does.
 
 ## Consequences
 

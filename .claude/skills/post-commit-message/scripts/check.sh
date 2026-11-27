@@ -61,8 +61,10 @@ read -r agent cwd cmd < <(printf '%s' "$input" | node -e '
     const agent = j.agent_type || "-"
     const cwd = j.cwd || process.cwd()
     const cmd = (j.tool_input && j.tool_input.command) || ""
-    process.stdout.write(agent + " " + cwd + " " + Buffer.from(cmd).toString("base64") + "\n")
+    const b64 = (v) => Buffer.from(v).toString("base64")
+    process.stdout.write(agent + " " + b64(cwd) + " " + b64(cmd) + "\n")
   })')
+cwd="$(printf '%s' "$cwd" | base64 -d)"
 cmd="$(printf '%s' "$cmd" | base64 -d)"
 
 # The hook is registered in .claude/settings.json, so it sees every session; it acts only for

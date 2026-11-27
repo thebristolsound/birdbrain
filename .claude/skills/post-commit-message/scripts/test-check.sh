@@ -64,15 +64,26 @@ bare="$(mktemp -d)"
 git -C "$bare" init -q
 cp "$check" "$bare/check.sh"
 hook_at() {
-  # $1 payload cwd, $2 command, $3 CLAUDE_PROJECT_DIR; prints the bare copy's exit code
-  node -e 'process.stdout.write(JSON.stringify({tool_name:"Bash",cwd:process.argv[1],agent_type:"birdbrain-implementer",tool_input:{command:process.argv[2]}}))' "$1" "$2" \
-    | CLAUDE_PROJECT_DIR="$3" "$bare/check.sh" >/dev/null 2>&1
+  # $1 payload cwd, $2 command, $3 CLAUDE_PROJECT_DIR; prints the bare copy's exit code, or 99
+  # when no payload was produced (the hook passes empty input, which would read as a pass)
+  local payload
+  payload="$(node -e 'process.stdout.write(JSON.stringify({tool_name:"Bash",cwd:process.argv[1],agent_type:"birdbrain-implementer",tool_input:{command:process.argv[2]}}))' "$1" "$2")" \
+    && [ -n "$payload" ] || { echo 99; return; }
+  printf '%s' "$payload" | CLAUDE_PROJECT_DIR="$3" "$bare/check.sh" >/dev/null 2>&1
   echo $?
 }
 expect 0 "$(hook_at "$fx" "git commit -F pass-body.txt" "$bare")" \
   "hook lints from the cwd's worktree, not the project directory or its own tree"
 expect 0 "$(hook_at "$bare" "git commit -F $fx/pass-body.txt" "$(git -C "$here" rev-parse --show-toplevel)")" \
   "hook falls back to the project directory when the cwd's worktree has no commitlint"
+
+# A cwd with a space reaches the hook intact, so the commit is seen and its relative -F path
+# resolves inside that cwd. Split at the space, the command decodes to garbage and passes.
+spaced="$bare/my tree"
+mkdir "$spaced"
+cp "$fx/fail-coauthor.txt" "$spaced/"
+expect 2 "$(hook_at "$spaced" "git commit -F fail-coauthor.txt" "$(git -C "$here" rev-parse --show-toplevel)")" \
+  "hook lints the file in a cwd with a space in it"
 rm -rf "$bare"
 
 echo "$fails failure(s)"

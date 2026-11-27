@@ -309,9 +309,7 @@ export function lintBody(raw, { anyAuthor = false, posted = false } = {}) {
     }
   }
 
-  const shots = section('## Screenshots')
-  if (shots) findings.push(...screenshotFindings(shots.lines, posted))
-  // Lines inside a fenced block are quoted text, such as test output, not images.
+  // Lines inside a fenced block are quoted text, such as test output or an example, not images.
   let fenced = false
   const inFence = visibleText.map((l) => {
     const fence = /^\s*```/.test(l)
@@ -319,6 +317,11 @@ export function lintBody(raw, { anyAuthor = false, posted = false } = {}) {
     if (fence) fenced = !fenced
     return inside
   })
+  const shots = section('## Screenshots')
+  if (shots) {
+    const rendered = shots.indexes.filter((i) => !inFence[i]).map((i) => visibleText[i])
+    findings.push(...screenshotFindings(rendered, posted))
+  }
   const stray = visibleText.findIndex(
     (l, i) => hasImage(l) && !inFence[i] && !(shots && i > shots.start && i < shots.end)
   )

@@ -83,6 +83,7 @@ finds fail-empty-decisions.md 'is an empty table'
 finds fail-header-only-decisions.md 'is an empty table'
 finds fail-decisions-blank-row.md 'is an empty table'
 finds fail-section-order.md 'sections must be'
+finds fail-screenshots-in-fence.md 'no before/after screenshot pair'
 
 # The 1117 body must fail on the cap and the section rule specifically.
 out="$(node "$here/lint-body.mjs" "$fx/fail-1117-walkthrough.md")"

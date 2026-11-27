@@ -56,6 +56,8 @@ expect 0 "$(hook "git merge main" "")" "hook passes a merge through an interacti
 expect 0 "$(hook "git commit -m 'fix(x): y'" "")" "hook passes through an interactive session"
 expect 0 "$(hook "git commit -m 'fix(x): y'" "birdbrain-reviewer")" "hook passes through an unbound agent"
 expect 2 "$(BIRDBRAIN_DISPATCH=1 hook "git commit -m 'fix(x): y'" "")" "hook binds a headless dispatch session"
+expect 2 "$(node -e 'process.stdout.write(JSON.stringify({tool_name:"Bash",cwd:1,agent_type:"birdbrain-implementer",tool_input:{command:"git commit -m x"}}))' \
+  | "$check" >/dev/null 2>&1; echo $?)" "hook still checks a commit whose payload cwd is not a string"
 
 # A subagent's worktree arrives as the payload's cwd while CLAUDE_PROJECT_DIR, and the hook's
 # own path, name the parent session's tree. The copy below runs from a repository with no

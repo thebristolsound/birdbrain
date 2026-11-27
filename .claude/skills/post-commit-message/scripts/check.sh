@@ -61,7 +61,7 @@ read -r agent cwd cmd < <(printf '%s' "$input" | node -e '
     const agent = j.agent_type || "-"
     const cwd = j.cwd || process.cwd()
     const cmd = (j.tool_input && j.tool_input.command) || ""
-    const b64 = (v) => Buffer.from(v).toString("base64")
+    const b64 = (v) => Buffer.from(String(v)).toString("base64")
     process.stdout.write(agent + " " + b64(cwd) + " " + b64(cmd) + "\n")
   })')
 cwd="$(printf '%s' "$cwd" | base64 -d)"

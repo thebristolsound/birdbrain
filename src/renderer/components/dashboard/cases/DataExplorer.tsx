@@ -44,7 +44,7 @@ import { IndicatorsView } from '@renderer/components/data/IndicatorsView'
 import { UnreviewedView } from '@renderer/components/data/UnreviewedView'
 import { DiscardStagedDialog } from '@renderer/components/data/DiscardStagedDialog'
 import { useDataContextMenu } from '@renderer/components/data/useDataContextMenu'
-import { copyValue } from '@renderer/components/data/copy'
+import { copyDigest, copyValue } from '@renderer/components/data/copy'
 import { targetExhibitId, type LedgerRow } from '@renderer/components/data/ledgerModel'
 import {
   buildDataTree,
@@ -150,6 +150,7 @@ function MhtmlPartsRead({ captureId, anchored }: { captureId: string; anchored: 
       listing={data}
       anchored={anchored}
       onCopy={(value, label) => void copyValue(value, label)}
+      onCopyDigest={(value, label) => void copyDigest(value, label)}
     />
   )
 }
@@ -478,7 +479,7 @@ export function DataExplorer() {
       const targetId = line ? targetExhibitId(line, rows) : null
       if (targetId) showRow(targetId)
     },
-    onCopyHash: (value: string, label: string) => void copyValue(value, label)
+    onCopyHash: (value: string, label: string) => void copyDigest(value, label)
   }
 
   // Without the inventory the integrity buckets and the table would read as
@@ -591,6 +592,7 @@ export function DataExplorer() {
           rows={rows}
           capture={selectedCapture}
           onCopy={(value, label) => void copyValue(value, label)}
+          onCopyDigest={(value, label) => void copyDigest(value, label)}
         />
       )
     })

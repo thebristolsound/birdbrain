@@ -85,10 +85,16 @@ function listed(overrides: Partial<Extract<MhtmlPartsListing, { status: 'listed'
 
 function renderTab(listing: MhtmlPartsListing | null, anchored = true) {
   const onCopy = vi.fn()
+  const onCopyDigest = vi.fn()
   const { container } = render(
-    <MhtmlPartsTab listing={listing} anchored={anchored} onCopy={onCopy} />
+    <MhtmlPartsTab
+      listing={listing}
+      anchored={anchored}
+      onCopy={onCopy}
+      onCopyDigest={onCopyDigest}
+    />
   )
-  return { onCopy, container }
+  return { onCopy, onCopyDigest, container }
 }
 
 function text(node: Element | null | undefined): string {
@@ -207,13 +213,14 @@ describe('MhtmlPartsTab, listed', () => {
   })
 
   it('copies the full hash, location and byte range, unescaped', () => {
-    const { onCopy } = renderTab(listed())
+    const { onCopy, onCopyDigest } = renderTab(listed())
     const row = within(screen.getByTestId('mhtml-part-3'))
     fireEvent.click(row.getByTestId('mhtml-part-copy-sha256'))
     fireEvent.click(row.getByTestId('mhtml-part-copy-location'))
     fireEvent.click(row.getByTestId('mhtml-part-copy-range'))
+    // Only the hash goes to the digest copy, which checks its shape.
+    expect(onCopyDigest.mock.calls).toEqual([[HASH_3, 'SHA-256 (computed now, not anchored)']])
     expect(onCopy.mock.calls).toEqual([
-      [HASH_3, 'SHA-256 (computed now, not anchored)'],
       ['https://widgets.example/\r\nembed', 'Content-Location'],
       ['offset 796 length 2048', 'byte range']
     ])

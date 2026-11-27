@@ -24,6 +24,9 @@ interface MhtmlPartsTabProps {
   // Whether the Capture's Exhibit has a Manifest Entry, so the caption never claims one it lacks.
   anchored: boolean
   onCopy: (value: string, label: string) => void
+  // The part's SHA-256, kept apart from onCopy so an empty or malformed digest is not announced
+  // as copied.
+  onCopyDigest: (value: string, label: string) => void
 }
 
 function Stated({ reason, children }: { reason: string; children: ReactNode }) {
@@ -116,10 +119,12 @@ function typeCell({ contentType, headersTerminated }: MhtmlPartRow): ReactNode {
 
 function PartRow({
   part,
-  onCopy
+  onCopy,
+  onCopyDigest
 }: {
   part: MhtmlPartRow
   onCopy: (value: string, label: string) => void
+  onCopyDigest: (value: string, label: string) => void
 }) {
   const { position, mainDocument, contentLocation, fieldsTruncated, offset, size, sha256 } = part
   const html = htmlPartLabel(part)
@@ -156,7 +161,7 @@ function PartRow({
         <CopyButton
           label={`Copy the SHA-256 of part ${position}`}
           testId="mhtml-part-copy-sha256"
-          onClick={() => onCopy(sha256, COPY_LABELS.sha256)}
+          onClick={() => onCopyDigest(sha256, COPY_LABELS.sha256)}
         >
           SHA-256
         </CopyButton>
@@ -184,11 +189,13 @@ function PartRow({
 function Listed({
   listing,
   anchored,
-  onCopy
+  onCopy,
+  onCopyDigest
 }: {
   listing: ListedParts
   anchored: boolean
   onCopy: (value: string, label: string) => void
+  onCopyDigest: (value: string, label: string) => void
 }) {
   return (
     <div className="px-4 pb-6 pt-3.5" data-testid="mhtml-parts-listed">
@@ -225,7 +232,12 @@ function Listed({
           </thead>
           <tbody>
             {listing.parts.map((part) => (
-              <PartRow key={part.position} part={part} onCopy={onCopy} />
+              <PartRow
+                key={part.position}
+                part={part}
+                onCopy={onCopy}
+                onCopyDigest={onCopyDigest}
+              />
             ))}
           </tbody>
         </table>
@@ -246,11 +258,13 @@ function Listed({
  * its bytes have no Manifest Entry of their own (ADR-0023). The Content-Location is text and
  * never a link, so nothing here navigates to a captured address.
  */
-export function MhtmlPartsTab({ listing, anchored, onCopy }: MhtmlPartsTabProps) {
+export function MhtmlPartsTab({ listing, anchored, onCopy, onCopyDigest }: MhtmlPartsTabProps) {
   if (listing === null) return <Stated reason="none">{NO_STORED_MHTML}</Stated>
   if (listing.status === 'refused') {
     const { refusal } = listing
     return <Stated reason={refusal.reason}>{refusalSentence(refusal)}</Stated>
   }
-  return <Listed listing={listing} anchored={anchored} onCopy={onCopy} />
+  return (
+    <Listed listing={listing} anchored={anchored} onCopy={onCopy} onCopyDigest={onCopyDigest} />
+  )
 }

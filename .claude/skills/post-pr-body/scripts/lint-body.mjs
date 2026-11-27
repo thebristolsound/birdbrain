@@ -146,7 +146,8 @@ function screenshotFindings(lines, posted) {
   return findings
 }
 
-const cells = (row) => row.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim())
+// An escaped pipe (\|) is cell text, not a column break.
+const cells = (row) => row.trim().replace(/^\||\|$/g, '').split(/(?<!\\)\|/).map((c) => c.trim())
 
 // Rows of every table in `lines` except each table's header and rule rows.
 function tableRows(lines) {

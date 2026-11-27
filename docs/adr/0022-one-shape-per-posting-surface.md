@@ -1,6 +1,6 @@
 # One shape per posting surface, checked before the write
 
-**Status:** Accepted, amended 2026-09-19 (two layers per post)
+**Status:** Accepted, amended 2026-09-19 (two layers per post) and 2026-11-26 (work template layout, screenshots in the body)
 
 **Date:** 2026-08-29
 

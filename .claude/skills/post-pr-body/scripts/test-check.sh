@@ -36,8 +36,11 @@ done
 "$check" --any-author --posted "$fx/pass-filled.md" >/dev/null 2>&1; expect 0 $? "direct --posted accepts attached screenshots"
 posted_fx="$(mktemp -d)"
 trap 'rm -rf "$posted_fx"' EXIT
-sed 's#https://github.com/user-attachments/assets/4f5a6b7c-after#/tmp/birdbrain-shots/x/after.png#' "$fx/pass-filled.md" > "$posted_fx/local.md"
-"$check" --any-author --posted "$posted_fx/local.md" >/dev/null 2>&1; expect 1 $? "direct --posted refuses a local screenshot path"
+# A real, readable PNG: without --posted it passes, so only the flag can make it fail.
+printf '\x89PNG\r\n\x1a\n' > "$posted_fx/after.png"
+sed "s#https://github.com/user-attachments/assets/4f5a6b7c-after#$posted_fx/after.png#" "$fx/pass-filled.md" > "$posted_fx/local.md"
+"$check" --any-author "$posted_fx/local.md" >/dev/null 2>&1; expect 0 $? "direct check accepts a readable local screenshot"
+"$check" --any-author --posted "$posted_fx/local.md" >/dev/null 2>&1; expect 1 $? "direct --posted refuses a readable local screenshot"
 
 # The 1117 body must fail on the cap and the section rule specifically.
 out="$(node "$here/lint-body.mjs" "$fx/fail-1117-walkthrough.md")"

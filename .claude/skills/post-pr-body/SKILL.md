@@ -53,7 +53,7 @@ line. The layout follows the maintainer's work template, adapted to this reposit
    collapsed `Diagram` block may follow the sentences: when the change alters a flow, a call
    sequence, a state machine or a dependency, it holds a Mermaid diagram of the state after
    the merge, at most about 15 nodes, every edge labelled, with what this PR changed marked by
-   the template's `changed` class and no fill colours. The commit stops at that block.
+   the template's `changed` class and no fill colours. The commit stops at that block, so no Summary text may follow it.
 4. `## Proof`: one `<details>` block holding `Head: <sha>. Merge gate: <link or pending>.` and
    the `| Acceptance criterion | Proof | Result |` table, one row per acceptance criterion of
    the closed issue (or per Summary claim when there is none): the test, check or run that
@@ -184,7 +184,8 @@ pair, including a placeholder handed to the maintainer, is a `gate` finding in t
 "Screenshots" control (`birdbrain-reviewer`).
 
 The upload comment from step 3 is only the route to an attachment link. Screenshots that sit
-in a comment and not in the body do not count: the merge refuses the PR.
+in a comment and not in the body do not count: a Yes declaration without its pairs in the body
+fails the check, and the reviewer checks a No declaration against the diff.
 
 `scripts/check.sh <body-file>` requires the declaration on every body and checks a Yes
 decision for complete Before/After rows with matching screen names. Each image must be a
@@ -225,4 +226,5 @@ POST implicitly):
 linter in `../post-comment/` imports it, so both surfaces read the same rule.
 `scripts/test-check.sh` runs the fixtures under `scripts/fixtures/` through both paths.
 `fail-1117-walkthrough.md` is the body of PR #1117 as it shipped, kept as the example of what
-the cap and the section rule exclude. Every other fixture is `pass-filled.md` with one change.
+the cap and the section rule exclude, and `fail-payload.json` is a body with no sections. Every
+other fixture is `pass-filled.md` with one change.

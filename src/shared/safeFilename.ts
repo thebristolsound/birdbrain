@@ -29,8 +29,8 @@ export function safeFilename(
   // Windows strips trailing dots and spaces itself, which changes the name the
   // user saw in the dialog; do it up front so what is shown is what is written.
   stem = stem.replace(/[. ]+$/g, '')
-  // A device name stays reserved with an extension after it (NUL.txt), and
-  // every caller appends one, so the part before the first dot decides.
+  // A device name stays reserved with an extension after it (NUL.txt), so
+  // when this stem starts a file name, the part before its first dot decides.
   if (!stem || RESERVED_NAMES.test(stem.split('.')[0])) return fallback
   return stem
 }

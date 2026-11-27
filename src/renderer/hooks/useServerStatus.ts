@@ -4,6 +4,7 @@ import { queryClient } from '@renderer/lib/queryClient'
 import { queryKeys } from '@renderer/lib/queries'
 import { invalidateAfterTagApply } from '@renderer/lib/api/tags'
 import { invalidateNoteQueries } from '@renderer/lib/api/notes'
+import { sessionQueryOptions } from '@renderer/lib/api/session'
 import {
   followLaunchedBrowserPopOut,
   followLaunchedBrowserStatus
@@ -17,7 +18,24 @@ export function useServerStatus() {
       useAppStore.getState().setConnectedToExtension(connected)
     })
 
+    // The store starts Idle on every load, and main pushes only on a change, so a reload during a
+    // Capture Session read Idle until a Case route activated (#815). The read always asks main,
+    // and yields to a push, which is newer. It does not navigate: the start screen is the restore
+    // hook's choice. A failed read leaves the store Idle; the query cache logs the failure.
+    let pushed = false
+    let unmounted = false
+    queryClient
+      .fetchQuery({ ...sessionQueryOptions(), staleTime: 0 })
+      .then(({ sessionActive, activeCaseId }) => {
+        if (pushed || unmounted) return
+        const { setSessionActive, setActiveCaseId } = useAppStore.getState()
+        setSessionActive(sessionActive)
+        setActiveCaseId(activeCaseId)
+      })
+      .catch(() => {})
+
     const unsubSession = window.birdbrain.onSessionStateChanged((state) => {
+      pushed = true
       const { sessionActive: wasActive, setSessionActive, setActiveCaseId } = useAppStore.getState()
       setSessionActive(state.sessionActive)
       setActiveCaseId(state.activeCaseId ?? null)
@@ -124,6 +142,7 @@ export function useServerStatus() {
     })
 
     return () => {
+      unmounted = true
       unsubExtension()
       unsubSession()
       unsubLaunchedBrowser()

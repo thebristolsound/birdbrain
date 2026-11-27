@@ -30,9 +30,9 @@ flowchart LR
 <details>
 <summary>Each review finding and what happened to it</summary>
 
-- Taken: review fleet, blocking: the rescan skipped captures whose selector was renamed. Fixed in `4e5f6a7`.
-- Not taken, test or style only: CodeRabbit, nitpick: a test name could say which selector it rescans.
-- Not taken, too much work: Codex, P2: the selector list screen repeats the same query on open.
+- Taken: [review fleet, blocking](https://github.com/thebristolsound/birdbrain/pull/830#issuecomment-4101): the rescan skipped captures whose selector was renamed. Fixed in `4e5f6a7`.
+- Not taken, test or style only: [CodeRabbit, nitpick](https://github.com/thebristolsound/birdbrain/pull/830#discussion_r4102): a test name could say which selector it rescans.
+- Not taken, too much work: [Codex, P2](https://github.com/thebristolsound/birdbrain/pull/830#discussion_r4103): the selector list screen repeats the same query on open.
 
 </details>
 

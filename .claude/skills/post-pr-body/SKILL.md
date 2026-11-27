@@ -58,15 +58,21 @@ line. The layout follows the maintainer's work template, adapted to this reposit
 4. `## Review findings` (required on an agent-written body): every finding a review raised on
    this PR and what happened to it, sorted by the table in `.claude/skills/ship-unit/SKILL.md`,
    "Sorting a finding". The visible line is `No review findings yet.` until a review reports,
-   then `<n> taken, <m> not taken.` above one `<details>` block holding one row per finding,
-   each on one line: `- Taken: <reviewer>, <severity>: <finding>. Fixed in <commit>.` or
-   `- Not taken, <reason>: <reviewer>, <severity>: <finding>. <why>`, where the reason is
-   `out of scope`, `disputed` (with the `file:line` at head that shows it), `test or style only`,
-   `needs its own push` or `filed as #N`. The counts match the rows. Rows carry no links: the
-   review fleet loads every comment a description links as a source it must read, so the links
-   go in the thread replies, which are written from the same dispositions. The section sits
+   then `<n> taken, <m> not taken.` above one collapsed `<details>` block holding one row per
+   finding, each on one line:
+   `- Taken: [<reviewer>, <severity>](<link>): <finding>. Fixed in <commit>.`
+   (`Fixed in the description.` for a finding against the description) or
+   `- Not taken, <reason>: [<reviewer>, <severity>](<link>): <finding>. <why>`, where the reason
+   is `out of scope`, `disputed` (with the `file:line` at head that shows it),
+   `test or style only`, `needs its own push` or `filed as #N`. The counts match the rows. Each
+   row links the comment or review that raised its finding (`#issuecomment-`, `#discussion_r` or
+   `#pullrequestreview-` on this PR; the review fleet's own state comment for a fleet finding):
+   the review fleet fails on a sentence its inputs do not settle, and it reads a review comment
+   only when the description links it. Each link, and the `#N` of a filed issue, is a source the
+   fleet must read, so a PR with very many findings can reach its limit of 60 sources. The section sits
    outside the Summary, so the merge commit leaves it out (ADR-0060). The merge paths do not
-   ask for it, so a PR opened before it existed still merges; a human author may leave it out.
+   check it at all, so the record never holds up a merge and a PR opened before it existed
+   still merges; a human author may leave it out.
 5. `## Proof`: one `<details>` block holding `Head: <sha>. Merge gate: <link or pending>.` and
    the `| Acceptance criterion | Proof | Result |` table, one row per acceptance criterion of
    the closed issue (or per Summary claim when there is none): the test, check or run that

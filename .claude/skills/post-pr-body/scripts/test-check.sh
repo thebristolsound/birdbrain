@@ -91,11 +91,14 @@ finds fail-review-findings-missing.md 'lists its review findings under ## Review
 finds fail-review-findings-line.md 'Review findings shows one line'
 finds fail-review-findings-count.md 'but lists 1 and 2'
 finds fail-review-findings-reason.md 'Review findings rows are'
-finds fail-review-findings-link.md 'Review findings rows carry no links'
-# The merge paths pass --posted: a pull request opened before the section existed still merges,
-# and a section that is present is still checked.
+finds fail-review-findings-unlinked.md 'links no comment or review'
+finds fail-review-findings-open.md 'opened with a plain <details> line'
+finds fail-review-findings-two-blocks.md 'holds its rows in one collapsed block'
+finds fail-review-findings-zero.md 'with nothing to list says'
+# The merge paths pass --posted and check nothing in the section, so the record never holds up a
+# merge: a body written before it existed merges, and so does one whose rows went stale.
 "$check" --any-author --posted "$fx/fail-review-findings-missing.md" >/dev/null 2>&1; expect 0 $? "direct --posted accepts a body written before Review findings existed"
-"$check" --any-author --posted "$fx/fail-review-findings-link.md" >/dev/null 2>&1; expect 1 $? "direct --posted still checks a Review findings section"
+"$check" --any-author --posted "$fx/fail-review-findings-count.md" >/dev/null 2>&1; expect 0 $? "direct --posted does not check the Review findings rows"
 
 # The 1117 body must fail on the cap and the section rule specifically.
 out="$(node "$here/lint-body.mjs" "$fx/fail-1117-walkthrough.md")"

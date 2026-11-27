@@ -33,21 +33,17 @@ flowchart LR
 ## Review findings
 
 <!-- Every finding a review raised and what happened to it, sorted by the table in the ship-unit
-skill, "Sorting a finding". Before any review, the line is "No review findings yet." and the
-block is deleted. After one, the line is "<n> taken, <m> not taken." and the block holds one
-row per finding on one line each, with no links (the links go in the thread replies):
-- Taken: <reviewer>, <severity>: <the finding in one sentence>. Fixed in `<commit>`.
-- Not taken, <reason>: <reviewer>, <severity>: <the finding>. <why, with file:line for disputed>
-<reason> is one of: out of scope, disputed, test or style only, needs its own push, filed as #N.
+skill, "Sorting a finding". Before any review, the line below stays as it is. After one, it
+becomes "<n> taken, <m> not taken." above one collapsed block, opened with a plain <details>
+line and titled "Each review finding and what happened to it", holding one row per finding on
+one line each, linking the comment or review that raised it so the review fleet can check it:
+- Taken: [<reviewer>, <severity>](<link>): <the finding in one sentence>. Fixed in `<commit>`.
+- Taken: [<reviewer>, <severity>](<link>): <a finding against this description>. Fixed in the description.
+- Not taken, <reason>: [<reviewer>, <severity>](<link>): <the finding>. <why, with file:line for disputed>
+<reason> is one of: out of scope, disputed, test or style only, needs its own push, or
+filed as #N.
 An agent-written description always carries this section; a human author may delete it. -->
 No review findings yet.
-
-<details>
-<summary>Each review finding and what happened to it</summary>
-
-- Taken:
-
-</details>
 
 ## Proof
 

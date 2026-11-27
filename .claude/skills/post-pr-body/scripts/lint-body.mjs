@@ -41,10 +41,11 @@ const REQUIRED = SECTIONS.filter((s) => !OPTIONAL.includes(s))
 const NO_FINDINGS = 'No review findings yet.'
 const FINDING_COUNTS = /^(\d+) taken, (\d+) not taken\.$/
 const TAKEN_ROW = /^- Taken: \S/
-const NOT_TAKEN_ROW = /^- Not taken, (out of scope|disputed|test or style only|needs its own push|filed as #\d+): \S/
-// The review fleet loads every comment a description links as a source it must read, so a linked
-// row adds to that load and fails the review once its comment is gone.
-const FINDING_LINK = /\]\(|https?:\/\/|\bcomment\s+\d{8,}\b/
+const NOT_TAKEN_ROW = /^- Not taken, (out of scope|disputed|test or style only|needs its own push|filed as #[1-9]\d*): \S/
+// The review fleet fails on a description sentence its inputs do not settle, and it reads a
+// review comment only when the description links it (../../../../.github/scripts/review-fleet/
+// inputs.mjs). So every row links the comment or review that raised its finding.
+const FINDING_SOURCE = /\]\(https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/\d+#(issuecomment-|discussion_r|pullrequestreview-)\d+\)/
 const RISK_COLOUR = { High: 'CAUTION', Medium: 'WARNING', Low: 'NOTE', Minimal: 'TIP' }
 const RISK_ALERT = /^> \[!(CAUTION|WARNING|NOTE|TIP)\]$/
 const RISK_LINE = /^> \*\*Merge risk: (High|Medium|Low|Minimal)\.\*\* \S/
@@ -291,23 +292,29 @@ export function lintBody(raw, { anyAuthor = false, posted = false } = {}) {
     if (n === 0) findings.push('Summary is empty')
   }
 
-  // The merge paths pass --posted and do not ask for the section, so a pull request opened
-  // before it existed still merges; every agent write after that carries it.
+  // The merge paths pass --posted and check nothing here, so the record never holds up a merge
+  // and a pull request opened before the section existed still merges; every agent write
+  // carries it and is checked.
   const hasAttribution = visibleText.some((l) => isAttribution(l.trim()))
   const reviewed = section('## Review findings')
   if (!reviewed && hasAttribution && !posted) {
-    findings.push(`an agent-written description lists its review findings under ## Review findings, after Summary; write "${NO_FINDINGS}" when there are none`)
-  } else if (reviewed) {
+    findings.push(`an agent-written description lists its review findings under ## Review findings, after Summary: "${NO_FINDINGS}" before any review reports, otherwise the counts line and one row per finding`)
+  } else if (reviewed && !posted) {
     const shown = topText(reviewed).map((i) => visibleText[i].trim())
     const counts = (shown[0] || '').match(FINDING_COUNTS)
-    const rows = blocksWithin(reviewed)
+    const blocks = blocksWithin(reviewed)
+    const rows = blocks
       .flatMap(blockBody)
       .map((l) => l.trim())
       .filter((l) => l !== '')
     if (shown.length !== 1 || (shown[0] !== NO_FINDINGS && !counts)) {
       findings.push(`Review findings shows one line, "<n> taken, <m> not taken." or "${NO_FINDINGS}"`)
     } else if (!counts) {
-      if (rows.length) findings.push(`Review findings says "${NO_FINDINGS}" but lists rows`)
+      if (blocks.length) findings.push(`Review findings says "${NO_FINDINGS}" but holds a block of rows`)
+    } else if (Number(counts[1]) + Number(counts[2]) === 0) {
+      findings.push(`Review findings with nothing to list says "${NO_FINDINGS}"`)
+    } else if (blocks.length !== 1 || visibleText[blocks[0].start].trim() !== '<details>') {
+      findings.push('Review findings holds its rows in one collapsed block, opened with a plain <details> line')
     } else {
       const taken = rows.filter((l) => TAKEN_ROW.test(l)).length
       const notTaken = rows.filter((l) => NOT_TAKEN_ROW.test(l)).length
@@ -317,10 +324,10 @@ export function lintBody(raw, { anyAuthor = false, posted = false } = {}) {
       } else if (taken !== Number(counts[1]) || notTaken !== Number(counts[2])) {
         findings.push(`Review findings counts ${counts[1]} taken and ${counts[2]} not taken, but lists ${taken} and ${notTaken}`)
       }
-    }
-    const linked = reviewed.indexes.find((i) => FINDING_LINK.test(visibleText[i]))
-    if (linked !== undefined) {
-      findings.push(`line ${linked + 1}: Review findings rows carry no links; the review fleet reads every linked comment as a source, so the links go in the thread replies`)
+      const unlinked = rows.find((l) => !FINDING_SOURCE.test(l))
+      if (!odd && unlinked) {
+        findings.push(`Review findings row "${unlinked.slice(0, 60)}" links no comment or review; the review fleet can check a row only from the comment it links`)
+      }
     }
   }
 

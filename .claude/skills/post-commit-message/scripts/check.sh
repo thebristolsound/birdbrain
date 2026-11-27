@@ -75,7 +75,7 @@ cmd="$(printf '%s' "$cmd" | base64 -d)"
 case " $bound " in *" $agent "*) ;; *) [ "${BIRDBRAIN_DISPATCH:-}" = 1 ] || exit 0 ;; esac
 
 # CLAUDE_PROJECT_DIR names the top-level session's tree, but a subagent in its own worktree
-# reports that worktree as the payload's cwd. Lint there when it has node_modules.
+# reports that worktree as the payload's cwd. Lint there when it has commitlint installed.
 if top="$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null)" \
   && [ -x "$top/node_modules/.bin/commitlint" ]; then
   root="$top"

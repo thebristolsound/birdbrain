@@ -76,6 +76,12 @@ expect 0 "$(hook_at "$fx" "git commit -F pass-body.txt" "$bare")" \
   "hook lints from the cwd's worktree, not the project directory or its own tree"
 expect 0 "$(hook_at "$bare" "git commit -F $fx/pass-body.txt" "$(git -C "$here" rev-parse --show-toplevel)")" \
   "hook falls back to the project directory when the cwd's worktree has no commitlint"
+# The ceiling stops git's search at $loose itself, so the lookup fails even when TMPDIR sits
+# inside a repository.
+loose="$(mktemp -d)"
+expect 0 "$(GIT_CEILING_DIRECTORIES="$(dirname "$loose")" hook_at "$loose" "git commit -F $fx/pass-body.txt" "$(git -C "$here" rev-parse --show-toplevel)")" \
+  "hook falls back to the project directory when cwd is outside a repository"
+rmdir "$loose"
 
 # A cwd with a space reaches the hook intact, so the commit is seen and its relative -F path
 # resolves inside that cwd. Split at the space, the command decodes to garbage and passes.

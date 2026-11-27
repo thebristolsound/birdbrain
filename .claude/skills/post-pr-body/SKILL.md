@@ -14,8 +14,9 @@ body against this shape; the pre-pass treats a body defect as blocking (ADR-0018
 A body is a plain-language top layer plus collapsed detail, the way CodeRabbit nests its
 review:
 
-- **Top layer.** Line 1, the section headings, the Summary sentences, the Yes/No answer and
-  the attribution line. Plain language for a reader outside the repository: no code spans,
+- **Top layer.** Line 1, the Merge risk notice, the section headings, the Summary sentences,
+  the Screenshots declaration and rows, the Not done, Blast radius and checkbox bullets, the
+  Yes/No answer and the attribution line. Plain language for a reader outside the repository: no code spans,
   file names or paths, commit ids, ADR numbers, tool names, or repository terms such as
   pre-pass, preflight, lint, typecheck, worktree, merge base, diff coverage or sha. The linter
   checks those as proxies for jargon.
@@ -186,7 +187,7 @@ pair, including a placeholder handed to the maintainer, is a `gate` finding in t
 The upload comment from step 3 is only the route to an attachment link. Screenshots that sit
 in a comment and not in the body do not count: a Yes declaration without its pairs in the body
 fails the check. No check can tell a false No declaration: only a reviewer reading the diff
-catches one, and a PR without the `review:requested` label gets no such reviewer.
+catches one, such as the review fleet on a PR the maintainer or the machine account opens.
 
 `scripts/check.sh <body-file>` requires the declaration on every body and checks a Yes
 decision for complete Before/After rows with matching screen names. Each image must be a

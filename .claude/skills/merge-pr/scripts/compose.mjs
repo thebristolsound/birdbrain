@@ -17,7 +17,8 @@ export function summaryOf(body) {
   const start = lines.findIndex((l) => l.trim() === '## Summary')
   if (start < 0) return null
   // The Summary's collapsed Diagram block stays on the PR, out of the commit.
-  let end = lines.findIndex((l, i) => i > start && (/^## /.test(l) || /^\s*<details[\s>]/i.test(l)))
+  // A bare <details> line, the same opener the description check reads as a block.
+  let end = lines.findIndex((l, i) => i > start && (/^## /.test(l) || /^\s*<details(\s[^>]*)?>\s*$/i.test(l)))
   if (end < 0) end = lines.length
   return lines
     .slice(start + 1, end)

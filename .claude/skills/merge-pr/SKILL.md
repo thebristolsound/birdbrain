@@ -39,8 +39,9 @@ authenticates as the machine account.
    it is not green, and does not refuse.
 3. The body passes `post-pr-body` (the linter tolerates a cloud-proxy footer after the
    attribution line). Under `gh` the check runs with `--any-author`, so a human-written body
-   without the attribution line passes; under `agh` the line is required. A body that fails is
-   fixed with `pr edit <n> --body-file <file>` first.
+   without the attribution line passes; under `agh` the line is required. Both run it with
+   `--posted`, so a Yes body whose screenshots are local files or missing is refused. A body
+   that fails is fixed with `pr edit <n> --body-file <file>` first.
 4. `evidence-affecting`, on the PR or an issue named on its `Closes` line: refused under
    `agh` (ADR-0005, ADR-0014); under `gh` it proceeds, because the maintainer running it is the
    human review. A label read that fails refuses the merge rather than reading as "no label."

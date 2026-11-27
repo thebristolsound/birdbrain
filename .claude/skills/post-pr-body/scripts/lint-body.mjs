@@ -37,8 +37,9 @@ const RISK_COLOUR = { High: 'CAUTION', Medium: 'WARNING', Low: 'NOTE', Minimal: 
 const RISK_ALERT = /^> \[!(CAUTION|WARNING|NOTE|TIP)\]$/
 const RISK_LINE = /^> \*\*Merge risk: (High|Medium|Low|Minimal)\.\*\* \S/
 const ATTACHMENT = /^https:\/\/github\.com\/user-attachments\/assets\/[\w-]+$/
-// A Markdown image, or the HTML tag GitHub's web editor inserts for an upload.
-const IMAGE = /!\[[^\]]*\]\(|<img\b/i
+// A Markdown image (inline or reference style), or the HTML tag GitHub's web editor inserts
+// for an upload.
+const IMAGE = /!\[[^\]]*\]\(|!\[[^\]]*\]\[|<img\b/i
 // Image syntax quoted in a code span is text, not an image.
 const hasImage = (line) => IMAGE.test(line.replace(/`[^`]*`/g, ''))
 const TABLE_ROW = /^\s*\|.*\|\s*$/
@@ -113,13 +114,21 @@ function screenshotFindings(lines, posted) {
     if (!/^\s*- (Before|After),/i.test(line)) continue
     // The Markdown form, or the <img> tag GitHub's web editor writes for an upload.
     const shot = line.match(
-      /^\s*- (Before|After), (.+?): (?:!\[[^\]]*\]\((<[^>]+>|[^)]+)\)|<img\b[^>]*\bsrc="([^"]+)"[^>]*>)\s*$/i
+      /^\s*- (Before|After), (.+?): (?:!\[[^\]]*\]\((<[^>]+>|[^)]+)\)|(<img\b[^>]*>))\s*$/i
     )
     if (!shot) {
       findings.push('each Before/After row needs an image; a screenshot handoff is not evidence')
       continue
     }
-    const [, phase, screen, markdown, html] = shot
+    const [, phase, screen, markdown, tag] = shot
+    // The rendered image is the tag's own src attribute; a second one, or src inside another
+    // attribute such as data-src, could hide what GitHub shows.
+    const srcs = tag ? [...tag.matchAll(/\ssrc="([^"]*)"/gi)].map((m) => m[1]) : []
+    if (tag && srcs.length !== 1) {
+      findings.push(`${phase}, ${screen}: an <img> row has exactly one src attribute`)
+      continue
+    }
+    const html = srcs[0]
     if (hasImage(screen)) {
       findings.push(`${phase} row names its screen with an image; one image per row, after the screen name`)
       continue
@@ -349,8 +358,8 @@ export function lintBody(raw, { anyAuthor = false, posted = false } = {}) {
       for (const b of blocks.slice(1)) {
         const lines = blockBody(b)
         const rows = tableRows(lines)
-        // A header with no rows is as empty as a row of blank cells.
-        if (lines.some((l) => TABLE_ROW.test(l)) && rows.every((r) => r.every((c) => c === ''))) {
+        // A header with no rows, or a row of blank cells, is a template left unfilled.
+        if (lines.some((l) => TABLE_ROW.test(l)) && (!rows.length || rows.some((r) => r.every((c) => c === '')))) {
           findings.push(`the "${b.summary}" block in Changes is an empty table; delete it when there is nothing to list`)
         }
       }

@@ -111,6 +111,18 @@ describe('PR screenshot evidence', () => {
   })
 })
 
+describe('PR body script suites', () => {
+  // The fixture and compose suites are shell scripts; running them here puts them in CI.
+  it.each([
+    join(scripts, 'test-check.sh'),
+    resolve(scripts, '../../merge-pr/scripts/test-compose.sh')
+  ])('%s passes', (suite) => {
+    const run = spawnSync('bash', [suite], { encoding: 'utf8' })
+    expect(run.stdout).toContain('0 failure(s)')
+    expect(run.status).toBe(0)
+  })
+})
+
 describe('PR body hook routing', () => {
   const check = (command: string, agent = 'birdbrain-implementer', dispatch = '0') => {
     const input = JSON.stringify({

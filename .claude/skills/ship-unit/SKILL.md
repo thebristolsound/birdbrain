@@ -100,7 +100,7 @@ A row is a line in the description's `## Review findings` section, in the shape 
 thread also gets a reply there, written from the same disposition; the review fleet's own
 findings have no thread.
 
-- **A round whose findings are all non-blocking pushes nothing.** Edit the description and reply
+- **A round with no must-fix finding pushes nothing.** Edit the description and reply
   on the threads; neither starts a review fleet round.
 - **The reviewer's severity stands.** You may dispute a finding, as a `disputed` row citing the
   `file:line` at head that shows it is wrong. You may not relabel it as something smaller.

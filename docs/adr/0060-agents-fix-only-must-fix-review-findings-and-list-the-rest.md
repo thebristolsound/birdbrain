@@ -5,11 +5,12 @@
 **Date:** 2026-11-27
 
 Amends [ADR-0028](0028-dispatch-works-a-hand-picked-queue.md), which left open what the
-implementer does with non-blocking findings, and
-[ADR-0022](0022-one-shape-per-posting-surface.md), whose PR body gains a section. The review
-fleet and its gate ([ADR-0057](0057-a-two-family-review-fleet-reads-every-pr-and-gates-the-merge.md)),
-the filing gate of ADR-0028 and the one-fix-round rule of the dispatch skill are unchanged; the
-dispatch pre-gate changes only in how it reads answered review-bot feedback (decision 9).
+implementer does with non-blocking findings;
+[ADR-0022](0022-one-shape-per-posting-surface.md), whose PR body gains a section; and
+[ADR-0057](0057-a-two-family-review-fleet-reads-every-pr-and-gates-the-merge.md), whose fleet
+reads that section's attributions as a record (decision 6). The fleet's gate, the filing gate
+of ADR-0028 and the one-fix-round rule of the dispatch skill are unchanged; the dispatch
+pre-gate changes in when it counts feedback as answered (decision 9).
 
 ## Context
 
@@ -41,54 +42,58 @@ where they differed.
 2. **Must-fix findings get a fix and a new head.** They are a blocking finding the other model
    family confirmed, a required check that fails, a `blocking` or `gate` finding in a
    `request changes` pre-pass, an evidence-gate finding, and a request the maintainer wrote.
-3. **A non-blocking finding never starts a push.** A round whose findings are all non-blocking
-   ends with a description edit and thread replies, neither of which starts a fleet round. A
-   behaviour bug the agent reproduced or traced, in a file the change already edits and inside
-   its scope, or a missing test for a branch the change adds, may ride in a push a must-fix
-   finding already forces. Wording, style and test-strength findings never do.
+3. **Only a must-fix finding starts a push.** A round with none ends with a description edit
+   and thread replies, neither of which starts a fleet round. A behaviour bug the agent
+   reproduced or traced, in a file the change already edits and inside its scope, or a missing
+   test for a branch the change adds, may ride in a push a must-fix finding already forces.
+   Wording, style and test-strength findings never do.
 4. **The reviewer's severity stands.** An agent may dispute a finding with the `file:line` at
    head that shows it is wrong, and may not relabel it as something smaller.
 5. **The description lists every finding.** A `## Review findings` section follows the Summary:
    one visible line, `<n> taken, <m> not taken.` (or `No review findings yet.`), above a
-   collapsed block with one row per finding. A row not taken gives one reason: out of scope,
-   disputed, test or style only, needs its own push, or filed as an issue. A finding that came
-   on a thread gets its reply there from the same disposition. Each round adds its rows to the
-   ones already there. The section is outside the Summary, so the squash commit leaves it out
-   and ADR-0028's discard at merge stands.
-6. **Each row links its source.** The review fleet fails on a description sentence its inputs
-   do not settle (ADR-0057), and it reads a review comment only when the description links it
-   (`.github/scripts/review-fleet/inputs.mjs`). A row that says which reviewer raised what is
-   such a sentence, so it links the comment or review that raised the finding, and a filed
-   issue is named by its bare `#N`.
+   collapsed block with one row per finding. A taken row says what fixed it; a row not taken
+   gives one reason: out of scope, disputed, test or style only, needs its own push, or filed as
+   an issue. A finding that came on a thread gets its reply there from the same disposition.
+   Each round adds its rows to the ones already there. The section is outside the Summary, so
+   the squash commit leaves it out and ADR-0028's discard at merge stands.
+6. **Rows link nothing, and the fleet reads who raised them as a record.** This amends
+   ADR-0057. The fleet fails on a description sentence its inputs do not settle, and a linked
+   comment is an input it must load, which fails when the comment is gone, empty, or links
+   another repository (`.github/scripts/review-fleet/inputs.mjs`). So rows name the reviewer in
+   words and link no issue, pull request or comment, and the fleet's shared prompt
+   (`.github/scripts/review-fleet/prompts/common.md`) reads which reviewer raised a row's finding,
+   and at what severity, as a record it does not check. The rest of a row is checked like any
+   other sentence: the commit it says fixed the finding, a `file:line` it cites, a filed issue.
 7. **Only agent writes are checked.** The body check requires the section, and checks its rows,
    on a body with the attribution line. The two merge paths, which pass `--posted`, check
-   nothing in it, so the record never holds up a merge and a PR opened before this decision
-   still merges. A human author may leave the section out.
+   nothing in it beyond the well-formed `<details>` blocks every section needs, so the record
+   never holds up a merge and a PR opened before this decision still merges. A human author may
+   leave the section out.
 8. **Filing keeps its limits.** A user-visible or evidence-affecting finding that is not taken
    is filed under ADR-0028, within its two per PR, and its row says so. Past those two it stays
    a row with its other reason.
-9. **Answered review-bot feedback does not wake dispatch again.** On a PR whose pre-pass passed,
-   `.github/scripts/dispatch/pregate.sh` counts review-bot activity only when it is newer than
-   the pipeline's last comment, as it already did for a PR the maintainer woke. Without this, a
-   round answered without a push would be started again on every fire until the daily cycle
-   limit ran out. The maintainer's activity still counts from the head.
+9. **Dispatch wakes on what is newer than the last answer.** Each round dispatch records ends
+   the section with `<!-- review findings answered through <time> -->`, the time that round
+   read the review surface. On a PR whose pre-pass passed,
+   `.github/scripts/dispatch/pregate.sh` starts a cycle for trusted activity newer than the
+   later of the head and that time, and for a `review/fleet` failure at the head posted after
+   it, which no comment announces. A round answered with no push is therefore not started
+   again, and feedback posted while a round ran, or a fleet finding confirmed after it, still
+   is. A time in the future is ignored.
 
 ## Consequences
 
-- A round with only non-blocking findings costs no fleet round. A push now needs a must-fix
-  finding.
+- A round with no must-fix finding costs no fleet round. A push now needs a must-fix finding.
 - The maintainer reads the counts and the reasons on the PR page, where the `merge` label is
   applied, with no new step and no new label.
 - No check compares the section with the findings the reviews raised; the body check, at write
-  time, checks only its shape, its links and that its counts match its rows. A finding that
-  arrives after the last body edit is missing until the next one.
-- Every linked comment is a source the fleet must read. A deleted comment fails the next fleet
-  round until its row is fixed, and a PR with very many findings can reach the fleet's limit of
-  60 sources.
-- Review-bot feedback that lands after a head but before the pipeline's next comment, such as a
-  bot review posted while the pre-pass runs, no longer wakes dispatch on its own. The pre-pass
-  approval step records the findings already on the PR, so that feedback still reaches the
-  section.
+  time, checks only its shape and that its counts match its rows. A finding that arrives after
+  the last body edit is missing until the next one, and the next cycle is started for it.
+- The fleet no longer checks who raised a row's finding. A row that names the wrong reviewer
+  passes; the comments it describes are on the same PR page.
+- Anyone who can edit the description can move the answered-through time up to the present,
+  which holds off a cycle for activity already on the PR until something newer arrives. It
+  cannot hold off a merge gate, which never reads it.
 - The section takes two of the 40 visible lines the body allows above Verification, so a body
   near that cap needs trimming on its next agent edit.
 - Some real fixes now wait: a test gap or a small bug with no must-fix push to ride in stays a
@@ -102,9 +107,13 @@ where they differed.
   withdrew it in the same session: it adds a step to every round and stalls unattended runs.
 - **Never apply a non-blocking finding.** It throws away cheap, real fixes on lines a push
   already changes.
-- **Rows with no links.** The council's first round chose this to keep the fleet's source list
-  short, but an unlinked row is a sentence the fleet cannot settle, which fails it; see
-  decision 6.
+- **Rows that link their source, with no prompt change.** The council's second round adopted
+  this; its third found that the fleet's same-head retry deletes the state comment a fleet
+  finding would link, and that a linked bot comment citing another repository, or a review with
+  no text, fails the fleet.
+- **The pipeline's last comment as the answered point.** It hid feedback posted while a round
+  ran, never woke for a fleet finding confirmed afterwards, and did not cover a round answered
+  only in the description.
 - **The record in a PR comment.** A comment scrolls away from where the maintainer applies the
   `merge` label.
 - **Failing the merge gate on an incomplete record.** It would stall the auto-merge path and

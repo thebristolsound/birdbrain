@@ -290,6 +290,73 @@ describe('DiagnosticsPanel storage folder action', () => {
   })
 })
 
+// #921. The copied snapshot is what an operator pastes into a bug report, so a
+// write that failed must say so rather than leave the previous clipboard to be
+// pasted as this one.
+describe('DiagnosticsPanel Copy report', () => {
+  let unhandled: ReturnType<typeof vi.fn>
+
+  function stubClipboard(writeText: ReturnType<typeof vi.fn>) {
+    Object.defineProperty(window.navigator, 'clipboard', {
+      value: { writeText },
+      configurable: true
+    })
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    log = vi.fn().mockResolvedValue('cid-1')
+    fakeBridge({
+      diagnostics: {
+        get: vi.fn().mockResolvedValue(snapshot),
+        log,
+        unreconciledDeletions: vi.fn().mockResolvedValue(cleanReport)
+      }
+    })
+    unhandled = vi.fn()
+    process.on('unhandledRejection', unhandled)
+  })
+
+  afterEach(() => {
+    process.off('unhandledRejection', unhandled)
+    cleanup()
+  })
+
+  it('names the failed copy, logs it, and leaves the button unchanged', async () => {
+    const writeText = vi.fn().mockRejectedValue(new Error('Document is not focused.'))
+    stubClipboard(writeText)
+    renderPanel()
+
+    fireEvent.click(await screen.findByText('Copy report'))
+
+    await waitFor(() => expect(toastFns.error).toHaveBeenCalled())
+    expect(writeText).toHaveBeenCalledOnce()
+    expect(toastFns.error.mock.calls[0][0]).toBe(
+      "Couldn't copy the diagnostics report to your clipboard"
+    )
+    await waitFor(() => expect(log).toHaveBeenCalled())
+    expect(log.mock.calls[0][0]).toMatchObject({ level: 'error', error: 'Error' })
+    expect(screen.getByText('Copy report')).toBeDefined()
+    expect(screen.queryByText('Copied')).toBeNull()
+    // Node reports an unhandled rejection only after the microtask queue drains.
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(unhandled).not.toHaveBeenCalled()
+  })
+
+  it('shows Copied after a successful write, with no error', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    stubClipboard(writeText)
+    renderPanel()
+
+    fireEvent.click(await screen.findByText('Copy report'))
+
+    expect(await screen.findByText('Copied')).toBeDefined()
+    expect(writeText).toHaveBeenCalledOnce()
+    expect(toastFns.error).not.toHaveBeenCalled()
+    expect(log).not.toHaveBeenCalled()
+  })
+})
+
 // #622. The panel is the only surface for the crash artefact in wave 1, so its
 // copy carries the whole ADR-0004 claim: what the scan established, and what it
 // deliberately did not look at.

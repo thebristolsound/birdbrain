@@ -1,3 +1,0 @@
-Revert "docs(agents): slim the guide"
-
-This reverts commit 085afc7e.

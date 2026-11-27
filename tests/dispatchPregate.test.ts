@@ -828,6 +828,48 @@ describe.skipIf(!HAS_JQ)('pregate.sh trust list', () => {
     expect(result.outputs).toEqual({ run: 'true', reason: RAN })
   })
 
+  // ADR-0060: a round answers review-bot feedback without a push, so the head stays put.
+  it.each(REVIEW_BOTS)(
+    'does not run again for %s feedback the pipeline answered without a push',
+    (login, surface) => {
+      const bot = botActivity(login, surface)
+      const replied = '2026-09-20T13:00:00Z'
+      const answered = { ...bot, comments: [...bot.comments, { login: PIPELINE, at: replied }] }
+      const quiet = run(fixtures({ labels: UNPARKED, state: 'success', ...answered }))
+      expect(quiet.status, quiet.stderr).toBe(0)
+      expect(quiet.outputs).toEqual({ run: 'false', reason: NOTHING_OWED })
+
+      const later: Comment = { login, at: '2026-09-20T14:00:00Z', type: 'Bot' }
+      const newer = run(
+        fixtures({
+          labels: UNPARKED,
+          state: 'success',
+          comments: [...answered.comments, ...(surface === 'comments' ? [later] : [])],
+          reviewComments: [...answered.reviewComments, ...(surface === 'reviewComments' ? [later] : [])],
+          reviews: [...answered.reviews, ...(surface === 'reviews' ? [later] : [])]
+        })
+      )
+      expect(newer.outputs).toEqual({
+        run: 'true',
+        reason: `PR #${PR} has activity at ${later.at} newer than the pipeline's last comment (${replied})`
+      })
+    }
+  )
+
+  it('still runs for the maintainer after the pipeline answered the bots without a push', () => {
+    const result = run(
+      fixtures({
+        labels: UNPARKED,
+        state: 'success',
+        comments: [
+          { login: MAINTAINER, at: AFTER_HEAD },
+          { login: PIPELINE, at: '2026-09-20T13:00:00Z' }
+        ]
+      })
+    )
+    expect(result.outputs).toEqual({ run: 'true', reason: RAN })
+  })
+
   it.each(REVIEW_BOTS)(
     'does not run for %s on a PR the pipeline did not open',
     (login, surface) => {

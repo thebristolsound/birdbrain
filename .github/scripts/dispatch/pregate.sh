@@ -517,6 +517,15 @@ for n in $(jq -r '.[]' <<<"$prs"); do
     fi
   elif [ "$state" = success ]; then
     newest="$(newest_trusted "$items" others)"
+    # A round that answers review bots without a push leaves the head where it was (ADR-0060),
+    # so bot activity older than the pipeline's last comment was answered by it. Activity from
+    # the maintainer since the head keeps counting from the head.
+    replied="$(newest_trusted "$items" pipeline)"
+    since_head="$(newest_trusted "$items" maintainer)"
+    if [[ "$replied" > "$head_at" ]] && [[ ! "$since_head" > "$head_at" ]]; then
+      after="$replied"
+      than="the pipeline's last comment ($replied)"
+    fi
   else
     newest="$(newest_trusted "$items" all)"
   fi

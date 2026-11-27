@@ -23,6 +23,19 @@ flowchart LR
 
 </details>
 
+## Review findings
+
+1 taken, 2 not taken.
+
+<details>
+<summary>Each review finding and what happened to it</summary>
+
+- Taken: review fleet, blocking: the rescan skipped captures whose selector was renamed. Fixed in `4e5f6a7`.
+- Not taken, test or style only: CodeRabbit, nitpick: a test name could say which selector it rescans.
+- Not taken, out of scope: Codex, P2: the selector list screen repeats the same query on open.
+
+</details>
+
 ## Proof
 
 <details>

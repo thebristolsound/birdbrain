@@ -30,6 +30,25 @@ flowchart LR
 
 </details>
 
+## Review findings
+
+<!-- Every finding a review raised and what happened to it, sorted by the table in the ship-unit
+skill, "Sorting a finding". Before any review, the line is "No review findings yet." and the
+block is deleted. After one, the line is "<n> taken, <m> not taken." and the block holds one
+row per finding on one line each, with no links (the links go in the thread replies):
+- Taken: <reviewer>, <severity>: <the finding in one sentence>. Fixed in `<commit>`.
+- Not taken, <reason>: <reviewer>, <severity>: <the finding>. <why, with file:line for disputed>
+<reason> is one of: out of scope, disputed, test or style only, needs its own push, filed as #N.
+An agent-written description always carries this section; a human author may delete it. -->
+No review findings yet.
+
+<details>
+<summary>Each review finding and what happened to it</summary>
+
+- Taken:
+
+</details>
+
 ## Proof
 
 <details>
@@ -62,8 +81,8 @@ attachment links. See "Screenshots for visual changes" in the post-pr-body skill
 
 ## Not done
 
-<!-- Optional: one bullet per gap, skipped test, or review finding not fixed here. Delete the
-section when there is none. -->
+<!-- Optional: one bullet per gap or skipped test. A review finding not fixed here goes under
+Review findings instead. Delete the section when there is none. -->
 
 ## Blast radius
 

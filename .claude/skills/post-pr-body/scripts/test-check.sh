@@ -87,6 +87,15 @@ finds fail-header-only-decisions.md 'block in Changes is empty'
 finds fail-decisions-blank-row.md 'block in Changes is empty'
 finds fail-section-order.md 'sections must be'
 finds fail-screenshots-in-fence.md 'no before/after screenshot pair'
+finds fail-review-findings-missing.md 'lists its review findings under ## Review findings'
+finds fail-review-findings-line.md 'Review findings shows one line'
+finds fail-review-findings-count.md 'but lists 1 and 2'
+finds fail-review-findings-reason.md 'Review findings rows are'
+finds fail-review-findings-link.md 'Review findings rows carry no links'
+# The merge paths pass --posted: a pull request opened before the section existed still merges,
+# and a section that is present is still checked.
+"$check" --any-author --posted "$fx/fail-review-findings-missing.md" >/dev/null 2>&1; expect 0 $? "direct --posted accepts a body written before Review findings existed"
+"$check" --any-author --posted "$fx/fail-review-findings-link.md" >/dev/null 2>&1; expect 1 $? "direct --posted still checks a Review findings section"
 
 # The 1117 body must fail on the cap and the section rule specifically.
 out="$(node "$here/lint-body.mjs" "$fx/fail-1117-walkthrough.md")"
@@ -95,6 +104,7 @@ printf '%s' "$out" | grep -q 'sections must be ' && echo "ok   1117 trips the se
 
 expect 0 "$(hook "gh pr view 12")" "hook ignores a read"
 expect 2 "$(hook "gh pr create --body-file '$fx/fail-screenshots-missing.md'")" "hook requires the Screenshots section on new writes"
+expect 2 "$(hook "gh pr edit 12 --body-file '$fx/fail-review-findings-missing.md'")" "hook requires Review findings on an agent's body edit"
 expect 0 "$(hook "gh pr edit 12 --add-label agent-authored")" "hook allows an edit with no body"
 expect 0 "$(hook "gh pr create --draft --base main --title 't' --body-file pass-filled.md --label agent-authored")" "hook allows a passing body file"
 expect 0 "$(hook "agh pr create --draft --body-file=pass-filled.md")" "hook allows agh with --body-file="

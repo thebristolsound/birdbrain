@@ -1,6 +1,6 @@
 # One shape per posting surface, checked before the write
 
-**Status:** Accepted, amended 2026-09-19 (two layers per post) and 2026-11-26 (work template layout, screenshots in the body)
+**Status:** Accepted, amended 2026-09-19 (two layers per post), 2026-11-26 (work template layout, screenshots in the body) and 2026-11-27 (Review findings section, ADR-0060)
 
 **Date:** 2026-08-29
 
@@ -71,6 +71,11 @@ enforced in the body because some had been posted only in PR comments: every bod
 dependabot's now declares its visual effect, inline images appear only in the Screenshots
 section, and both merge paths refuse a body whose screenshots are not GitHub attachments in
 that section.
+
+**Amended 2026-11-27 by [ADR-0060](0060-agents-fix-only-must-fix-review-findings-and-list-the-rest.md).**
+A Review findings section follows the Summary: a counts line and one collapsed row per review
+finding, taken or not, with no links. The linter requires it on an agent-written body, and the
+merge paths do not, so a PR opened before it existed still merges.
 
 The PR body shape is the same for humans and agents: `.github/pull_request_template.md` is a
 copy of the skill's template. The one difference is the attribution line: an agent ends with

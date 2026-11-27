@@ -31,6 +31,7 @@ describe('safeFilename', () => {
     expect(safeFilename('CON.report', 'capture')).toBe('capture')
     expect(safeFilename('NUL.txt', 'capture')).toBe('capture')
     expect(safeFilename('com1.tar.gz', 'capture')).toBe('capture')
+    expect(safeFilename('NUL.txt', 'case')).toBe('case')
   })
 
   it('keeps names that only start with a device name', () => {

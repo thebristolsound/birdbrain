@@ -5,9 +5,6 @@
 in `tests/shared/verify/keyRule.test.ts`. Picking it up again starts with the questions the
 re-check raises for rulings 3 and 4 and invariant 4, then the slice list as amended there.
 
-The sections after the re-check are as written on 2026-10-02, and their line numbers are at
-`802ef13d`.
-
 Written 2026-10-02 from an architecture review lead, revised the same day after an adversarial
 review (see "Review disposition"). Not started. Most slices touch a blocking-tier path, so they
 carry `evidence-affecting` and wait for human review.
@@ -22,8 +19,8 @@ Re-checked on 2026-11-26. Symbols are named instead of line numbers.
   `capture` entry signed (#1876), the thumbnail backfill signs under the chain id (#1872), and
   `deletionReconciliation.ts` matches through `rowDescriber` and `signedCaptureId`. Failure 3 of PR
   #1672, Case Archives without Derived Files, was fixed by #1947.
-- **Entry signature by row id (#1472).** Closed. `resolveEntrySignatures` falls back to the chain id
-  (#2048).
+- **Entry signature by row id (#1472).** Fixed by #2048: `resolveEntrySignatures` falls back to
+  the chain id.
 - **Two token loops.** Gone. `decideTimestampTokens` in `src/packages/evidence-package-contents`
   is the one admission loop, through `stampFor` (#2212). The certificate walk in `export.ts` reads
   every token and admits none.
@@ -42,7 +39,9 @@ Re-checked on 2026-11-26. Symbols are named instead of line numbers.
 - **`signingKeyRanges`** has a second consumer, `entriesUnderCarriedKeys`, which decides whether
   the report prints the carried-key prose.
 - **Receipt stamps (#1912)** brought `receiptStampFor` in `trustedTime.ts`, a sibling of
-  `stampFor` with its own copies in `verify.sh` and Package Verification.
+  `stampFor`. Package Verification calls it through `receiptStampsFromEntries` and repeats only
+  the exclusion of `subject: 'entry'` tokens from content stamps. `verify.sh` has its own copy,
+  `VERIFY_RECIPES.receiptTokenFilter`.
 - **Export verifies the local chain twice**, once in `resolveExportCaptureEngine` and once in
   `resolveExportLinkSources`. The Risks bullet "Export does not check the chain today" is out of
   date.

@@ -57,16 +57,23 @@ expect 0 "$(hook "git commit -m 'fix(x): y'" "")" "hook passes through an intera
 expect 0 "$(hook "git commit -m 'fix(x): y'" "birdbrain-reviewer")" "hook passes through an unbound agent"
 expect 2 "$(BIRDBRAIN_DISPATCH=1 hook "git commit -m 'fix(x): y'" "")" "hook binds a headless dispatch session"
 
-# A subagent's worktree arrives as the payload's cwd while CLAUDE_PROJECT_DIR still names the
-# parent session's tree, which may have no node_modules.
-no_deps="$(mktemp -d)"
-expect 0 "$(CLAUDE_PROJECT_DIR="$no_deps" hook "git commit -F pass-body.txt")" \
-  "hook lints from the cwd's worktree, not the project directory"
-expect 0 "$(node -e 'process.stdout.write(JSON.stringify({tool_name:"Bash",cwd:process.argv[1],agent_type:"birdbrain-implementer",tool_input:{command:process.argv[2]}}))' \
-  "$no_deps" "git commit -F $fx/pass-body.txt" \
-  | CLAUDE_PROJECT_DIR="$(git -C "$here" rev-parse --show-toplevel)" "$check" >/dev/null 2>&1; echo $?)" \
-  "hook falls back to the project directory when cwd is outside a worktree"
-rmdir "$no_deps"
+# A subagent's worktree arrives as the payload's cwd while CLAUDE_PROJECT_DIR, and the hook's
+# own path, name the parent session's tree. The copy below runs from a repository with no
+# node_modules, so a pass shows which tree supplied commitlint.
+bare="$(mktemp -d)"
+git -C "$bare" init -q
+cp "$check" "$bare/check.sh"
+hook_at() {
+  # $1 payload cwd, $2 command, $3 CLAUDE_PROJECT_DIR; prints the bare copy's exit code
+  node -e 'process.stdout.write(JSON.stringify({tool_name:"Bash",cwd:process.argv[1],agent_type:"birdbrain-implementer",tool_input:{command:process.argv[2]}}))' "$1" "$2" \
+    | CLAUDE_PROJECT_DIR="$3" "$bare/check.sh" >/dev/null 2>&1
+  echo $?
+}
+expect 0 "$(hook_at "$fx" "git commit -F pass-body.txt" "$bare")" \
+  "hook lints from the cwd's worktree, not the project directory or its own tree"
+expect 0 "$(hook_at "$bare" "git commit -F $fx/pass-body.txt" "$(git -C "$here" rev-parse --show-toplevel)")" \
+  "hook falls back to the project directory when the cwd's worktree has no commitlint"
+rm -rf "$bare"
 
 echo "$fails failure(s)"
 [ "$fails" -eq 0 ]

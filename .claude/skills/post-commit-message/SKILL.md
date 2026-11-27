@@ -50,8 +50,8 @@ scheduled cycle; an interactive session or an unbound agent passes through. Agen
 `hooks:` are not used: sessions that supply the agent roster through the SDK (t3code) drop
 them, verified 2026-08-29.
 It runs commitlint from the git toplevel of the payload's `cwd`, which for a subagent in its
-own worktree is that worktree, and falls back to `CLAUDE_PROJECT_DIR` when `cwd` is outside
-a repository.
+own worktree is that worktree. It falls back to `CLAUDE_PROJECT_DIR` when `cwd` is outside
+a repository or its tree has no commitlint installed.
 It blocks `git merge` and `git revert` unless the command stops before the commit
 (`--no-commit`, `--squash`, `--ff-only`, `--abort`, `--quit`; for a revert also `-n` and
 `--skip`). Otherwise it acts only on a command that runs `git commit`:

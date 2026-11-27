@@ -15,6 +15,7 @@ vi.mock('@renderer/lib/notify', () => ({
 }))
 
 import { DataExplorer } from '@renderer/components/dashboard/cases/DataExplorer'
+import { notify } from '@renderer/lib/notify'
 import { PARTS_CAPTION, UNANCHORED_PARTS_CAPTION } from '@renderer/components/data/mhtmlPartsModel'
 import { queryKeys } from '@renderer/lib/api/keys'
 import { queryClient as appQueryClient } from '@renderer/lib/queryClient'
@@ -818,6 +819,29 @@ describe('DataExplorer MHTML Parts tab (#991)', () => {
     renderExplorer()
     fireEvent.click(await screen.findByTestId('mhtml-part-copy-sha256'))
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(HASH_A))
+  })
+
+  // The part hash takes the digest copy's shape check (#2117).
+  it.each([
+    [
+      'malformed',
+      'not-a-digest',
+      "Copied the stored SHA-256 (computed now, not anchored), but it isn't a 64-character hex digest"
+    ],
+    ['empty', '', 'Nothing was copied: the stored SHA-256 (computed now, not anchored) is empty']
+  ])('warns on a part’s %s hash rather than announcing a copy', async (_case, sha256, warning) => {
+    const writeText = vi.fn<(value: string) => Promise<void>>(async () => undefined)
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    vi.mocked(notify.warn).mockClear()
+    vi.mocked(notify.success).mockClear()
+    stub().mockResolvedValue({ ...LISTING, parts: [{ ...LISTING.parts[0], sha256 }] })
+    renderExplorer()
+    fireEvent.click(await screen.findByTestId('mhtml-part-copy-sha256'))
+
+    await waitFor(() => expect(notify.warn).toHaveBeenCalledExactlyOnceWith(warning))
+    expect(notify.success).not.toHaveBeenCalled()
+    if (sha256 === '') expect(writeText).not.toHaveBeenCalled()
+    else expect(writeText).toHaveBeenCalledExactlyOnceWith(sha256)
   })
 })
 

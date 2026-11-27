@@ -40,7 +40,20 @@ function parse(argv) {
   }
   options.out ??= path.join(HERE_REPO, '.preflight', 'capture-proof')
   if (!Number.isInteger(options.port) || options.port < 1024) throw new Error('--port needs a port')
-  return { command: positional[0], labels: positional.slice(1), options }
+  return { command: positional[0], labels: positional.slice(1).map(requireLabel), options }
+}
+
+// A label names a folder under <out>, and `take` deletes that folder before it writes. A label
+// that is a path, such as `../..`, would name a folder outside <out>, so every command refuses
+// one before it reads, writes or deletes anything.
+export function requireLabel(label) {
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(label)) {
+    throw new Error(
+      `the label ${JSON.stringify(label)} is not a plain name: start it with a letter or a ` +
+        'digit, and use only letters, digits, ".", "_" and "-"'
+    )
+  }
+  return label
 }
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -310,6 +323,57 @@ export function describeMhtml(bytes, what = 'the MHTML') {
 
 const sha = (bytes) => createHash('sha256').update(bytes).digest('hex')
 
+// The transaction record's WARC records without their ids and times: each record's type,
+// request or status line, address, payload digest, header names and credential header lines.
+// It refuses text that does not start with a WARC record, and a record with no blank line
+// after its headers, with a header line that is no WARC header, or with no type. Text read
+// past those faults gets a description that holds little or none of it: an empty record in
+// two runs would describe alike and compare as identical, and so would two records whose
+// WARC headers run into the block under them. It does not hold a record to its declared
+// length.
+const WARC_HEADER = /^(WARC-[A-Za-z-]+|Content-Type|Content-Length):/
+export function describeRecords(text, what = 'the transaction record') {
+  const unreadable = (why) => new Error(`${what} ${why}, so its records cannot be compared`)
+  if (!text.startsWith('WARC/1.1\r\n')) throw unreadable('does not start with a WARC record')
+  return text.split(/(?=WARC\/1\.1\r\n)/).map((record, index) => {
+    const blank = record.indexOf('\r\n\r\n')
+    if (blank === -1) {
+      throw unreadable(`has no blank line after the headers of record ${index + 1}`)
+    }
+    const head = record.slice(0, blank)
+    // With no blank line of their own, the WARC headers would end at the next blank line and
+    // take in what stands before it: a request or status line with its HTTP headers, or the
+    // fields of a warcinfo record, which are shaped like headers. So each line must carry a
+    // name a WARC header has.
+    const stray = head
+      .split('\r\n')
+      .slice(1)
+      .find((line) => !WARC_HEADER.test(line))
+    if (stray !== undefined) {
+      throw unreadable(`has a line that is no WARC header among the headers of record ${index + 1}`)
+    }
+    const header = (name) => head.match(new RegExp(`^${name}: (.*)$`, 'm'))?.[1]
+    const type = header('WARC-Type')
+    if (!type) throw unreadable(`names no type for record ${index + 1}`)
+    const block = record.slice(blank + 4)
+    if (type === 'warcinfo') {
+      const fields = block
+        .trim()
+        .split('\r\n')
+        .map((line) => line.replace(/^(capture-id|tab-target-id): .*/, '$1: ID'))
+      return `warcinfo ${fields.join(' | ')}`
+    }
+    const lines = block.split('\r\n\r\n')[0].split('\r\n')
+    const names = lines.slice(1).map((line) => line.split(':')[0].toLowerCase())
+    const credentials = lines.slice(1).filter((l) => /^(cookie|set-cookie|authorization)/i.test(l))
+    return (
+      `${type} ${lines[0]} ${header('WARC-Target-URI')} ` +
+      `payload=${header('WARC-Payload-Digest')} headers=[${names.sort().join(',')}] ` +
+      credentials.join(';')
+    )
+  })
+}
+
 // One Capture without its ids, times, and the hashes of files that embed a time. What stays:
 // the signed inventory, Bound TLS Details or their absence, the MHTML's parts, and each
 // record's type, request or status line, header names, payload digest and credential header
@@ -322,26 +386,6 @@ function describeCapture(dir, entry, where) {
   const mhtml = read('mhtml')
   const png = read('png')
   const text = warc ? gunzipSync(warc).toString('latin1') : null
-  const records = text?.split(/(?=WARC\/1\.1\r\n)/).map((record) => {
-    const head = record.slice(0, record.indexOf('\r\n\r\n'))
-    const header = (name) => head.match(new RegExp(`^${name}: (.*)$`, 'm'))?.[1]
-    const block = record.slice(record.indexOf('\r\n\r\n') + 4)
-    if (header('WARC-Type') === 'warcinfo') {
-      const fields = block
-        .trim()
-        .split('\r\n')
-        .map((line) => line.replace(/^(capture-id|tab-target-id): .*/, '$1: ID'))
-      return `warcinfo ${fields.join(' | ')}`
-    }
-    const lines = block.split('\r\n\r\n')[0].split('\r\n')
-    const names = lines.slice(1).map((line) => line.split(':')[0].toLowerCase())
-    const credentials = lines.slice(1).filter((l) => /^(cookie|set-cookie|authorization)/i.test(l))
-    return (
-      `${header('WARC-Type')} ${lines[0]} ${header('WARC-Target-URI')} ` +
-      `payload=${header('WARC-Payload-Digest')} headers=[${names.sort().join(',')}] ` +
-      credentials.join(';')
-    )
-  })
   return {
     schemaVersion: entry.schemaVersion,
     url: entry.url,
@@ -358,7 +402,10 @@ function describeCapture(dir, entry, where) {
     text: read('txt')?.toString('utf8') ?? null,
     recordHoldsCookieValue: text ? text.includes(SECRET) : null,
     recordHoldsPostBody: text ? text.includes(POST_BODY) : null,
-    records: records ?? null
+    records:
+      text === null
+        ? null
+        : describeRecords(text, `${where}: the ${entry.method} Capture's warc.gz file`)
   }
 }
 

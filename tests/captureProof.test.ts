@@ -1,19 +1,96 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createHash } from 'crypto'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'fs'
+import { spawnSync } from 'child_process'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  unlinkSync,
+  writeFileSync
+} from 'fs'
 import { tmpdir } from 'os'
-import { join } from 'path'
-import { gzipSync } from 'zlib'
+import { join, resolve } from 'path'
+import { gunzipSync, gzipSync } from 'zlib'
+import { writeTransactionRecord } from '../src/packages/transaction-record/writer'
 import {
   compare,
   describeMhtml,
+  describeRecords,
   describeRun,
   requireArtifacts,
-  requireBothMethods
+  requireBothMethods,
+  requireLabel
   // @ts-expect-error - skill script with no type declarations
 } from '../.claude/skills/run-birdbrain/capture-proof.mjs'
 
+const SCRIPT = resolve(__dirname, '../.claude/skills/run-birdbrain/capture-proof.mjs')
 const sha = (text: string) => createHash('sha256').update(text).digest('hex')
+
+describe('requireLabel', () => {
+  it('accepts a plain name', () => {
+    for (const label of ['main', 'branch', 'v1.2.3', 'run_2', 'after-fix']) {
+      expect(requireLabel(label)).toBe(label)
+    }
+  })
+
+  it.each(['..', '../..', '.', '', 'a/b', '/tmp/a', 'a\\b', '.hidden', '-flag', 'a b'])(
+    'refuses %j, which is not a plain name',
+    (label) => {
+      expect(() => requireLabel(label)).toThrow(
+        `the label ${JSON.stringify(label)} is not a plain name`
+      )
+    }
+  )
+})
+
+describe('a label on the command line', () => {
+  let base: string
+
+  beforeEach(() => {
+    base = mkdtempSync(join(tmpdir(), 'capture-proof-take-'))
+  })
+
+  afterEach(() => {
+    rmSync(base, { recursive: true, force: true })
+  })
+
+  it('take refuses a label that names a folder outside the output folder, deleting nothing', () => {
+    const outside = join(base, 'outside')
+    const out = join(outside, 'proof', 'runs')
+    const repo = join(base, 'repo')
+    mkdirSync(out, { recursive: true })
+    mkdirSync(repo)
+    writeFileSync(join(outside, 'kept.txt'), 'kept')
+
+    const run = spawnSync(
+      process.execPath,
+      [SCRIPT, 'take', '../..', '--repo', repo, '--out', out],
+      { encoding: 'utf8', env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' } }
+    )
+
+    // The message alone: with DEBUG set the script prints the error's stack, which puts
+    // `Error: ` before it.
+    expect(run.stderr).toContain('the label "../.." is not a plain name')
+    expect(run.status).toBe(1)
+    expect(existsSync(join(outside, 'kept.txt'))).toBe(true)
+  })
+
+  // The check runs where the command line is read, so it has to cover every label of every
+  // command: each of these would build a folder name from `../..` if its label went unchecked.
+  it.each(['compare ../.. b', 'compare a ../..', 'verify ../..'])('refuses `%s`', (command) => {
+    const out = join(base, 'runs')
+    mkdirSync(out)
+    const run = spawnSync(
+      process.execPath,
+      [SCRIPT, ...command.split(' '), '--repo', base, '--out', out],
+      { encoding: 'utf8', env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' } }
+    )
+    expect(run.stderr).toContain('the label "../.." is not a plain name')
+    expect(run.status).toBe(1)
+  })
+})
 
 describe('requireBothMethods', () => {
   const background = { method: 'background' }
@@ -209,6 +286,134 @@ describe('describeMhtml', () => {
   )
 })
 
+describe('describeRecords', () => {
+  const record = (...lines: string[]) => lines.join('\r\n')
+  const info = record(
+    'WARC/1.1',
+    'WARC-Type: warcinfo',
+    'WARC-Record-ID: <urn:uuid:1>',
+    '',
+    'software: Birdbrain',
+    'capture-id: c1',
+    '',
+    ''
+  )
+  const response = record(
+    'WARC/1.1',
+    'WARC-Type: response',
+    'WARC-Target-URI: http://127.0.0.1:29412/',
+    'WARC-Payload-Digest: sha256:aa',
+    '',
+    'HTTP/1.1 200 OK',
+    'Content-Type: text/html',
+    'Set-Cookie: sid=[replaced]',
+    '',
+    'body'
+  )
+
+  it('names each record by type, first line, address, payload digest and header names', () => {
+    expect(describeRecords(info + response)).toEqual([
+      'warcinfo software: Birdbrain | capture-id: ID',
+      'response HTTP/1.1 200 OK http://127.0.0.1:29412/ payload=sha256:aa ' +
+        'headers=[content-type,set-cookie] Set-Cookie: sid=[replaced]'
+    ])
+  })
+
+  it('reads a record the app wrote: every record has a type and none is refused', async () => {
+    const url = 'http://127.0.0.1:29412/'
+    const { bytes } = await writeTransactionRecord({
+      exchanges: [
+        {
+          requestId: 'r1',
+          hop: 0,
+          state: 'complete',
+          complete: true,
+          startedAt: '2026-10-11T20:47:45.500Z',
+          request: { method: 'GET', url, headers: { Accept: '*/*', Cookie: 'sid=1' } },
+          response: {
+            url,
+            status: 200,
+            statusText: 'OK',
+            mimeType: 'text/html',
+            remoteIPAddress: '127.0.0.1',
+            headers: { 'Content-Type': 'text/html' }
+          },
+          responseBody: { data: '<p>page</p>', base64Encoded: false }
+        }
+      ],
+      captureId: 'c1',
+      birdbrainVersion: '1.0.0',
+      browserVersion: 'Chrome/146.0.7680.65',
+      userAgent: 'Mozilla/5.0',
+      egress: 'direct',
+      date: '2026-10-11T20:47:46.000Z'
+    })
+    const described = describeRecords(gunzipSync(bytes).toString('latin1'))
+    expect(described.map((line: string) => line.split(' ')[0])).toEqual([
+      'warcinfo',
+      'request',
+      'response'
+    ])
+    expect(described.join('\n')).toContain(`GET / HTTP/1.1 ${url}`)
+  })
+
+  it.each([
+    ['empty text', ''],
+    ['text that is no WARC record', 'abc'],
+    ['text before the first record', `abc\r\n${info}`]
+  ])('refuses %s', (_name, text) => {
+    expect(() => describeRecords(text)).toThrow(
+      'the transaction record does not start with a WARC record, so its records cannot be compared'
+    )
+  })
+
+  it('refuses a record with no blank line after its headers', () => {
+    expect(() => describeRecords(`${info}WARC/1.1\r\nWARC-Type: response`)).toThrow(
+      'has no blank line after the headers of record 2'
+    )
+  })
+
+  it('refuses a record whose WARC headers run into the HTTP block with no blank line', () => {
+    const joined = (cookie: string) =>
+      info +
+      record(
+        'WARC/1.1',
+        'WARC-Type: response',
+        'HTTP/1.1 200 OK',
+        `Set-Cookie: sid=${cookie}`,
+        '',
+        'body'
+      )
+    for (const cookie of ['a', 'b']) {
+      expect(() => describeRecords(joined(cookie))).toThrow(
+        'has a line that is no WARC header among the headers of record 2'
+      )
+    }
+  })
+
+  it('refuses a warcinfo record whose WARC headers run into its fields with no blank line', () => {
+    for (const software of ['Birdbrain 1.0.0', 'Birdbrain 1.1.0']) {
+      const joined = record(
+        'WARC/1.1',
+        'WARC-Type: warcinfo',
+        'Content-Type: application/warc-fields',
+        `software: ${software}`,
+        'capture-id: c1',
+        '',
+        ''
+      )
+      expect(() => describeRecords(joined + response)).toThrow(
+        'has a line that is no WARC header among the headers of record 1'
+      )
+    }
+  })
+
+  it('refuses a record that names no type', () => {
+    const untyped = record('WARC/1.1', 'WARC-Record-ID: <urn:uuid:2>', '', 'body')
+    expect(() => describeRecords(info + untyped)).toThrow('names no type for record 2')
+  })
+})
+
 describe('compare', () => {
   let out: string
   const log = vi.spyOn(console, 'log')
@@ -234,7 +439,13 @@ describe('compare', () => {
   const writeRun = (
     label: string,
     id: string,
-    { text = 'Capture proof', page = '<p>page</p>', quote = '"', eol = '\r\n' } = {}
+    {
+      text = 'Capture proof',
+      page = '<p>page</p>',
+      quote = '"',
+      eol = '\r\n',
+      record = undefined as Buffer | undefined
+    } = {}
   ) => {
     const dir = join(out, label, 'case')
     mkdirSync(dir, { recursive: true })
@@ -290,6 +501,7 @@ describe('compare', () => {
           )
         )
       }
+      if (record) files['warc.gz'] = record
       for (const [ext, bytes] of Object.entries(files)) {
         writeFileSync(join(dir, `${captureId}.${ext}`), bytes)
       }
@@ -420,6 +632,37 @@ describe('compare', () => {
     expect(() => compare('a', 'b', { out })).toThrow(
       "the run a: the background Capture's txt file does not hash to the value its entry signs"
     )
+  })
+
+  it('refuses two runs whose transaction records are both empty', () => {
+    for (const label of ['a', 'b']) {
+      writeRun(label, `run-${label}`, { record: gzipSync(Buffer.alloc(0)) })
+    }
+    expect(() => compare('a', 'b', { out })).toThrow(
+      "the run a: the background Capture's warc.gz file does not start with a WARC record"
+    )
+  })
+
+  it('describes a Capture whose entry declares no transaction record with no records', () => {
+    for (const label of ['a', 'b']) {
+      writeRun(label, `run-${label}`)
+      unlinkSync(join(out, label, 'case', `run-${label}-launched.warc.gz`))
+      const { file, entries } = entriesOf(label)
+      for (const entry of entries) {
+        if (entry.method !== 'launched') continue
+        entry.inventory.transactionRecord = { present: false }
+        delete entry.transactionRecordHash
+      }
+      writeFileSync(file, `${entries.map((entry) => JSON.stringify(entry)).join('\n')}\n`)
+    }
+    const { background, launched } = describeRun(out, 'a')
+    expect(launched).toMatchObject({
+      records: null,
+      recordHoldsCookieValue: null,
+      recordHoldsPostBody: null
+    })
+    expect(background.records).toHaveLength(2)
+    expect(compare('a', 'b', { out })).toBe(0)
   })
 
   it('refuses a label that was never taken', () => {

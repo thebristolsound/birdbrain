@@ -37,11 +37,12 @@ const RISK_COLOUR = { High: 'CAUTION', Medium: 'WARNING', Low: 'NOTE', Minimal: 
 const RISK_ALERT = /^> \[!(CAUTION|WARNING|NOTE|TIP)\]$/
 const RISK_LINE = /^> \*\*Merge risk: (High|Medium|Low|Minimal)\.\*\* \S/
 const ATTACHMENT = /^https:\/\/github\.com\/user-attachments\/assets\/[\w-]+$/
-// A Markdown image (inline or reference style), or the HTML tag GitHub's web editor inserts
-// for an upload.
-const IMAGE = /!\[[^\]]*\]\(|!\[[^\]]*\]\[|<img\b/i
+// A Markdown image (inline, reference or shortcut form), or the HTML tag GitHub's web editor
+// inserts for an upload.
+const IMAGE = /!\[[^\]]*\]|<img\b/i
 // Image syntax quoted in a code span is text, not an image.
 const hasImage = (line) => IMAGE.test(line.replace(/`[^`]*`/g, ''))
+const PROOF_HEADER = /^\|\s*Acceptance criterion\s*\|\s*Proof\s*\|\s*Result\s*\|$/
 const TABLE_ROW = /^\s*\|.*\|\s*$/
 const TABLE_RULE = /^\s*\|(\s*:?-+:?\s*\|)+\s*$/
 const IMPACT_FIELDS = [
@@ -292,11 +293,11 @@ export function lintBody(raw, { anyAuthor = false, posted = false } = {}) {
     } else if (marker && !marker[1].startsWith(head[1])) {
       findings.push(`Proof names ${head[1].slice(0, 12)} but Verification ran at ${marker[1].slice(0, 12)}; update the Proof to the head commit`)
     }
-    if (!body.some((l) => /^\|\s*Acceptance criterion\s*\|\s*Proof\s*\|\s*Result\s*\|$/.test(l.trim()))) {
+    if (!body.some((l) => PROOF_HEADER.test(l.trim()))) {
       findings.push('Proof holds the "| Acceptance criterion | Proof | Result |" table')
     } else {
       // Only the acceptance table's own rows, up to the first line that is not a table row.
-      const headerAt = body.findIndex((l) => /^\|\s*Acceptance criterion\s*\|/.test(l.trim()))
+      const headerAt = body.findIndex((l) => PROOF_HEADER.test(l.trim()))
       const tail = body.slice(headerAt)
       const endAt = tail.findIndex((l) => !TABLE_ROW.test(l))
       const rows = tableRows(endAt < 0 ? tail : tail.slice(0, endAt))

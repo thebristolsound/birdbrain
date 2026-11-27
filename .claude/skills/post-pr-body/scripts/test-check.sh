@@ -42,6 +42,48 @@ sed "s#https://github.com/user-attachments/assets/4f5a6b7c-after#$posted_fx/afte
 "$check" --any-author "$posted_fx/local.md" >/dev/null 2>&1; expect 0 $? "direct check accepts a readable local screenshot"
 "$check" --any-author --posted "$posted_fx/local.md" >/dev/null 2>&1; expect 1 $? "direct --posted refuses a readable local screenshot"
 
+# Each fixture for a rule this layout added must fail on that rule, not on another one.
+finds() {
+  # $1 fixture, $2 expected finding text, $3 extra flags
+  local out
+  # shellcheck disable=SC2086
+  out="$(node "$here/lint-body.mjs" ${3-} "$fx/$1" 2>&1)"
+  if printf '%s' "$out" | grep -qF -- "$2"; then echo "ok   $1 raises: $2"; else
+    echo "FAIL $1 does not raise: $2"; fails=$((fails + 1)); fi
+}
+finds fail-merge-risk-missing.md 'goes the Merge risk notice'
+finds fail-merge-risk-extra-line.md 'goes the Merge risk notice'
+finds fail-merge-risk-colour.md 'takes the [!CAUTION] alert'
+finds fail-summary-after-diagram.md 'left out of the merge commit'
+finds fail-proof-text-outside.md 'Proof is one <details> block'
+finds fail-proof-no-head.md 'Proof names the head commit'
+finds fail-proof-stale-head.md 'but Verification ran at'
+finds fail-proof-no-table.md 'Proof holds the'
+finds fail-proof-empty.md 'Proof has no filled row'
+finds fail-proof-second-table.md 'Proof has no filled row'
+finds fail-proof-decoy-table.md 'lacks a proof or result'
+finds fail-proof-row-unproven.md 'lacks a proof or result'
+finds fail-screenshots-missing.md 'sections must be'
+finds fail-image-outside-screenshots.md 'images go in the Screenshots section'
+finds fail-html-image-outside.md 'images go in the Screenshots section'
+finds fail-reference-image-outside.md 'images go in the Screenshots section'
+finds fail-shortcut-image-outside.md 'images go in the Screenshots section'
+finds fail-extra-screenshot-line.md 'every screenshot is a Before or After row'
+finds fail-image-in-screen-name.md 'names its screen with an image'
+finds fail-duplicate-screenshot.md 'duplicate after screenshot'
+finds fail-img-two-src.md 'exactly one src attribute'
+finds fail-img-data-src.md 'upload the screenshot' --posted
+finds fail-not-done-empty.md 'Not done is empty'
+finds fail-not-done-prose.md 'Not done holds only bullets'
+finds fail-blast-radius.md 'Blast radius is two filled bullets'
+finds fail-before-merge-empty.md 'Before merge holds one filled'
+finds fail-checkbox-shape.md 'Before merge holds one filled'
+finds fail-changes-no-file-group.md 'Changes lists no file group'
+finds fail-empty-decisions.md 'is an empty table'
+finds fail-header-only-decisions.md 'is an empty table'
+finds fail-decisions-blank-row.md 'is an empty table'
+finds fail-section-order.md 'sections must be'
+
 # The 1117 body must fail on the cap and the section rule specifically.
 out="$(node "$here/lint-body.mjs" "$fx/fail-1117-walkthrough.md")"
 printf '%s' "$out" | grep -q 'lines above ## Verification' && echo "ok   1117 trips the 40-line cap" || { echo "FAIL 1117 cap"; fails=$((fails + 1)); }

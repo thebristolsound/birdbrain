@@ -232,4 +232,5 @@ linter in `../post-comment/` imports it, so both surfaces read the same rule.
 `fail-1117-walkthrough.md` is the body of PR #1117 as it shipped, kept as the example of what
 the cap and the section rule exclude, `fail-payload.json` is a body with no sections, and
 `pass-optional-sections.md` adds every optional section. Each other fixture is `pass-filled.md`
-with one change.
+or `pass-optional-sections.md` with one change, and the suite checks the finding each fixture
+for a rule this layout added must raise.

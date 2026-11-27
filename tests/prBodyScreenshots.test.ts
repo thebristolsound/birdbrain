@@ -119,10 +119,15 @@ describe('PR body script suites', () => {
   ])(
     '%s passes',
     (suite) => {
-      const run = spawnSync('bash', [suite], { encoding: 'utf8' })
+      // A dispatch cycle exports BIRDBRAIN_DISPATCH=1, which binds the hook the suite expects
+      // to pass through; the suite sets it itself where it needs it.
+      const run = spawnSync('bash', [suite], {
+        encoding: 'utf8',
+        env: { ...process.env, BIRDBRAIN_DISPATCH: '0' }
+      })
       expect(run.stdout).toContain('0 failure(s)')
       expect(run.status).toBe(0)
-      // About fifty node runs; under the full parallel suite they take far longer than alone.
+      // Over a hundred node runs; under the full parallel suite they take far longer than alone.
     },
     120_000
   )

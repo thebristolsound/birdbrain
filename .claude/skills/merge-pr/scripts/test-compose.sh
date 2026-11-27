@@ -18,6 +18,11 @@ node "$here/compose.mjs" "$fx/pass-filled.md" "feat(x): a thing" 12 "$out" >/dev
 ! grep -q 'preflight' "$out/body.txt" && ok "body carries no Verification text" || bad "Verification text leaked"
 [ -z "$(awk 'length > 72' "$out/body.txt")" ] && ok "body wraps at 72" || bad "body line over 72"
 
+sed 's#^this pull request\.$#this pull request.\n\n<!-- a note\n<details>\nstill a comment -->\n\nA sentence after the comment.#' "$fx/pass-filled.md" > "$out/comment.md"
+node "$here/compose.mjs" "$out/comment.md" "t" 1 "$out" >/dev/null 2>&1
+grep -q 'A sentence after the comment' "$out/body.txt" && ! grep -q '<!--' "$out/body.txt" \
+  && ok "a details line inside a comment does not end the Summary" || bad "a comment cut the Summary short"
+
 node "$here/compose.mjs" "$fx/fail-first-line.md" "t" 1 "$out" >/dev/null 2>&1; rc=$?
 [ "$rc" -eq 0 ] && ok "a body with a Summary still composes (shape is post-pr-body's job)" || bad "unexpected exit $rc"
 printf 'Closes #1\n\n## Changes\n- x\n' > "$out/nosummary.md"

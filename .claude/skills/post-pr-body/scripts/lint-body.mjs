@@ -120,6 +120,10 @@ function screenshotFindings(lines, posted) {
       continue
     }
     const [, phase, screen, markdown, html] = shot
+    if (hasImage(screen)) {
+      findings.push(`${phase} row names its screen with an image; one image per row, after the screen name`)
+      continue
+    }
     const reference = markdown ?? html
     const path = reference.replace(/^<|>$/g, '')
     const key = screen.trim().toLowerCase()
@@ -282,7 +286,11 @@ export function lintBody(raw, { anyAuthor = false, posted = false } = {}) {
     if (!body.some((l) => /^\|\s*Acceptance criterion\s*\|\s*Proof\s*\|\s*Result\s*\|$/.test(l.trim()))) {
       findings.push('Proof holds the "| Acceptance criterion | Proof | Result |" table')
     } else {
-      const rows = tableRows(body)
+      // Only the acceptance table's own rows, up to the first line that is not a table row.
+      const headerAt = body.findIndex((l) => /^\|\s*Acceptance criterion\s*\|/.test(l.trim()))
+      const tail = body.slice(headerAt)
+      const endAt = tail.findIndex((l) => !TABLE_ROW.test(l))
+      const rows = tableRows(endAt < 0 ? tail : tail.slice(0, endAt))
       const open = rows.find((r) => r.length !== 3 || r.some((c) => c === ''))
       if (!rows.length) findings.push('Proof has no filled row; a criterion nothing proves goes under Not done')
       else if (open) {

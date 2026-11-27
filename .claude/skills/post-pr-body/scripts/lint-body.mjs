@@ -347,8 +347,10 @@ export function lintBody(raw, { anyAuthor = false, posted = false } = {}) {
       const filled = files.some((l) => /^\s*- \S/.test(l)) || tableRows(files).some((r) => r.some((c) => c !== ''))
       if (!filled) findings.push('Changes lists no file group')
       for (const b of blocks.slice(1)) {
-        const rows = tableRows(blockBody(b))
-        if (rows.length && rows.every((r) => r.every((c) => c === ''))) {
+        const lines = blockBody(b)
+        const rows = tableRows(lines)
+        // A header with no rows is as empty as a row of blank cells.
+        if (lines.some((l) => TABLE_ROW.test(l)) && rows.every((r) => r.every((c) => c === ''))) {
           findings.push(`the "${b.summary}" block in Changes is an empty table; delete it when there is nothing to list`)
         }
       }

@@ -258,8 +258,13 @@ export function lintBody(raw, { anyAuthor = false, posted = false } = {}) {
     }
     if (!body.some((l) => /^\|\s*Acceptance criterion\s*\|\s*Proof\s*\|\s*Result\s*\|$/.test(l.trim()))) {
       findings.push('Proof holds the "| Acceptance criterion | Proof | Result |" table')
-    } else if (!tableRows(body).some((r) => r.length === 3 && r.every((c) => c !== ''))) {
-      findings.push('Proof has no filled row; a criterion nothing proves goes under Not done')
+    } else {
+      const rows = tableRows(body)
+      const open = rows.find((r) => r.length !== 3 || r.some((c) => c === ''))
+      if (!rows.length) findings.push('Proof has no filled row; a criterion nothing proves goes under Not done')
+      else if (open) {
+        findings.push(`Proof row "${open[0].slice(0, 40)}" lacks a proof or result; a criterion nothing proves goes under Not done`)
+      }
     }
   }
 

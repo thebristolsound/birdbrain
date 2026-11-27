@@ -1,13 +1,88 @@
 # One reader for the Manifest
 
-**Status:** parked on 2026-10-23. No slice was started. Since this was written, `verify.sh` walks
-member chains (#1880), Case Archives compose every import's id map (#1953) and `merge` entries carry
-receipt stamps (#1912), so the problem statement and the slice list need re-checking against `main`
-before any slice starts.
+**Status:** parked on 2026-10-23, re-checked against `main` on 2026-11-26 (see "Re-check at
+85729b6c"). No slice was started. The known answers slice 1 needs before it edits the chain walk are
+in `tests/shared/verify/keyRule.test.ts`. Picking it up again starts with the questions the
+re-check raises for rulings 3 and 4 and invariant 4, then the slice list as amended there.
 
 Written 2026-10-02 from an architecture review lead, revised the same day after an adversarial
 review (see "Review disposition"). Not started. Most slices touch a blocking-tier path, so they
 carry `evidence-affecting` and wait for human review.
+
+## Re-check at 85729b6c
+
+Re-checked on 2026-11-26. Symbols are named instead of line numbers.
+
+### Done since the plan
+
+- **Separate ticket: writers name the chain id.** Shipped. A deletion signs under the id its
+  `capture` entry signed (#1876), the thumbnail backfill signs under the chain id (#1872), and
+  `deletionReconciliation.ts` matches through `rowDescriber` and `signedCaptureId`. Failure 3 of PR
+  #1672, Case Archives without Derived Files, was fixed by #1947.
+- **Entry signature by row id (#1472).** Fixed by #2048: `resolveEntrySignatures` falls back to
+  the chain id.
+- **Two token loops.** Gone. `decideTimestampTokens` in `src/packages/evidence-package-contents`
+  is the one admission loop, through `stampFor` (#2212). The certificate walk in `export.ts` reads
+  every token and admits none.
+- **Whole-package known answers.** `tests/main/services/exportKnownAnswer.test.ts` pins export
+  bytes for eleven packages, renamed rows and a Shared Case among them (#2208).
+
+### New copies of the rules
+
+- **`verify.sh` (#1880)** gained `cc_key_for` for member and lineage chains, a phase-C-style
+  boundary in `check_chain`, a lineage walk that repeats the fork-history rule of `sharedCase.ts`,
+  and `JQ_DELETED`, which repeats Package Verification's authored-deletion rule. Step 4a reads
+  member and lineage chains, so "`verify.sh` reads only `manifest.jsonl`" no longer holds.
+- **DER SPKI fingerprints** are now printed on a second screen: the Sharing roster and join
+  requests hash a member key through `joinHandshake.ts`, while `verify.sh` prints the PEM-text hash
+  for the same member keys.
+- **`signingKeyRanges`** has a second consumer, `entriesUnderCarriedKeys`, which decides whether
+  the report prints the carried-key prose.
+- **Receipt stamps (#1912)** brought `receiptStampFor` in `trustedTime.ts`, a sibling of
+  `stampFor`. Package Verification calls it through `receiptStampsFromEntries` and repeats only
+  the exclusion of `subject: 'entry'` tokens from content stamps. `verify.sh` has its own copy,
+  `VERIFY_RECIPES.receiptTokenFilter`.
+- **Export verifies the local chain twice**, once in `resolveExportCaptureEngine` and once in
+  `resolveExportLinkSources`. The Risks bullet "Export does not check the chain today" is out of
+  date.
+
+### Questions for the maintainer
+
+These need a ruling before slice 2. The re-check does not decide them.
+
+1. **Ruling 3.** The writers that shipped fall back to the row id when the signed records do not
+   confirm a rename (`signedCaptureId`, `signedParentId`); nothing refuses. Is that the case the
+   ruling meant, or does it still ask for a refusal?
+2. **Ruling 4.** It covered the Data screen. The Sharing roster and join requests now print a DER
+   SPKI hash too. Does the ruling extend to them?
+3. **Invariant 4.** It limits inferred chain names to naming package files. Export now also uses
+   them for entry-signature status, the unreconciled list, notes and exclusions. Does the invariant
+   still hold, or should it name those uses?
+
+### Amendments to the slices
+
+- **Slice 0.** Entry schemas run 1 to 7, not 1 to 4, and receipt stamps are an era of their own.
+  Reuse `exportKnownAnswer.test.ts` rather than rebuild its packages. Member-chain conformance
+  between `verify.sh` and Package Verification is now expected to agree.
+- **Slice 1.** Its known answers are in `keyRule.test.ts`, which pins both copies in the walk and
+  the two #1199 shapes. The `manifestSchema5TooOld`, `6TooOld` and `7TooOld` tests join its
+  byte-identity list. `cc_key_for` and its phase-C boundary need a conformance target.
+- **Slice 2.** `ChainInput.idMapPayload` becomes the Case's own map plus the carried maps, by
+  digest (#1953). `binds` needs the rows and the Shared Case's accepted entries, which
+  `readAnchoredIdMap` now checks. `manifest.ts` already exports `readCaseChains`, `CaseChains` and
+  `AuthorChain`, so the adapter needs another name.
+- **Slice 4.** Smaller: the single token loop and lookup by chain id are done. It keeps typed
+  entries, `signerRuns()` for the Certification and `entriesUnderCarriedKeys`, the break rule, the
+  newer-schema disclosure, and one chain walk instead of two. Byte identity also holds against
+  `exportKnownAnswer.test.ts`.
+- **Slice 5.** `entryDescribesRow` has a third call site in `recapture.ts`, and the newer `rowDescriber`
+  answers the same question at five call sites across `exhibits.ts`, `exhibitBackfill.ts`,
+  `deletionReconciliation.ts` and `captureLifecycle.ts`.
+- **Slice 7.** Add `caseArchive.ts`, which calls `isSharedCase`, and `JQ_DELETED` as a conformance
+  target. The byte-identity list gains the schema 5 to 7 tests, `receiptStamps.test.ts` and
+  `exportKnownAnswer.test.ts`.
+- **Placement.** `src/packages/evidence-package-layout`, `evidence-package-contents`,
+  `capture-finish` and `transaction-record` are all blocking tier now. Ruling 1 is unaffected.
 
 ## Problem
 

@@ -27,9 +27,29 @@ describe('safeFilename', () => {
     expect(safeFilename('Console', 'capture')).toBe('Console')
   })
 
+  it('falls back for a reserved device name followed by an extension', () => {
+    expect(safeFilename('CON.report', 'capture')).toBe('capture')
+    expect(safeFilename('NUL.txt', 'capture')).toBe('capture')
+    expect(safeFilename('com1.tar.gz', 'capture')).toBe('capture')
+    expect(safeFilename('NUL.txt', 'case')).toBe('case')
+  })
+
+  it('keeps names that only start with a device name', () => {
+    expect(safeFilename('Console.txt', 'capture')).toBe('Console.txt')
+    expect(safeFilename('COM10', 'capture')).toBe('COM10')
+    expect(safeFilename('AUXiliary', 'capture')).toBe('AUXiliary')
+    expect(safeFilename('report.CON', 'capture')).toBe('report.CON')
+  })
+
   it('caps length at the stem limit', () => {
     const long = 'x'.repeat(500)
     expect(safeFilename(long).length).toBe(MAX_FILENAME_STEM_LENGTH)
     expect(safeFilename(long, 'f', 10)).toBe('xxxxxxxxxx')
+  })
+
+  it('drops a whole emoji when the length cap lands inside its surrogate pair', () => {
+    // 9 units of x then a 2-unit emoji: a 10-unit cut falls between its halves.
+    expect(safeFilename(`${'x'.repeat(9)}😀tail`, 'f', 10)).toBe('xxxxxxxxx')
+    expect(safeFilename(`${'x'.repeat(8)}😀tail`, 'f', 10)).toBe('xxxxxxxx😀')
   })
 })

@@ -340,9 +340,11 @@ comments. Classify:
   <file>` runs on each file before it is posted. Your read of that text before posting is the editorial pass; a subagent that posts directly has bypassed it,
   which is a reportable contract violation even when the content was fine — and it lands under
   the wrong identity, since only the dispatcher holds the machine token. From the same
-  dispositions, rewrite the description's `## Review findings` section (the counts line and one
-  row per finding, in the `post-pr-body` shape), run that skill's `scripts/check.sh` on the
-  body file, and write it with the REST body write. A body edit starts no review fleet round.
+  dispositions, update the description's `## Review findings` section in the `post-pr-body`
+  shape. Start from the live description, and carry its rows into any body the implementer
+  returned: add a row for each finding this round answered, replace the row of a finding
+  answered again, keep every earlier row, and recount. Run that skill's `scripts/check.sh` on the body
+  file and write it with the REST body write. A body edit starts no review fleet round.
   Then run the reviewer pre-pass (section 4).
 (Closed and merged PRs never reach this section — an open-PR query cannot return them; their
 hygiene checks run from section 1's empty-queue branch.)
@@ -998,16 +1000,20 @@ paragraph belongs in the report and the row says which section.
 Post the status alongside it, per "The verdict is a commit status" above — same sha, same
 round, both or neither.
 
-- **approve for human review** → first add the verdict's non-blocking findings to the
-  description's `## Review findings` section, sorted by the table in
-  `.claude/skills/ship-unit/SKILL.md`, "Sorting a finding", with the REST body write; an
-  approving verdict starts no fix round, so none of them is taken. Then mark the PR ready for
-  review via the write path
+- **approve for human review** → mark the PR ready for review via the write path
   (`agh pr ready <n>`), evidence-affecting or not (ADR-0025). Ready means a human should now
-  look, and it is what wakes CodeRabbit. An evidence-affecting PR then waits for the human back
-  gate; a non-evidence PR proceeds to section 2a. Report and stop.
+  look, and it is what wakes CodeRabbit. Then add the verdict's non-blocking findings, and any
+  review-bot finding already on the PR that has no row yet, to the description's
+  `## Review findings` section as rows, sorted by the table in
+  `.claude/skills/ship-unit/SKILL.md`, "Sorting a finding", with the REST body write; an
+  approving verdict starts no fix round, so none of them is taken. The pre-gate counts bot
+  feedback only when it is newer than the pipeline's last comment (ADR-0060), so feedback older
+  than the verdict gets its row here or not at all. A body write that fails is
+  named in the report and never undoes the ready step. An evidence-affecting PR then waits for
+  the human back gate; a non-evidence PR proceeds to section 2a. Report and stop.
 - **request changes** → hand the PR back to `birdbrain-implementer` (pointer, not paraphrase)
-  for **one** fix round, then re-run the pre-pass. If the second pre-pass still requests
+  for **one** fix round, post its replies and update the Review findings section from its
+  dispositions as section 2 says, then re-run the pre-pass. If the second pre-pass still requests
   changes, stop there: report "pre-pass unresolved after one fix round — needs human
   attention", leave both pre-pass comments in place, and park the PR (section 2, "Park a PR
   for the maintainer"). Never loop further unattended.

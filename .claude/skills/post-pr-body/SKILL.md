@@ -11,8 +11,7 @@ body against this shape; the pre-pass treats a body defect as blocking (ADR-0018
 
 ## Two layers
 
-A body is a plain-language top layer plus collapsed detail, the way CodeRabbit nests its
-review:
+A body is a plain-language top layer plus collapsed detail:
 
 - **Top layer.** Line 1, the section headings, the Summary sentences, the Yes/No answer and
   the attribution line. Plain language for a reader outside the repository: no code spans,

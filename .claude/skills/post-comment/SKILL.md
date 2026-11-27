@@ -11,8 +11,7 @@ line, so the first line is the contract.
 
 ## Two layers
 
-A comment is a plain-language top layer plus collapsed detail, the way CodeRabbit nests its
-review:
+A comment is a plain-language top layer plus collapsed detail:
 
 - **Top layer.** What a reader who has never seen this repository's tooling needs: the
   outcome, the ask, the finding in words. No code spans, file names or paths, commit ids,
@@ -30,7 +29,7 @@ checked as top layer.
 
 | kind | first line | top-layer cap | detail | rule |
 |---|---|---|---|---|
-| bot trigger | `@coderabbitai review`, `@coderabbitai full review`, `@codex review`, `@codex security review` | 1 line | none | the command alone; exempt from the CodeRabbit-text rule |
+| bot trigger | `@codex review`, `@codex security review` | 1 line | none | the command alone |
 | cycle claim | `Cycle claim: PR #<n>` | 3 lines | optional | which action is claimed |
 | cycle release | `Cycle release: PR #<n>` | 2 lines | none | none |
 | pre-pass verdict | `**Review verdict: <verdict>**` | 10 lines | required | at most 5 numbered findings, one plain sentence each; the block's summary starts `Full report` and names the reviewed commit id |
@@ -62,7 +61,7 @@ A bot trigger is read back by the review bot it names, so it is exempt the same 
 
 Rules for every kind:
 
-- No `Co-authored-by`, no platform footer, no CodeRabbit text. You author the comment; the
+- No `Co-authored-by` and no platform footer. You author the comment; the
   platform may append its own footer afterwards, which is tolerated.
 - A comment posted under the maintainer's account starts with the two-line
   `> [!NOTE]` / `> Written by <model> via <harness> on behalf of Matt.` disclosure and a

@@ -1,6 +1,6 @@
 # The evidence label serves two purposes
 
-**Status:** Accepted
+**Status:** Accepted, amended 2026-11-27 (CodeRabbit removed)
 
 **Date:** 2026-09-01
 
@@ -97,6 +97,12 @@ what else is outstanding are retired. CodeRabbit fires when the PR is marked rea
 evidence PR is the moment the human is reading, and that is where a second pair of eyes has
 value. On a non-evidence PR it fires at un-draft-then-merge and is out of the auto-merge path;
 ADR-0014's four conditions never counted it, so no policy relies on what this removes.
+
+**Amended 2026-11-27.** CodeRabbit is removed from the repository (#1112): `.coderabbit.yaml` is
+deleted, and the bot is off the dispatch trust list. The paragraph above no longer describes a
+reviewer. The review fleet reads every non-draft PR the maintainer or the machine account opens
+([ADR-0057](0057-a-two-family-review-fleet-reads-every-pr-and-gates-the-merge.md)). The pre-pass
+stays the only draft-phase reporter.
 
 **A prose-only delta gets a delta pass.** When every blocker in a verdict is a truth defect and
 the fix commit contains no executable change, the next pre-pass does not re-run the verify loop.

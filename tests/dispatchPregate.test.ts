@@ -432,7 +432,7 @@ const woken = (at = LABEL_AFTER_PARK) =>
 describe.skipIf(!HAS_JQ)('pregate.sh on a PR parked for the maintainer', () => {
   it.each([
     ['the pipeline', PIPELINE, 'User'],
-    ['a review bot', 'coderabbitai[bot]', 'Bot'],
+    ['a review bot', 'chatgpt-codex-connector[bot]', 'Bot'],
     ['another collaborator', COLLABORATOR, 'User'],
     ['the maintainer', MAINTAINER, 'User']
   ] as const)('stays parked when %s comments after the label', (_, login, type) => {
@@ -765,7 +765,6 @@ type Surface = 'comments' | 'reviewComments' | 'reviews'
 
 // Each bot where it posts: REST shows the Copilot reviewer's inline comments as `Copilot`.
 const REVIEW_BOTS: [string, Surface][] = [
-  ['coderabbitai[bot]', 'comments'],
   ['chatgpt-codex-connector[bot]', 'reviews'],
   ['Copilot', 'reviewComments'],
   ['copilot-pull-request-reviewer[bot]', 'reviews']
@@ -826,6 +825,19 @@ describe.skipIf(!HAS_JQ)('pregate.sh trust list', () => {
       fixtures({ labels: UNPARKED, state: 'success', ...botActivity(login, surface) })
     )
     expect(result.outputs).toEqual({ run: 'true', reason: RAN })
+  })
+
+  // CodeRabbit left the trust list on 2026-11-27 (#1112), so its comment starts no cycle.
+  it('does not run for a review bot that left the trust list', () => {
+    const result = run(
+      fixtures({
+        labels: UNPARKED,
+        state: 'success',
+        ...botActivity('coderabbitai[bot]', 'comments')
+      })
+    )
+    expect(result.outputs).toEqual({ run: 'false', reason: NOTHING_OWED })
+    expect(result.summary).toContain(`not counted: coderabbitai[bot] at ${AFTER_HEAD}`)
   })
 
   it.each(REVIEW_BOTS)(

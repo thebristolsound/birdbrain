@@ -218,6 +218,7 @@
     "babel-plugin-react-compiler": "^1.0.0",
     "cross-env": "^10.1.0",
     "dependency-cruiser": "^17.4.3",
+    "effect": "4.1.5",
     "electron": "^45.2.3",
     "electron-builder": "^26.18.0",
     "electron-vite": "^6.0.0",

@@ -67,9 +67,10 @@ head commit), Screenshots, an optional Not done, Blast radius (what merging ship
 back it out), optional Before merge and After merge checkboxes, Changes (file groups and an
 optional decisions table), Evidence-affecting and Verification as before. The 40-line cap
 counts non-blank lines. The maintainer also asked, in the same session, that screenshots be
-enforced in the body because some had been posted only in PR comments: every body now declares
-its visual effect, images appear only in the Screenshots section, and both merge paths refuse a
-body whose screenshots are not GitHub attachments in that section.
+enforced in the body because some had been posted only in PR comments: every body except
+dependabot's now declares its visual effect, inline images appear only in the Screenshots
+section, and both merge paths refuse a body whose screenshots are not GitHub attachments in
+that section.
 
 The PR body shape is the same for humans and agents: `.github/pull_request_template.md` is a
 copy of the skill's template. The one difference is the attribution line: an agent ends with

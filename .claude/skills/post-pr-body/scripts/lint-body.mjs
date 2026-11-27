@@ -39,6 +39,8 @@ const RISK_LINE = /^> \*\*Merge risk: (High|Medium|Low|Minimal)\.\*\* \S/
 const ATTACHMENT = /^https:\/\/github\.com\/user-attachments\/assets\/[\w-]+$/
 // A Markdown image, or the HTML tag GitHub's web editor inserts for an upload.
 const IMAGE = /!\[[^\]]*\]\(|<img\b/i
+// Image syntax quoted in a code span is text, not an image.
+const hasImage = (line) => IMAGE.test(line.replace(/`[^`]*`/g, ''))
 const TABLE_ROW = /^\s*\|.*\|\s*$/
 const TABLE_RULE = /^\s*\|(\s*:?-+:?\s*\|)+\s*$/
 const IMPACT_FIELDS = [
@@ -93,7 +95,7 @@ function screenshotFindings(lines, posted) {
   }
   const declaration = declarations[0].trim()
   const no = declaration.match(/^- Visual changes: No\.\s+(\S.*)$/i)
-  const images = lines.filter((line) => IMAGE.test(line))
+  const images = lines.filter(hasImage)
   if (no) {
     return images.length ? ['Visual changes is No but Screenshots contains screenshot images'] : []
   }
@@ -104,17 +106,21 @@ function screenshotFindings(lines, posted) {
   const findings = []
   const screens = new Map()
   for (const line of lines) {
-    if (IMAGE.test(line) && !/^\s*- (Before|After),/i.test(line)) {
+    if (hasImage(line) && !/^\s*- (Before|After),/i.test(line)) {
       findings.push(`every screenshot is a Before or After row; found: "${line.trim().slice(0, 60)}"`)
       continue
     }
     if (!/^\s*- (Before|After),/i.test(line)) continue
-    const shot = line.match(/^\s*- (Before|After), (.+?): !\[[^\]]*\]\((<[^>]+>|[^)]+)\)\s*$/i)
+    // The Markdown form, or the <img> tag GitHub's web editor writes for an upload.
+    const shot = line.match(
+      /^\s*- (Before|After), (.+?): (?:!\[[^\]]*\]\((<[^>]+>|[^)]+)\)|<img\b[^>]*\bsrc="([^"]+)"[^>]*>)\s*$/i
+    )
     if (!shot) {
       findings.push('each Before/After row needs an image; a screenshot handoff is not evidence')
       continue
     }
-    const [, phase, screen, reference] = shot
+    const [, phase, screen, markdown, html] = shot
+    const reference = markdown ?? html
     const path = reference.replace(/^<|>$/g, '')
     const key = screen.trim().toLowerCase()
     const pair = screens.get(key) ?? new Map()
@@ -266,8 +272,12 @@ export function lintBody(raw, { anyAuthor = false, posted = false } = {}) {
       findings.push(`Proof is one <details> block; found text outside it: "${visibleText[outside[0]].trim().slice(0, 60)}"`)
     }
     const body = blocksWithin(proof).flatMap(blockBody)
-    if (!body.some((l) => /^Head: `?[0-9a-f]{7,40}`?\./.test(l.trim()))) {
+    const head = body.map((l) => l.trim().match(/^Head: `?([0-9a-f]{7,40})`?\./)).find(Boolean)
+    const marker = visibleText.map((l) => l.trim().match(/^<!-- preflight v\d+ sha=([0-9a-f]{40}) /)).find(Boolean)
+    if (!head) {
       findings.push('Proof names the head commit: "Head: `<sha>`. Merge gate: <link or pending>."')
+    } else if (marker && !marker[1].startsWith(head[1])) {
+      findings.push(`Proof names ${head[1].slice(0, 12)} but Verification ran at ${marker[1].slice(0, 12)}; update the Proof to the head commit`)
     }
     if (!body.some((l) => /^\|\s*Acceptance criterion\s*\|\s*Proof\s*\|\s*Result\s*\|$/.test(l.trim()))) {
       findings.push('Proof holds the "| Acceptance criterion | Proof | Result |" table')
@@ -283,7 +293,7 @@ export function lintBody(raw, { anyAuthor = false, posted = false } = {}) {
 
   const shots = section('## Screenshots')
   if (shots) findings.push(...screenshotFindings(shots.lines, posted))
-  const stray = visibleText.findIndex((l, i) => IMAGE.test(l) && !(shots && i > shots.start && i < shots.end))
+  const stray = visibleText.findIndex((l, i) => hasImage(l) && !(shots && i > shots.start && i < shots.end))
   if (stray >= 0) findings.push(`line ${stray + 1}: images go in the Screenshots section, never elsewhere in the body`)
 
   const notDone = section('## Not done')
@@ -328,6 +338,12 @@ export function lintBody(raw, { anyAuthor = false, posted = false } = {}) {
       const files = blockBody(blocks[0])
       const filled = files.some((l) => /^\s*- \S/.test(l)) || tableRows(files).some((r) => r.some((c) => c !== ''))
       if (!filled) findings.push('Changes lists no file group')
+      for (const b of blocks.slice(1)) {
+        const rows = tableRows(blockBody(b))
+        if (rows.length && rows.every((r) => r.every((c) => c === ''))) {
+          findings.push(`the "${b.summary}" block in Changes is an empty table; delete it when there is nothing to list`)
+        }
+      }
     }
   }
 

@@ -59,7 +59,7 @@ Head: `2c8c60c22a9dc92a778ef74653b7d5aa8be2ee4c`. Merge gate: pending.
 | `src/renderer/components/signals/SignalDetailRail.tsx`, `useSelectorRescan.ts` | the button and its busy state | the rail is where a selector is reviewed |
 | `tests/main/services/selectorLifecycle.test.ts`, `tests/components/SignalDetailRail.test.tsx` | known-answer and rail tests | pins the insert-only rule |
 
-<img width="600" src="https://github.com/user-attachments/assets/9d8e7f6a-extra">
+- <img width="600" src="https://github.com/user-attachments/assets/9d8e7f6a-extra">
 
 </details>
 

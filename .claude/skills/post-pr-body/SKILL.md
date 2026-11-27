@@ -61,8 +61,8 @@ line. The layout follows the maintainer's work template, adapted to this reposit
    row with an empty or hopeful result. A push that moves the head updates the line and every
    row it touches. Command output stays in Verification.
 5. `## Screenshots`: the visual-change declaration and, for Yes, the before and after rows,
-   as "Screenshots for visual changes" below states. Images appear here and nowhere else in
-   the body.
+   as "Screenshots for visual changes" below states. Inline images, Markdown or `<img>`,
+   appear here and nowhere else in the body.
 6. `## Not done` (optional): one bullet per gap, skipped test, or review finding not fixed here.
 7. `## Blast radius`: two bullets, `- On merge: <what ships>` (the next desktop app release,
    the extension, the docs site, or repository tooling only) and
@@ -185,14 +185,17 @@ pair, including a placeholder handed to the maintainer, is a `gate` finding in t
 
 The upload comment from step 3 is only the route to an attachment link. Screenshots that sit
 in a comment and not in the body do not count: a Yes declaration without its pairs in the body
-fails the check, and the reviewer checks a No declaration against the diff.
+fails the check. No check can tell a false No declaration: only a reviewer reading the diff
+catches one, and a PR without the `review:requested` label gets no such reviewer.
 
 `scripts/check.sh <body-file>` requires the declaration on every body and checks a Yes
 decision for complete Before/After rows with matching screen names. Each image must be a
 readable local PNG at an absolute path or a GitHub attachment; the local form allows capture
 before the PR exists. Both merge paths (`merge-pr` and the `merge` label workflow) add
-`--posted`, which accepts GitHub attachment links only, so a body whose screenshots are
-missing, local, or only in a comment cannot merge.
+`--posted`, which accepts GitHub attachment links only, so a Yes body whose screenshots are
+missing, local, or only in a comment cannot merge. A row may use the Markdown image form or
+the `<img src="...">` tag GitHub's web editor writes. Image syntax quoted in a code span is
+text, not an image. Dependabot bodies skip the check at the label merge.
 
 ## How to open a PR
 
@@ -226,5 +229,6 @@ POST implicitly):
 linter in `../post-comment/` imports it, so both surfaces read the same rule.
 `scripts/test-check.sh` runs the fixtures under `scripts/fixtures/` through both paths.
 `fail-1117-walkthrough.md` is the body of PR #1117 as it shipped, kept as the example of what
-the cap and the section rule exclude, and `fail-payload.json` is a body with no sections. Every
-other fixture is `pass-filled.md` with one change.
+the cap and the section rule exclude, `fail-payload.json` is a body with no sections, and
+`pass-optional-sections.md` adds every optional section. Each other fixture is `pass-filled.md`
+with one change.

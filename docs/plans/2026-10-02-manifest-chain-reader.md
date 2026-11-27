@@ -66,6 +66,21 @@ The re-check raised three questions. The maintainer answered them in an interact
    selection list of an `export` entry takes confirmed ids only, and a selection export refuses
    when a selected Exhibit's chain id is only inferred. This follows the same rule as ruling 3.
 
+A second round the same day settled how the three are carried out.
+[ADR-0059](../adr/0059-a-signed-entry-names-an-exhibit-only-by-a-confirmed-id.md) records rulings
+1 and 3 as the rule for every writer, and `CONTEXT.md` defines Chain Id and Confirmed Chain Id.
+
+- **Writers and the signed selection go first, in #2283.** The narrowed rule covers a single
+  delete, a batch delete, the interrupted-delete repair and the thumbnail backfill's parent. A
+  refused delete names the Exhibit and the reason, with no override; the backfill skips and logs.
+  A Working Copy of a selection follows the same rule as an Evidence Package. The fix needs no
+  slice of this plan, so it lands before slice 1.
+- **The Sharing fingerprint change is its own pull request.** It switches the roster and join
+  requests to the PEM-text hash outright, with no period showing both, and keeps the roster's
+  short grouped form, which is a prefix of what `verify.sh` prints.
+- **Cases an earlier release already broke stay as they are.** A deletion signed before #1876
+  under an id no chain wrote is not repaired or disclosed by this plan.
+
 ### Amendments to the slices
 
 - **Slice 0.** Entry schemas run 1 to 7, not 1 to 4, and receipt stamps are an era of their own.
@@ -81,7 +96,8 @@ The re-check raised three questions. The maintainer answered them in an interact
 - **Slice 4.** Smaller: the single token loop and lookup by chain id are done. It keeps typed
   entries, `signerRuns()` for the Certification and `entriesUnderCarriedKeys`, the break rule, the
   newer-schema disclosure, and one chain walk instead of two. Byte identity also holds against
-  `exportKnownAnswer.test.ts`.
+  `exportKnownAnswer.test.ts`. The signed selection takes confirmed ids only from #2283 on, and
+  slice 4 keeps that by reading `chainName`'s `via`.
 - **Slice 5.** `entryDescribesRow` has a third call site in `recapture.ts`, and the newer `rowDescriber`
   answers the same question at five call sites across `exhibits.ts`, `exhibitBackfill.ts`,
   `deletionReconciliation.ts` and `captureLifecycle.ts`.

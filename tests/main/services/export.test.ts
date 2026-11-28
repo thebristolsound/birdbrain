@@ -5116,6 +5116,51 @@ describe('export', () => {
       }
     })
 
+    it("stops when a Capture's screenshot changes before the report reproduces it", async () => {
+      // The screenshot changes just after its first read and is put back at the manifest
+      // snapshot, which runs after the screenshots are loaded. Only the report's read of the
+      // screenshot can see the change: the zip's read finds the first bytes again.
+      const path = defaultCaptureStore.artifactPaths(fixture.caseId, fixture.captureId, 'png').abs
+      const bytes = readFileSync(path)
+      const originalRead = defaultCaptureStore.artifactFile.bind(defaultCaptureStore)
+      const read = vi.spyOn(defaultCaptureStore, 'artifactFile').mockImplementation((...args) => {
+        const file = originalRead(...args)
+        const [, id, type] = args
+        if (id === fixture.captureId && type === 'png') {
+          writeFileSync(path, Buffer.concat([bytes, Buffer.from('changed')]))
+        }
+        return file
+      })
+      const originalSnapshot = manifest.readManifestSnapshot
+      const snapshot = vi.spyOn(manifest, 'readManifestSnapshot').mockImplementation((...args) => {
+        writeFileSync(path, bytes)
+        return originalSnapshot(...args)
+      })
+      const append = vi.spyOn(manifest, 'appendManifestEntry')
+      try {
+        await expect(
+          exportMixed('screenshot-changed.zip', {
+            include: {
+              captures: true,
+              screenshots: true,
+              auditTrail: false,
+              notes: false,
+              annotations: 'none'
+            }
+          })
+        ).rejects.toThrow(
+          `${path} changed on disk after the export first read it; no package was written.`
+        )
+        expect(snapshot).not.toHaveBeenCalled()
+        expect(append).not.toHaveBeenCalled()
+        expect(existsSync(join(tempDir, 'screenshot-changed.zip'))).toBe(false)
+      } finally {
+        read.mockRestore()
+        snapshot.mockRestore()
+        append.mockRestore()
+      }
+    })
+
     it('fails the export when the one read of a page archive returns nothing', async () => {
       // The file stays in the Case directory, so a separate existence check
       // would still find it. The read that fills the package decides, and a

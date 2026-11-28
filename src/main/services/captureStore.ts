@@ -19,6 +19,8 @@ import { createHash } from 'crypto'
 import { finished } from 'stream/promises'
 import { getStorageRoot } from '@main/services/storage'
 import { MAX_MHTML_SIZE } from '@shared/constants'
+import { readPackageFile } from '@main/services/packageFile'
+import type { PackageFile } from '../../packages/evidence-package-contents/index'
 
 // The Capture Store is the ONLY module that knows where a Capture's bytes live
 // on disk and what they are called: {caseId}/{captureId}.{type} for each type
@@ -143,6 +145,9 @@ export interface CaptureStore {
   writeTransactionRecord: (caseId: string, captureId: string, warcGz: Buffer) => ArtifactPaths
   writePdf: (caseId: string, captureId: string, pdf: Buffer) => ArtifactPaths
   readArtifact: (caseId: string, captureId: string, type: CaptureArtifactType) => Buffer | null
+  // The same file as an export encloses it, hashed in chunks rather than held
+  // whole; null when absent and a throw when unreadable, as readArtifact.
+  artifactFile: (caseId: string, captureId: string, type: CaptureArtifactType) => PackageFile | null
   // The SHA-256 of an artifact, streamed from disk rather than read whole;
   // null when the file is absent.
   hashArtifact: (
@@ -372,6 +377,16 @@ export function createCaptureStore(deps: { getRoot: () => string }): CaptureStor
     return readFileSync(abs)
   }
 
+  function artifactFile(
+    caseId: string,
+    captureId: string,
+    type: CaptureArtifactType
+  ): PackageFile | null {
+    const { abs } = artifactPaths(caseId, captureId, type)
+    if (!existsSync(abs)) return null
+    return readPackageFile(abs)
+  }
+
   function readThumbnail(caseId: string, captureId: string): Buffer | null {
     const { abs } = thumbnailPaths(caseId, captureId)
     if (!existsSync(abs)) return null
@@ -566,6 +581,7 @@ export function createCaptureStore(deps: { getRoot: () => string }): CaptureStor
     writeTransactionRecord,
     writePdf,
     readArtifact,
+    artifactFile,
     hashArtifact,
     readThumbnail,
     writeThumbnail,

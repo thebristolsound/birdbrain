@@ -60,6 +60,7 @@ import type {
   TlsRefetchSkip
 } from '@shared/types'
 import type { TlsCertChainResult } from '@main/services/tlsCertChain'
+import type { ZipEntryData, ZipEntrySource } from '@main/services/zip'
 
 export type { TrustedTime }
 
@@ -613,13 +614,17 @@ export function idsReachingMembers(entries: ManifestEntry[]): Set<string> {
 export type { PackagedArtifact } from '@shared/verify/packageHash'
 export { packageHash } from '@shared/verify/packageHash'
 
+/** A file whose SHA-256 and size are known before its bytes are read for the zip. */
+export type HashedZipSource = ZipEntrySource & { sha256: string }
+
 export interface ArtifactAccumulator {
-  // Zip entries in add() order, ready for createStoredZip.
-  entries: Array<{ name: string; data: Buffer | string }>
+  // Zip entries in add() order, ready for createStoredZip or writeStoredZip.
+  entries: Array<{ name: string; data: ZipEntryData }>
   // The artifact index packageHash() is computed over.
   artifacts: PackagedArtifact[]
-  // Records a file into both lists and returns its sha256.
-  add: (name: string, value: Buffer | string) => string
+  // Records a file into both lists and returns its sha256. A HashedZipSource
+  // is recorded by the digest and size it carries, without reading it.
+  add: (name: string, value: Buffer | string | HashedZipSource) => string
 }
 
 // The shared packaging accumulator: every file added through it lands in the
@@ -627,9 +632,14 @@ export interface ArtifactAccumulator {
 // file. Index files themselves are pushed onto `entries` directly (never
 // through add) — see packageHash() for why they stay out of the artifact list.
 export function createArtifactAccumulator(): ArtifactAccumulator {
-  const entries: Array<{ name: string; data: Buffer | string }> = []
+  const entries: Array<{ name: string; data: ZipEntryData }> = []
   const artifacts: PackagedArtifact[] = []
-  const add = (name: string, value: Buffer | string): string => {
+  const add = (name: string, value: Buffer | string | HashedZipSource): string => {
+    if (typeof value !== 'string' && !Buffer.isBuffer(value)) {
+      entries.push({ name, data: value })
+      artifacts.push({ path: name, sha256: value.sha256, sizeBytes: value.sizeBytes })
+      return value.sha256
+    }
     const buf = Buffer.isBuffer(value) ? value : Buffer.from(value, 'utf-8')
     const digest = createHash('sha256').update(buf).digest('hex')
     entries.push({ name, data: buf })

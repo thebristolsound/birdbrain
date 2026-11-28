@@ -3,9 +3,11 @@ import { createHash } from 'crypto'
 import type { DerivedFile, DerivedFileVerification } from '@shared/types'
 import {
   decidePackageContents,
+  packageFileOf,
   readOnce,
   type ExportForm,
   type PackageByteSource,
+  type PackageFile,
   type PackageContentsInput
 } from '../index'
 import { buildSyntheticToken } from '../../../../tests/helpers/timestampFixtures'
@@ -15,6 +17,15 @@ import { buildSyntheticToken } from '../../../../tests/helpers/timestampFixtures
 
 const CASE = 'case-1'
 const sha256 = (text: string): string => createHash('sha256').update(text).digest('hex')
+
+/** An enclosed file's content holding exactly these bytes, by their hash and size. */
+const holding = (bytes: Buffer | string): unknown => {
+  const buf = Buffer.from(bytes)
+  return expect.objectContaining({
+    sha256: createHash('sha256').update(buf).digest('hex'),
+    sizeBytes: buf.length
+  })
+}
 
 interface MemorySource extends PackageByteSource {
   /** Every file the decision asked for, in order: a stored path, or `<captureId>.<type>`. */
@@ -27,9 +38,9 @@ interface MemorySource extends PackageByteSource {
  */
 function memorySource(files: Record<string, string>, unreadable: string[] = []): MemorySource {
   const asked: string[] = []
-  const read = (key: string): Buffer | null => {
+  const read = (key: string): PackageFile | null => {
     asked.push(key)
-    return key in files ? Buffer.from(files[key]) : null
+    return key in files ? packageFileOf(Buffer.from(files[key])) : null
   }
   return {
     asked,
@@ -157,7 +168,7 @@ describe("a Capture's own files in an Evidence Package", () => {
       sha256: sha256('page'),
       anchoredBy: 'contentHash'
     })
-    expect(contents.files).toEqual([{ path: 'pages/cap-1.mhtml', bytes: Buffer.from('page') }])
+    expect(contents.files).toEqual([{ path: 'pages/cap-1.mhtml', content: holding('page') }])
   })
 
   it('encloses the page archive of a Capture no entry names, anchored by nothing', () => {
@@ -516,7 +527,7 @@ describe("a Capture's own files in a Working Copy", () => {
       anchoredBy: null
     })
     expect(contents.files).toEqual([
-      { path: 'screenshots/chain-id.png', bytes: Buffer.from('annotated pixels') }
+      { path: 'screenshots/chain-id.png', content: holding('annotated pixels') }
     ])
     expect(source.asked).toEqual([])
   })
@@ -590,7 +601,10 @@ describe('Timestamp Tokens', () => {
     )
 
     expect(contents.timestampTokens).toEqual([
-      { path: 'timestamps/cap-1.tst', bytes: Buffer.from(entry.tsaToken as string, 'base64') }
+      {
+        path: 'timestamps/cap-1.tst',
+        content: holding(Buffer.from(entry.tsaToken as string, 'base64'))
+      }
     ])
     expect(contents.ofCapture('cap-1').timestampTokenPath).toBe('timestamps/cap-1.tst')
     expect(contents.ofCapture('cap-2').timestampTokenPath).toBe('timestamps/cap-1.tst')
@@ -643,7 +657,10 @@ describe('Timestamp Tokens', () => {
     )
 
     expect(contents.timestampTokens).toEqual([
-      { path: 'timestamps/cap-1.tst', bytes: Buffer.from(accepted.tsaToken as string, 'base64') }
+      {
+        path: 'timestamps/cap-1.tst',
+        content: holding(Buffer.from(accepted.tsaToken as string, 'base64'))
+      }
     ])
   })
 
@@ -705,7 +722,7 @@ describe('Exhibits that are not Captures', () => {
 
     expect(contents.ofFileExhibit('doc-1').enclosed).toEqual({
       path: 'documents/doc-1.pdf',
-      bytes: Buffer.from('statement')
+      content: holding('statement')
     })
   })
 
@@ -723,7 +740,7 @@ describe('Exhibits that are not Captures', () => {
 
     expect(contents.ofFileExhibit('row-id').enclosed).toEqual({
       path: 'documents/chain-id.pdf',
-      bytes: Buffer.from('statement')
+      content: holding('statement')
     })
   })
 
@@ -871,7 +888,7 @@ describe('Derived Files', () => {
         file: thumbnail,
         verification,
         anchoring: 'anchored',
-        enclosed: { path: 'pages/cap-1_thumb.jpg', bytes: Buffer.from('thumbnail') }
+        enclosed: { path: 'pages/cap-1_thumb.jpg', content: holding('thumbnail') }
       }
     ])
   })
@@ -921,7 +938,7 @@ describe('Derived Files', () => {
   it('encloses the same Derived Files in a Working Copy', () => {
     expect(decide([verified('thumb-1')], memorySource(files), WORKING_COPY)[0].enclosed).toEqual({
       path: 'pages/cap-1_thumb.jpg',
-      bytes: Buffer.from('thumbnail')
+      content: holding('thumbnail')
     })
   })
 })
@@ -975,12 +992,12 @@ describe('readOnce', () => {
     const once = readOnce(source)
     const cap = { caseId: CASE, id: 'cap-1' }
 
-    expect(once.storedFile('here')).toEqual(Buffer.from('bytes'))
-    expect(once.storedFile('here')).toEqual(Buffer.from('bytes'))
+    expect(once.storedFile('here')).toEqual(holding('bytes'))
+    expect(once.storedFile('here')).toEqual(holding('bytes'))
     expect(once.storedFile('absent')).toBeNull()
     expect(once.storedFile('absent')).toBeNull()
-    expect(once.captureFile(cap, 'png')).toEqual(Buffer.from('pixels'))
-    expect(once.captureFile(cap, 'png')).toEqual(Buffer.from('pixels'))
+    expect(once.captureFile(cap, 'png')).toEqual(holding('pixels'))
+    expect(once.captureFile(cap, 'png')).toEqual(holding('pixels'))
     expect(once.captureFile(cap, 'pdf')).toBeNull()
     expect(once.captureFile(cap, 'pdf')).toBeNull()
     expect(source.asked).toEqual(['here', 'absent', 'cap-1.png', 'cap-1.pdf'])
@@ -991,11 +1008,11 @@ describe('readOnce', () => {
     // Capture would be, so an answer remembered under the bare name would be the wrong one.
     const once = readOnce({
       captureFile: () => null,
-      storedFile: (storedPath) => Buffer.from(`stored ${storedPath}`)
+      storedFile: (storedPath) => packageFileOf(Buffer.from(`stored ${storedPath}`))
     })
 
     expect(once.captureFile({ caseId: CASE, id: 'cap-1' }, 'png')).toBeNull()
-    expect(once.storedFile('cap-1.png')).toEqual(Buffer.from('stored cap-1.png'))
+    expect(once.storedFile('cap-1.png')).toEqual(holding('stored cap-1.png'))
     expect(once.captureFile({ caseId: CASE, id: 'cap-1' }, 'png')).toBeNull()
   })
 })

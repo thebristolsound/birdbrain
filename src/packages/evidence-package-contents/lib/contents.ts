@@ -8,7 +8,6 @@
 // and `.dependency-cruiser.cjs` refuses any import that reaches it from them.
 
 import type { Capture, DerivedFile, DerivedFileVerification, Exhibit } from '@shared/types'
-import { createHash } from 'crypto'
 import { stampFor } from '@shared/verify/trustedTime'
 import {
   capturePagePath,
@@ -20,7 +19,12 @@ import {
   timestampTokenPath,
   transactionRecordPath
 } from '../../evidence-package-layout/index'
-import type { CaptureFileType, PackageByteSource } from './byteSource'
+import {
+  packageFileOf,
+  type CaptureFileType,
+  type PackageByteSource,
+  type PackageFile
+} from './byteSource'
 
 /**
  * What the export produces, with the choices that change what it encloses.
@@ -69,10 +73,10 @@ export interface PackageContentsInput {
   source: PackageByteSource
 }
 
-/** One file the export encloses: where it sits in the package, and its bytes. */
+/** One file the export encloses: where it sits in the package, and its content. */
 export interface EnclosedFile {
   path: string
-  bytes: Buffer
+  content: PackageFile
 }
 
 /**
@@ -105,7 +109,7 @@ export type CaptureAnchor = 'contentHash' | 'screenshotHash' | 'transactionRecor
 /** One of a Capture's own files, as the export encloses it. */
 export interface EnclosedCaptureFile {
   path: string
-  /** SHA-256 of the bytes enclosed, which is the one read the export made of them. */
+  /** SHA-256 of the bytes enclosed, from the export's first read of them (`PackageFile`). */
   sha256: string
   /**
    * The field of the Capture's signed entry that carries this file's hash, or
@@ -208,7 +212,7 @@ function decideTimestampTokens(
     const path = pathByContentHash.get(contentHash) ?? timestampTokenPath(subject.id)
     pathByContentHash.set(contentHash, path)
     if (enclosedPaths.has(path)) continue
-    files.push({ path, bytes: Buffer.from(entry.tsaToken, 'base64') })
+    files.push({ path, content: packageFileOf(Buffer.from(entry.tsaToken, 'base64')) })
     enclosedPaths.add(path)
   }
   return { pathByContentHash, files }
@@ -303,8 +307,6 @@ function entriesByChainId(
   return byId
 }
 
-const sha256 = (bytes: Buffer): string => createHash('sha256').update(bytes).digest('hex')
-
 function anchoringOf(verification: DerivedFileVerification | undefined): DerivedFileAnchoring {
   // No verification at all fails closed: nothing established an entry, so
   // nothing may be enclosed on the strength of one.
@@ -347,16 +349,16 @@ export function decidePackageContents(input: PackageContentsInput): PackageConte
     return (input.derivedFiles.get(parentRowId) ?? []).map((file) => {
       const verification = verifications.get(file.id)
       const anchoring = anchoringOf(verification)
-      const bytes = encloses && anchoring !== 'no-entry' ? source.storedFile(file.path) : null
+      const content = encloses && anchoring !== 'no-entry' ? source.storedFile(file.path) : null
       const path = derivedFilePackagePath(parentDirectory, file.path)
-      if (bytes === null && anchoring !== 'no-entry' && form.kind === 'evidence-package') {
+      if (content === null && anchoring !== 'no-entry' && form.kind === 'evidence-package') {
         throw signedFileUnread(owner, `${file.derivation} Derived File`, path)
       }
       return {
         file,
         ...(verification !== undefined ? { verification } : {}),
         anchoring,
-        enclosed: bytes !== null ? { path, bytes } : null
+        enclosed: content !== null ? { path, content } : null
       }
     })
   }
@@ -385,19 +387,19 @@ export function decidePackageContents(input: PackageContentsInput): PackageConte
         anchoredBy !== null ||
         rule.unanchored === 'enclosed' ||
         (rule.unanchored === 'when-screenshots-asked' && screenshots)
-      const bytes = wanted ? source.captureFile(capture, rule.type) : null
-      if (bytes === null && typeof signedHash === 'string') {
+      const content = wanted ? source.captureFile(capture, rule.type) : null
+      if (content === null && typeof signedHash === 'string') {
         // Named at the path Package Verification looks for it, from the signed hash.
         throw signedFileUnread(`Capture ${chainId}`, rule.noun, rule.path(chainId, signedHash))
       }
-      if (bytes === null) continue
-      const digest = sha256(bytes)
+      if (content === null) continue
+      const digest = content.sha256
       const path = rule.path(chainId, digest)
       decided[rule.slot] = { path, sha256: digest, anchoredBy }
       if (rule.slot === 'pageArchive') {
-        files.push({ path, bytes })
+        files.push({ path, content })
       } else if (!contentAddressedPaths.has(path)) {
-        files.push({ path, bytes })
+        files.push({ path, content })
         contentAddressedPaths.add(path)
       }
     }
@@ -414,20 +416,20 @@ export function decidePackageContents(input: PackageContentsInput): PackageConte
     const pageArchive = page
       ? {
           path: capturePagePath(chainId),
-          sha256: sha256(page),
+          sha256: page.sha256,
           anchoredBy: typeof entry?.contentHash === 'string' ? ('contentHash' as const) : null
         }
       : null
-    if (page && pageArchive) files.push({ path: pageArchive.path, bytes: page })
+    if (page && pageArchive) files.push({ path: pageArchive.path, content: page })
     // Named by the Capture's id, not by a hash: content addressing and the
     // hash signed at ingest are Evidence Package concepts, and no reader has
     // to agree with this path, so it is not in the Package Layout.
-    const copy = workingCopy.operatorScreenshots.get(capture.id)
-    const screenshot =
-      copy && copy.length > 0
-        ? { path: `screenshots/${chainId}.png`, sha256: sha256(copy), anchoredBy: null } // layout-exempt: Working Copy
-        : null
-    if (copy && screenshot) files.push({ path: screenshot.path, bytes: copy })
+    const stored = workingCopy.operatorScreenshots.get(capture.id)
+    const copy = stored && stored.length > 0 ? packageFileOf(stored) : null
+    const screenshot = copy
+      ? { path: `screenshots/${chainId}.png`, sha256: copy.sha256, anchoredBy: null } // layout-exempt: Working Copy
+      : null
+    if (copy && screenshot) files.push({ path: screenshot.path, content: copy })
     return { ...NO_CAPTURE_FILES, pageArchive, screenshot }
   }
 
@@ -457,16 +459,16 @@ export function decidePackageContents(input: PackageContentsInput): PackageConte
   const byFileExhibit = new Map<string, FileExhibitContents>()
   for (const exhibit of fileExhibits) {
     const owner = `Exhibit ${chainIdOf(exhibit.id)}`
-    const bytes = encloses && exhibit.path ? source.storedFile(exhibit.path) : null
+    const content = encloses && exhibit.path ? source.storedFile(exhibit.path) : null
     const signedPath = exhibitEntries.get(chainIdOf(exhibit.id))?.path
-    if (bytes === null && typeof signedPath === 'string' && form.kind === 'evidence-package') {
+    if (content === null && typeof signedPath === 'string' && form.kind === 'evidence-package') {
       throw signedFileUnread(owner, `${exhibit.kind} file`, exhibitPackagePath(signedPath))
     }
     // The file sits where the Exhibit's signed entry puts it, which for a
     // renamed row is not where its own path would.
     const packagedFrom = chainNames.get(exhibit.id)?.path ?? exhibit.path
     const enclosed =
-      bytes !== null && packagedFrom ? { path: exhibitPackagePath(packagedFrom), bytes } : null
+      content !== null && packagedFrom ? { path: exhibitPackagePath(packagedFrom), content } : null
     const derivedFiles = derivedFilesOf(
       exhibit.id,
       exhibitPackageDirectory(exhibit.kind, exhibit.path),

@@ -144,6 +144,13 @@ same day moved the decision for a Capture's own files there too: the page archiv
 screenshot, the Transaction Record and the PDF. No entry or glob named the new directory, so
 without the row an edit touching only it would match no entry.
 
+On 2026-11-28 `src/main/services/packageFile.ts` was added to Export, reporting, archive at
+blocking tier, in the change that creates it (#932). An export used to read each file it encloses
+whole, in the already-listed `src/main/services/export.ts` and `captureStore.ts`. That read now
+happens in the new file, which hashes the file in chunks and reads it again for the zip and the
+report's screenshot. No entry or glob names the file, so without the row an edit touching only it
+would match no entry.
+
 On 2026-11-09 the rows that stale-closed issues had left unwritten were added. The selection
 bar (`extension/src/selectionBar.ts`, ruling W25 on #967) and the two files of the capture
 interface suppression protocol (`captureSuppression.ts`, `captureHygiene.ts`) joined Acquisition
@@ -396,6 +403,7 @@ independent of the Operator who holds it.
 | `src/main/services/importIdMaps.ts` | blocking | Checks and composes the import id maps that bind a renamed row to its signed entries and decide which Derived Files a Case Archive carries (#1017) |
 | `src/main/services/zip.ts` | blocking | Evidence container write |
 | `src/main/services/zipRead.ts` | blocking | Evidence container read |
+| `src/main/services/packageFile.ts` | blocking | Hashes each file an export encloses and reads it again for the zip and the report's screenshot, stopping the export when the second read differs. Added 2026-11-28 (#932) |
 | `src/main/services/csvEscape.ts` | blocking | Escaping behind CSV exports of case data |
 | `src/renderer/components/export/ExportDialog.tsx` | blocking | Export options directly shape the package. Narrowed from `src/renderer/components/export/**` on 2026-08-23. See the tier amendment |
 

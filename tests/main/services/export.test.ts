@@ -5034,8 +5034,8 @@ describe('export', () => {
     it('refuses the export when a capture artifact is present but unreadable', async () => {
       // Inject the store's failure so this also exercises the ordering when
       // root can read mode-000 files.
-      const originalRead = defaultCaptureStore.readArtifact.bind(defaultCaptureStore)
-      const read = vi.spyOn(defaultCaptureStore, 'readArtifact').mockImplementation((...args) => {
+      const originalRead = defaultCaptureStore.artifactFile.bind(defaultCaptureStore)
+      const read = vi.spyOn(defaultCaptureStore, 'artifactFile').mockImplementation((...args) => {
         const [, id, type] = args
         if (id === fixture.captureId && type === 'mhtml') {
           throw new Error('EACCES: permission denied')
@@ -5086,10 +5086,11 @@ describe('export', () => {
 
     it("reads a Capture's screenshot and page archive once each", async () => {
       // The report reproduces the screenshot and names the page archive, and
-      // the package encloses both. One read of each serves the report and the
-      // package, so the two cannot disagree. The audit trail is off because
+      // the package encloses both. One read of each decides for the report and
+      // the package, and every later read of the bytes is checked against it
+      // (packageFile.test.ts), so the two cannot disagree. The audit trail is off because
       // its verification run reads the files on its own.
-      const read = vi.spyOn(defaultCaptureStore, 'readArtifact')
+      const read = vi.spyOn(defaultCaptureStore, 'artifactFile')
       try {
         const entries = await exportMixed('one-read.zip', {
           include: {
@@ -5115,13 +5116,58 @@ describe('export', () => {
       }
     })
 
+    it("stops when a Capture's screenshot changes before the report reproduces it", async () => {
+      // The screenshot changes just after its first read and is put back at the manifest
+      // snapshot, which runs after the screenshots are loaded. Only the report's read of the
+      // screenshot can see the change: the zip's read finds the first bytes again.
+      const path = defaultCaptureStore.artifactPaths(fixture.caseId, fixture.captureId, 'png').abs
+      const bytes = readFileSync(path)
+      const originalRead = defaultCaptureStore.artifactFile.bind(defaultCaptureStore)
+      const read = vi.spyOn(defaultCaptureStore, 'artifactFile').mockImplementation((...args) => {
+        const file = originalRead(...args)
+        const [, id, type] = args
+        if (id === fixture.captureId && type === 'png') {
+          writeFileSync(path, Buffer.concat([bytes, Buffer.from('changed')]))
+        }
+        return file
+      })
+      const originalSnapshot = manifest.readManifestSnapshot
+      const snapshot = vi.spyOn(manifest, 'readManifestSnapshot').mockImplementation((...args) => {
+        writeFileSync(path, bytes)
+        return originalSnapshot(...args)
+      })
+      const append = vi.spyOn(manifest, 'appendManifestEntry')
+      try {
+        await expect(
+          exportMixed('screenshot-changed.zip', {
+            include: {
+              captures: true,
+              screenshots: true,
+              auditTrail: false,
+              notes: false,
+              annotations: 'none'
+            }
+          })
+        ).rejects.toThrow(
+          `${path} changed on disk after the export first read it; no package was written.`
+        )
+        expect(snapshot).not.toHaveBeenCalled()
+        expect(append).not.toHaveBeenCalled()
+        expect(existsSync(join(tempDir, 'screenshot-changed.zip'))).toBe(false)
+      } finally {
+        read.mockRestore()
+        snapshot.mockRestore()
+        append.mockRestore()
+      }
+    })
+
     it('fails the export when the one read of a page archive returns nothing', async () => {
       // The file stays in the Case directory, so a separate existence check
       // would still find it. The read that fills the package decides, and a
       // signed page archive it does not return stops the export (#2225).
-      const originalRead = defaultCaptureStore.readArtifact.bind(defaultCaptureStore)
+      const originalRead = defaultCaptureStore.artifactFile.bind(defaultCaptureStore)
       const read = vi
-        .spyOn(defaultCaptureStore, 'readArtifact')
+        .spyOn(defaultCaptureStore, 'artifactFile')
         .mockImplementation((caseId, id, type) =>
           id === fixture.captureId && type === 'mhtml' ? null : originalRead(caseId, id, type)
         )
@@ -5187,7 +5233,7 @@ describe('export', () => {
       const path = defaultCaptureStore.artifactPaths(fixture.caseId, fixture.captureId, 'png').abs
       const bytes = readFileSync(path)
       rmSync(path)
-      const read = vi.spyOn(defaultCaptureStore, 'readArtifact')
+      const read = vi.spyOn(defaultCaptureStore, 'artifactFile')
       const originalSnapshot = manifest.readManifestSnapshot
       const snapshot = vi.spyOn(manifest, 'readManifestSnapshot').mockImplementation((...args) => {
         writeFileSync(path, bytes)

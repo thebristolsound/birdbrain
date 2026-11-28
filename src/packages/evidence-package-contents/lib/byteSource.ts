@@ -1,5 +1,33 @@
+import { createHash } from 'crypto'
+
 /** A Capture's own files, by the type the Case store keeps each under. */
 export type CaptureFileType = 'mhtml' | 'png' | 'warc.gz' | 'pdf'
+
+/**
+ * One file an export may enclose, as its first read found it: the SHA-256 and
+ * size of those bytes, and the bytes again on request. A file read from disk
+ * is not held in memory between the two: `chunks` and `bytes` read it again and
+ * throw when what they read is not what the first read hashed, so a package
+ * cannot enclose bytes other than those its index describes.
+ */
+export interface PackageFile {
+  readonly sha256: string
+  readonly sizeBytes: number
+  /** The bytes in order. A chunk stays valid only until the next is asked for. */
+  chunks(): Iterable<Buffer>
+  /** The bytes whole. */
+  bytes(): Buffer
+}
+
+/** A file whose bytes are already in memory. */
+export function packageFileOf(bytes: Buffer): PackageFile {
+  return {
+    sha256: createHash('sha256').update(bytes).digest('hex'),
+    sizeBytes: bytes.length,
+    chunks: () => [bytes],
+    bytes: () => bytes
+  }
+}
 
 /**
  * Where an export reads the bytes it encloses: the Case directory in the app,
@@ -11,13 +39,13 @@ export interface PackageByteSource {
    * Throws when the file exists and cannot be read: that fails the export,
    * which writes no package, and is never a package narrowed without saying so.
    */
-  captureFile(capture: { caseId: string; id: string }, type: CaptureFileType): Buffer | null
+  captureFile(capture: { caseId: string; id: string }, type: CaptureFileType): PackageFile | null
   /**
    * The file of an Exhibit that is not a Capture, or a Derived File, by its
    * stored path. Null when the file cannot be read, whatever the reason; what
    * a null does to the export is stated on `ExportForm` (#1156, #2225).
    */
-  storedFile(storedPath: string): Buffer | null
+  storedFile(storedPath: string): PackageFile | null
 }
 
 /**
@@ -26,13 +54,13 @@ export interface PackageByteSource {
  * one decision and leave it out under another.
  */
 export function readOnce(source: PackageByteSource): PackageByteSource {
-  const answers = new Map<string, Buffer | null>()
-  const once = (key: string, read: () => Buffer | null): Buffer | null => {
+  const answers = new Map<string, PackageFile | null>()
+  const once = (key: string, read: () => PackageFile | null): PackageFile | null => {
     const known = answers.get(key)
     if (known !== undefined) return known
-    const bytes = read()
-    answers.set(key, bytes)
-    return bytes
+    const file = read()
+    answers.set(key, file)
+    return file
   }
   return {
     captureFile: (capture, type) =>

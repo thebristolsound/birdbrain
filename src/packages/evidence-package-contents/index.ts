@@ -13,5 +13,5 @@ export type {
   PackageContents,
   PackageContentsInput
 } from './lib/contents'
-export { readOnce } from './lib/byteSource'
-export type { CaptureFileType, PackageByteSource } from './lib/byteSource'
+export { packageFileOf, readOnce } from './lib/byteSource'
+export type { CaptureFileType, PackageByteSource, PackageFile } from './lib/byteSource'

@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from 'fs'
+import { writeFileSync } from 'fs'
 import { createHash } from 'crypto'
 import { join } from 'path'
 import * as caseRepo from '@main/services/db/caseRepo'
@@ -38,7 +38,8 @@ import type {
   ManifestSnapshot,
   SharedCaseSnapshot
 } from '@main/services/manifest'
-import { createStoredZip } from '@main/services/zip'
+import { writeStoredZip } from '@main/services/zip'
+import { readPackageFile } from '@main/services/packageFile'
 import { getTsaTrustBundle } from '@main/services/tsaTrust'
 import {
   buildTrustedTimeIndexFromEntries,
@@ -657,8 +658,8 @@ export async function generateReport(
   const derivedVerifications = await verifyCaseDerivedFiles(caseId)
 
   // Every Exhibit file and Derived File this export encloses is read through
-  // this, once. The report reproduces a screenshot from the same read the
-  // package encloses it from.
+  // this, once, for its hash. The report's screenshot and the zip's bytes are
+  // read again, and a read that differs from the first stops the export.
   const source = readOnce(caseDirectoryByteSource())
   // captureId -> sha256 of the raw on-disk screenshot, and whether the copy
   // reproduced in the report had annotations burned into its pixels.
@@ -675,8 +676,9 @@ export async function generateReport(
         `Loading screenshot ${index + 1} of ${total}...`,
         60 + Math.round(((index + 1) / total) * 20)
       )
-      const screenshotBuffer = source.captureFile(cap, 'png')
-      if (!screenshotBuffer) continue
+      const screenshot = source.captureFile(cap, 'png')
+      if (!screenshot) continue
+      const screenshotBuffer = screenshot.bytes()
 
       let finalBuffer: Buffer = screenshotBuffer
       if (options.include.annotations === 'burned') {
@@ -692,7 +694,7 @@ export async function generateReport(
       }
       // Digest the raw bytes, not the possibly-annotated copy: the package
       // content-addresses the unannotated original.
-      screenshotDigests.set(cap.id, sha256(screenshotBuffer))
+      screenshotDigests.set(cap.id, screenshot.sha256)
       data.screenshots.set(cap.id, finalBuffer.toString('base64'))
     }
   }
@@ -892,7 +894,7 @@ export async function generateReport(
       // in a non-evidentiary export is exactly what the class split forbids.
       if (!workingCopy)
         entries.unshift({ name: PACKAGE_ROOT_FILES.exportEntry, data: appended.line })
-      writeFileSync(options.outputPath, createStoredZip(entries))
+      writeStoredZip(options.outputPath, entries)
     } catch (err) {
       rollbackManifestEntry(caseDir, appended.anchorBytes)
       throw err
@@ -1232,7 +1234,7 @@ function groupDerivedFiles(files: DerivedFile[]): Map<string, DerivedFile[]> {
 }
 
 interface EvidenceZipResult {
-  // Zip entries ready for createStoredZip. Returned unwritten so the caller can
+  // Zip entries ready for writeStoredZip. Returned unwritten so the caller can
   // append the export manifest entry first and unshift its signed line as
   // export-entry.json before sealing the package (#398).
   entries: ArtifactAccumulator['entries']
@@ -1248,6 +1250,11 @@ interface EvidenceZipResult {
  * that one read returned. A probe at classification and a second read at
  * assembly is what let report.html name a path the zip did not contain.
  *
+ * That read hashes the file in chunks and keeps none of it (#932). The zip
+ * writer and the report's screenshot read the file again, and each of those
+ * reads stops the export when its bytes are not the ones the first read
+ * hashed (`readPackageFile`).
+ *
  * It is not the only read of those bytes: `verifyCaseDerivedFiles` hashes
  * every chain-anchored Derived File on every export, and when the audit trail
  * is included `verifyExhibit` hashes committed Exhibits and `verifyCaptures`
@@ -1261,17 +1268,17 @@ interface EvidenceZipResult {
  * export stops on that null (`ExportForm` in the contents package, #2225);
  * otherwise the file is disclosed as not enclosed and the export carries on.
  *
- * A Capture's own file is different. `CaptureStore.readArtifact` does not
+ * A Capture's own file is different. `CaptureStore.artifactFile` does not
  * catch, so one that is present but unreadable fails the whole export with
  * that error and writes no package: loud, and never a package narrowed
  * without saying so.
  */
 function caseDirectoryByteSource(): PackageByteSource {
   return {
-    captureFile: ({ caseId, id }, type) => defaultCaptureStore.readArtifact(caseId, id, type),
+    captureFile: ({ caseId, id }, type) => defaultCaptureStore.artifactFile(caseId, id, type),
     storedFile: (storedPath) => {
       try {
-        return readFileSync(defaultCaptureStore.resolveAbsolute(storedPath))
+        return readPackageFile(defaultCaptureStore.resolveAbsolute(storedPath))
       } catch {
         return null
       }
@@ -1371,7 +1378,7 @@ function buildEvidenceZip(
   const latestManifestEntry = manifest.head
 
   const chainIdOf = (id: string): string => data.chainIdByCaptureId.get(id) ?? id
-  for (const token of contents.timestampTokens) add(token.path, token.bytes)
+  for (const token of contents.timestampTokens) add(token.path, token.content)
   // Certificate material is gathered from every token the manifest carries,
   // including one the contents decision refuses to enclose: the bundle is
   // chain-building material for the authority rather than a claim about any
@@ -1499,7 +1506,7 @@ function buildEvidenceZip(
   // Derived Files. The paths come from the same helpers the standalone
   // verifier derives them with, so a file this writes is a file the verifier
   // looks for.
-  for (const file of contents.files) add(file.path, file.bytes)
+  for (const file of contents.files) add(file.path, file.content)
 
   const capturesMissingContent = data.captures
     .filter(({ id }) => contents.ofCapture(id).pageArchive === null)
@@ -1717,7 +1724,7 @@ function buildWorkingCopyZip(
   // Every enclosed file, in the order the contents decision gives: each
   // Capture's page archive, operator-facing screenshot and Derived Files, then
   // each other Exhibit's file and Derived Files.
-  for (const file of contents.files) add(file.path, file.bytes)
+  for (const file of contents.files) add(file.path, file.content)
 
   const captureIndex = data.captures.map((capture) => {
     const { pageArchive, screenshot } = contents.ofCapture(capture.id)

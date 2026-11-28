@@ -25,7 +25,7 @@ flowchart LR
 
 ## Review findings
 
-2 taken, 3 not taken.
+2 taken, 4 not taken.
 
 <details>
 <summary>Each review finding and what happened to it</summary>
@@ -35,8 +35,11 @@ flowchart LR
 - Not taken, test or style only: CodeRabbit, nitpick: a test name could say which selector it rescans.
 - Not taken, out of scope: Codex, P2: the selector list screen repeats the same query on open.
 - Not taken, filed as #2290: CodeRabbit, major: exported reports drop the selector name when it holds a comma.
+- Not taken, disputed: Codex, P1: the rescan drops renamed selectors. `src/selectors/rescan.ts:42` maps renamed ids before the match.
 
 </details>
+
+<!-- review findings answered through 2026-11-27T13:00:00Z -->
 
 ## Proof
 

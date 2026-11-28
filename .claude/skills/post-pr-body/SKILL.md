@@ -65,13 +65,14 @@ line. The layout follows the maintainer's work template, adapted to this reposit
    `- Not taken, <reason>: <reviewer>, <severity>: <finding>. <why>`, where the reason is
    `out of scope`, `disputed` (with the `file:line` at head that shows it), `test or style only`,
    `needs its own push` or `filed as #N`. The counts match the rows. Rows link no issue, pull
-   request or comment: the review fleet loads each such link as a source it must read and fails
-   when one is gone, empty or in another repository. The fleet reads who raised a row's finding
-   as a record and checks the rest of the row (ADR-0060), so the links go in the thread replies.
+   request or comment, and name no `#N` but the issue a `filed as #N` row was filed as: the
+   review fleet loads each as a source it must read and fails when one is gone, empty or in
+   another repository. The fleet reads a row as a record of review history and checks only its
+   `Fixed in` commit and its filed issue (ADR-0060), so the links go in the thread replies.
    Dispatch also keeps a hidden `<!-- review findings answered through <time> -->` line in the
    section, which its pre-gate reads. The section sits outside the Summary, so the merge commit
-   leaves it out. The merge paths check nothing in it beyond the well-formed `<details>` blocks
-   every section needs, so the record never holds up a merge and a PR opened before it existed
+   leaves it out. The merge paths check only what every section needs: its place in the order,
+   well-formed `<details>` blocks and plain words in its visible lines, so the record never holds up a merge and a PR opened before it existed
    still merges; a human author may leave it out.
 5. `## Proof`: one `<details>` block holding `Head: <sha>. Merge gate: <link or pending>.` and
    the `| Acceptance criterion | Proof | Result |` table, one row per acceptance criterion of
@@ -118,8 +119,8 @@ line. The layout follows the maintainer's work template, adapted to this reposit
    `check.sh --any-author` (what `merge-pr` runs under `gh`) accepts both forms, and still
    wants the line last when present.
 
-Everything above `## Verification` fits in 40 non-blank top-layer lines; collapsed lines do not
-count. The body has no other `##` sections: no acceptance-criteria walkthroughs and no reviewer
+Everything above `## Verification` fits in 40 non-blank top-layer lines; collapsed lines and the
+Review findings section do not count. The body has no other `##` sections: no acceptance-criteria walkthroughs and no reviewer
 notes. Fenced blocks appear only inside a `<details>` block. Claims name only actions you took
 and states you observed after taking them; a label another actor applies or a check CI will
 run is named as a handoff, never asserted.

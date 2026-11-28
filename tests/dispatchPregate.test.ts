@@ -1754,6 +1754,88 @@ describe.skipIf(!HAS_JQ)('pregate.sh spend cap', () => {
     expect(result.outputs.reason).toContain(TOTAL)
   })
 
+  // A local host (scripts/dispatch-workflow/phase.sh) has no Actions run to count, so it
+  // records each paid cycle it starts in a ledger the pre-gate reads beside the run list.
+  const ledger = (entries: { hoursAgo: number; targets: number[] | null }[] | string) => {
+    const path = join(dir, 'ledger.jsonl')
+    writeFileSync(
+      path,
+      typeof entries === 'string'
+        ? entries
+        : entries
+            .map(
+              (e, i) =>
+                JSON.stringify({
+                  at: hoursAgo(e.hoursAgo),
+                  targets: e.targets,
+                  mode: 'cycle',
+                  run: `run-${i}`
+                }) + '\n'
+            )
+            .join('')
+    )
+    return { DISPATCH_LOCAL_LEDGER: path }
+  }
+  const UNREAD = `could not read the local host's record of its paid cycles, so the spend cap holds this one: ${ACTIVITY}`
+
+  it('counts the cycles a local host recorded toward the total', () => {
+    const listed = paidHistory(others(2, 5, 8, 11, 14))
+    expect(run({ ...OWED, ...listed }, ledger([])).outputs).toEqual({
+      run: 'true',
+      reason: ACTIVITY
+    })
+
+    const result = run({ ...OWED, ...listed }, ledger([{ hoursAgo: 1, targets: [200] }]))
+    expect(result.status, result.stderr).toBe(0)
+    expect(result.outputs.run).toBe('false')
+    expect(result.outputs.reason).toContain(TOTAL)
+    expect(result.stdout).not.toContain(NOTICE)
+  })
+
+  it('holds a PR for a local cycle recorded against it, and not for one 7 hours old', () => {
+    const held = run(OWED, ledger([{ hoursAgo: 5, targets: [PR] }]))
+    expect(held.outputs).toEqual({ run: 'false', reason: HELD_PR })
+    const free = run(OWED, ledger([{ hoursAgo: 7, targets: [PR] }]))
+    expect(free.outputs).toEqual({ run: 'true', reason: ACTIVITY })
+  })
+
+  it('holds every target for a local cycle that recorded none', () => {
+    const result = run(OWED, ledger([{ hoursAgo: 5, targets: null }]))
+    expect(result.outputs).toEqual({ run: 'false', reason: HELD_PR })
+  })
+
+  it('leaves a local cycle older than 24 hours out of the count', () => {
+    const result = run(
+      { ...OWED, ...paidHistory(others(2, 5, 8, 11, 14)) },
+      ledger([{ hoursAgo: 25, targets: [PR] }])
+    )
+    expect(result.outputs).toEqual({ run: 'true', reason: ACTIVITY })
+  })
+
+  it.each([
+    ['holds a line that is not JSON', 'not json\n'],
+    ['holds a line with no time', '{"targets":[7]}\n'],
+    ['holds a time that is not a UTC timestamp', '{"at":"yesterday","targets":null}\n'],
+    ['holds targets that are not numbers', `{"at":"${hoursAgo(1)}","targets":"7"}\n`],
+    ['holds a line that is not a record', '[]\n']
+  ])('holds when the ledger %s', (_label, text) => {
+    const result = run(OWED, ledger(text))
+    expect(result.status, result.stderr).toBe(0)
+    expect(result.outputs).toEqual({ run: 'false', reason: UNREAD })
+  })
+
+  it('holds when the ledger it was given does not exist', () => {
+    const result = run(OWED, { DISPATCH_LOCAL_LEDGER: join(dir, 'no-such-ledger.jsonl') })
+    expect(result.status, result.stderr).toBe(0)
+    expect(result.outputs).toEqual({ run: 'false', reason: UNREAD })
+  })
+
+  it('holds report mode on a ledger it cannot read too', () => {
+    const result = run(OWED, ledger('not json\n'), 'report')
+    expect(result.outputs.run).toBe('false')
+    expect(result.outputs.reason).toContain("could not read the local host's record")
+  })
+
   it('holds a PR that had a cycle 5 hours ago, and names it', () => {
     const result = run({ ...OWED, ...paidHistory([{ hoursAgo: 5, targets: [PR] }]) })
     expect(result.status, result.stderr).toBe(0)

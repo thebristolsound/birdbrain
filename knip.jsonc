@@ -22,7 +22,9 @@
     "scripts/spikes/references-index-388.ts",
     "scripts/spikes/jev-bench/{run,build-fixtures}.mjs",
     // The benchmark runner chooses these modules through a template-string import.
-    "scripts/spikes/jev-bench/bench/*.mjs"
+    "scripts/spikes/jev-bench/bench/*.mjs",
+    // Copied into ~/.t3/workflows/ and loaded by T3 Code; its test imports it by a computed path.
+    "scripts/dispatch-workflow/birdbrain-dispatch.ts"
   ],
   "project": [
     "*.{js,mjs,cjs,ts}",

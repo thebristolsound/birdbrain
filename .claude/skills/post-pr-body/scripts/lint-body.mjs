@@ -41,7 +41,7 @@ const ATTACHMENT = /^https:\/\/github\.com\/user-attachments\/assets\/[\w-]+$/
 // inserts for an upload.
 const IMAGE = /!\[[^\]]*\]|<img\b/i
 // Image syntax quoted in a code span is text, not an image.
-const hasImage = (line) => IMAGE.test(line.replace(/(?<!`)(`+)(?!`)[\s\S]*?(?<!`)\1(?!`)/g, ''))
+const hasImage = (text) => IMAGE.test(stripCodeSpans(text))
 const PROOF_HEADER = /^\|\s*Acceptance criterion\s*\|\s*Proof\s*\|\s*Result\s*\|$/
 const TABLE_ROW = /^\s*\|.*\|.*$/
 const TABLE_RULE = /^\s*\|(\s*:?-+:?\s*\|)+\s*$/
@@ -90,6 +90,30 @@ function countSentences(text) {
   return (prose.match(/[.!?](?=\s|$)/g) || []).length
 }
 
+function stripCodeSpans(text) {
+  const runs = [...text.matchAll(/`+/g)]
+  let result = ''
+  let from = 0
+  for (let i = 0; i < runs.length; i++) {
+    let start = runs[i].index
+    let size = runs[i][0].length
+    const slashes = text.slice(0, start).match(/\\+$/)?.[0].length ?? 0
+    if (slashes % 2) {
+      start++
+      size--
+    }
+    if (!size) continue
+    const end = runs.findIndex((run, j) => j > i && run[0].length === size)
+    if (end < 0) continue
+    const after = runs[end].index + size
+    // Preserve line numbers for diagnostics; backslashes inside a code span are literal.
+    result += text.slice(from, start) + text.slice(start, after).replace(/[^\n]/g, '')
+    from = after
+    i = end
+  }
+  return result + text.slice(from)
+}
+
 function imageSources(tag) {
   const attributes = tag.slice(4, -1)
   const attribute = /\s+([^\s"'<>/=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/gy
@@ -113,15 +137,20 @@ function screenshotFindings(lines, posted) {
   }
   const declaration = declarations[0].trim()
   const no = declaration.match(/^- Visual changes: No\.\s+(\S.*)$/i)
-  const images = lines.filter(hasImage)
+  const imageText = lines.map(stripCodeSpans).join('\n')
   if (no) {
-    return images.length ? ['Visual changes is No but Screenshots contains screenshot images'] : []
+    return IMAGE.test(imageText)
+      ? ['Visual changes is No but Screenshots contains screenshot images']
+      : []
   }
   if (!/^- Visual changes: Yes\s*$/i.test(declaration)) {
     return ['Visual changes must say Yes, or No followed by a reason']
   }
 
   const findings = []
+  if (/!\[[^\]]*\n[^\]]*\]/.test(imageText)) {
+    findings.push('each screenshot image is written on one line in its Before or After row')
+  }
   const screens = new Map()
   for (const line of lines) {
     if (hasImage(line) && !/^\s*- (Before|After),/i.test(line)) {
@@ -312,11 +341,14 @@ export function lintBody(raw, { anyAuthor = false, posted = false } = {}) {
     if (!body.some((l) => PROOF_HEADER.test(l.trim()))) {
       findings.push('Proof holds the "| Acceptance criterion | Proof | Result |" table')
     } else {
-      // Only the acceptance table's own rows, up to the first line that is not a table row.
+      // GFM pads missing cells even when a continuation row has no pipes at all.
       const headerAt = body.findIndex((l) => PROOF_HEADER.test(l.trim()))
       const tail = body.slice(headerAt)
-      const endAt = tail.findIndex((l) => !TABLE_ROW.test(l))
-      const rows = tableRows(endAt < 0 ? tail : tail.slice(0, endAt))
+      const endAt = tail.findIndex((l) => l.trim() === '')
+      const rows = (endAt < 0 ? tail : tail.slice(0, endAt))
+        .slice(1)
+        .filter((l) => !TABLE_RULE.test(l))
+        .map(cells)
       const open = rows.find((r) => r.length !== 3 || r.some((c) => c === ''))
       if (!rows.length) findings.push('Proof has no filled row; a criterion nothing proves goes under Not done')
       else if (open) {
@@ -342,10 +374,16 @@ export function lintBody(raw, { anyAuthor = false, posted = false } = {}) {
     const rendered = shots.indexes.filter((i) => !inFence[i]).map((i) => visibleText[i])
     findings.push(...screenshotFindings(rendered, posted))
   }
-  const stray = visibleText.findIndex(
-    (l, i) => hasImage(l) && !inFence[i] && !(shots && i > shots.start && i < shots.end)
-  )
-  if (stray >= 0) findings.push(`line ${stray + 1}: images go in the Screenshots section, never elsewhere in the body`)
+  const outside = visibleText
+    .map((l, i) =>
+      inFence[i] || (shots && i > shots.start && i < shots.end) ? '' : stripCodeSpans(l)
+    )
+    .join('\n')
+  const stray = outside.search(IMAGE)
+  if (stray >= 0) {
+    const line = outside.slice(0, stray).split('\n').length
+    findings.push(`line ${line}: images go in the Screenshots section, never elsewhere in the body`)
+  }
 
   const notDone = section('## Not done')
   if (notDone) {

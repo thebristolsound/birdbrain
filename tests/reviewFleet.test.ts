@@ -2,10 +2,12 @@ import { spawnSync } from 'child_process'
 import {
   chmodSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
   rmSync,
+  symlinkSync,
   writeFileSync
 } from 'fs'
 import { tmpdir } from 'os'
@@ -751,6 +753,14 @@ describe.skipIf(!HAS_JQ)('a push to a PR', () => {
   const GH = `#!/usr/bin/env bash
 echo "$*" >> "$GH_LOG"
 if [ "$WITHDRAW_FAIL" = 1 ] && [ "$1 $2" = "pr edit" ]; then echo HTTP-502 >&2; exit 1; fi
+if [ "$1" = api ]; then printf '%s\\n' "$LIVE_LABELS"; exit 0; fi
+if [ "$1 $2" = "pr comment" ]; then
+  while [ $# -gt 0 ]; do
+    if [ "$1" = --body-file ]; then cat "$2" > "$COMMENT_OUT"; exit $?; fi
+    shift
+  done
+  exit 1
+fi
 if [ "$1 $2" = "pr view" ]; then
   [ "$VIEW_FAIL" = 1 ] && { echo HTTP-503 >&2; exit 1; }
   while [ $# -gt 0 ]; do
@@ -763,7 +773,13 @@ exit 0
 `
   const withdraw = (
     labels: string[] | string,
-    { fail = false, armed = false, unread = false } = {}
+    {
+      fail = false,
+      armed = false,
+      unread = false,
+      action = 'synchronize',
+      liveLabels = labels
+    } = {}
   ) => {
     const dir = mkdtempSync(join(tmpdir(), 'fleet-withdraw-'))
     try {
@@ -771,6 +787,7 @@ exit 0
       writeFileSync(gh, GH)
       chmodSync(gh, 0o755)
       const log = join(dir, 'log')
+      const notice = join(dir, 'notice')
       writeFileSync(log, '')
       const result = spawnSync(
         'bash',
@@ -784,6 +801,7 @@ exit 0
             ...process.env,
             PATH: `${dir}:${process.env.PATH}`,
             GH_LOG: log,
+            COMMENT_OUT: notice,
             WITHDRAW_FAIL: fail ? '1' : '0',
             PR_JSON: JSON.stringify({
               number: 7,
@@ -791,8 +809,10 @@ exit 0
             }),
             VIEW_FAIL: unread ? '1' : '0',
             PR: '7',
+            ACTION: action,
             GITHUB_REPOSITORY: REPO,
-            LABELS: typeof labels === 'string' ? labels : JSON.stringify(labels)
+            LABELS: typeof labels === 'string' ? labels : JSON.stringify(labels),
+            LIVE_LABELS: typeof liveLabels === 'string' ? liveLabels : JSON.stringify(liveLabels)
           }
         }
       )
@@ -800,6 +820,8 @@ exit 0
       return {
         status: result.status,
         stderr: result.stderr,
+        notified: calls.some((l) => l.startsWith('pr comment 7 ')),
+        notice: existsSync(notice) ? readFileSync(notice, 'utf8') : '',
         disarmed: calls.some((l) => l.startsWith('pr merge 7 ') && l.includes('--disable-auto')),
         removed: calls
           .filter((l) => l.includes('--remove-label'))
@@ -816,12 +838,13 @@ exit 0
   }
 
   it.each([
-    ['synchronize', {}, true],
-    ['edited', { body: { from: 'Original description' } }, true],
-    ['edited', { body: { from: '' } }, true],
-    ['edited', { title: { from: 'Old title' } }, false],
-    ['labeled', {}, false]
-  ])('routes %s with %j to withdrawal: %s', (action, changes, expected) => {
+    ['synchronize', {}, 'open', true],
+    ['edited', { body: { from: 'Original description' } }, 'open', true],
+    ['edited', { body: { from: '' } }, 'open', true],
+    ['edited', { body: { from: 'Original description' } }, 'closed', false],
+    ['edited', { title: { from: 'Old title' } }, 'open', false],
+    ['labeled', {}, 'open', false]
+  ])('routes %s with %j on an %s PR to withdrawal: %s', (action, changes, state, expected) => {
     const workflow = readFileSync(join(WORKFLOWS, 'merge-on-label.yml'), 'utf8')
     const types = workflow
       .match(/pull_request_target:\n\s+types: \[([^\]]+)\]/)?.[1]
@@ -830,14 +853,34 @@ exit 0
     const condition = workflow.match(/\n {2}withdraw:\n\s+if: (.*)/)?.[1]
     expect(condition).toBeDefined()
     // Evaluate the workflow's actual predicate, then exercise its script with an armed PR.
-    const github = { event_name: 'pull_request_target', event: { action, changes } }
+    const github = {
+      event_name: 'pull_request_target',
+      event: { action, changes, pull_request: { state } }
+    }
     const runs = types?.includes(action) && new Function('github', `return (${condition})`)(github)
     expect(Boolean(runs)).toBe(expected)
     if (runs) {
-      const result = withdraw(['merge'], { armed: true })
+      const result = withdraw(['merge'], { armed: true, action })
       expect(result.status, result.stderr).toBe(0)
       expect(result.disarmed).toBe(true)
     }
+  })
+
+  it('preserves commit-bound sign-offs when only the body changes', () => {
+    const result = withdraw(['approved', 'merge', 'break-glass'], { armed: true, action: 'edited' })
+    expect(result.status, result.stderr).toBe(0)
+    expect(result.removed).toEqual(['merge'])
+    expect(result.disarmed).toBe(true)
+  })
+
+  it('removes a merge label applied after the edit event and explains the withdrawal', () => {
+    const result = withdraw([], { armed: true, action: 'edited', liveLabels: ['merge'] })
+    expect(result.status, result.stderr).toBe(0)
+    expect(result.removed).toEqual(['merge'])
+    expect(result.disarmed).toBe(true)
+    expect(result.notified).toBe(true)
+    expect(result.notice).toContain('description changed')
+    expect(result.notice).toContain('After this workflow finishes, apply the merge label again')
   })
 
   it('takes the break-glass override off with the sign-off and the merge request', () => {
@@ -897,6 +940,89 @@ exit 0
       expect(r.status).not.toBe(0)
     }
   )
+})
+
+describe('merge request ordering', () => {
+  it('serializes PR runs without replacing pending withdrawals', () => {
+    const workflow = readFileSync(join(WORKFLOWS, 'merge-on-label.yml'), 'utf8')
+    expect(workflow).toMatch(
+      /^concurrency:\n {2}group: merge-on-label-\$\{\{ github.event.pull_request.number \|\| github.event.issue.number \}\}\n {2}queue: max$/m
+    )
+  })
+
+  it.each([false, true])('refuses a body changed during authorization: %s', (changed) => {
+    const dir = mkdtempSync(join(tmpdir(), 'merge-request-order-'))
+    try {
+      mkdirSync(join(dir, '.github'))
+      writeFileSync(join(dir, '.github/CODEOWNERS'), `* @${MAINTAINER}\n`)
+      symlinkSync(join(__dirname, '..', '.claude'), join(dir, '.claude'), 'dir')
+      const log = join(dir, 'calls')
+      const edited = join(dir, 'edited')
+      const body = join(__dirname, '../.claude/skills/post-pr-body/scripts/fixtures/pass-filled.md')
+      writeFileSync(
+        join(dir, 'gh'),
+        `#!/usr/bin/env bash
+echo "$*" >> "$GH_LOG"
+if [ "$1" = api ]; then
+  case "$2" in
+    user)
+      [ "$CHANGE_ON_LOGIN" = 0 ] || touch "$EDITED"
+      echo birdbrain-agent ;;
+    */labels) echo merge ;;
+    */pulls/7)
+      if [ "$4" = .title ]; then echo 'fix(posting): test request';
+      elif [ -f "$EDITED" ]; then echo 'Changed description';
+      else cat "$BODY"; fi ;;
+  esac
+fi
+exit 0
+`
+      )
+      chmodSync(join(dir, 'gh'), 0o755)
+      const result = spawnSync(
+        'bash',
+        [
+          '-c',
+          stepScript('merge-on-label.yml', 'request', 'Enable auto-merge as the machine account')
+        ],
+        {
+          cwd: dir,
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            PATH: `${dir}:${process.env.PATH}`,
+            GH_LOG: log,
+            CHANGE_ON_LOGIN: changed ? '1' : '0',
+            EDITED: edited,
+            BODY: body,
+            PR: '7',
+            SHA,
+            SENDER: MAINTAINER,
+            AUTHOR: MAINTAINER,
+            DRAFT: 'false',
+            BASE: 'main',
+            AGENT_TOKEN: 'test-token',
+            AGENT_LOGIN: MACHINE,
+            GITHUB_REPOSITORY: REPO
+          }
+        }
+      )
+      const calls = readFileSync(log, 'utf8')
+      if (changed) {
+        expect(result.status).toBe(1)
+        expect(result.stdout).toContain(
+          'description changed while the merge request was being checked'
+        )
+        expect(calls).not.toContain('--auto --squash')
+        expect(calls).toContain('--remove-label merge')
+      } else {
+        expect(result.status, result.stderr).toBe(0)
+        expect(calls).toContain('--auto --squash')
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
 })
 
 // leg.sh up to and including a stubbed `claude`: `gh pr view` answers from `pr` through its

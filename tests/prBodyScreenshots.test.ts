@@ -27,6 +27,80 @@ beforeEach(() => {
 afterEach(() => rmSync(dir, { recursive: true, force: true }))
 
 describe('PR screenshot evidence', () => {
+  it.each([
+    'Existing matches are never cleared',
+    '| Existing matches are never cleared',
+    'Existing matches are never cleared | | pending'
+  ])('checks every continuation of the acceptance table: %s', (row) => {
+    const body = filled.replace(
+      '| Existing matches are never cleared | `selectorLifecycle.test.ts` insert-or-ignore case | pass |',
+      row
+    )
+    expect(lintBody(body, { posted: true })).toEqual([
+      expect.stringContaining('lacks a proof or result')
+    ])
+  })
+
+  it.each([1, 3])('does not hide images behind %i escape backslashes', (count) => {
+    const quote = '\\'.repeat(count) + '`'
+    const body = filled.replace(
+      '`pnpm preflight` at',
+      `${quote}![shot](/tmp/after.png)${quote}\n\n\`pnpm preflight\` at`
+    )
+    expect(lintBody(body, { posted: true })).toEqual([
+      expect.stringContaining('images go in the Screenshots section')
+    ])
+  })
+
+  it.each([0, 2, 4])('accepts code spans preceded by %i literal backslashes', (count) => {
+    const quote = '\\'.repeat(count) + '`'
+    const body = filled.replace(
+      '`pnpm preflight` at',
+      `${quote}![shot](/tmp/after.png)\`\n\n\`pnpm preflight\` at`
+    )
+    expect(lintBody(body, { posted: true })).toEqual([])
+  })
+
+  it('detects multiline image text outside Screenshots and with a No declaration', () => {
+    const image = `![local\nshot](${attachment('wrapped')})`
+    expect(
+      lintBody(filled.replace('`pnpm preflight` at', `${image}\n\n\`pnpm preflight\` at`), {
+        posted: true
+      })
+    ).toEqual([expect.stringContaining('images go in the Screenshots section')])
+    expect(lint(`${noVisualChange}\n${image}`, true)).toEqual([
+      expect.stringContaining('Visual changes is No but Screenshots contains screenshot images')
+    ])
+    expect(
+      lint(
+        `- Visual changes: Yes\n${rows(attachment('before'), attachment('after'))}\n${image}`,
+        true
+      )
+    ).toEqual([expect.stringContaining('each screenshot image is written on one line')])
+  })
+
+  it.each([7, 12])(
+    'accepts a matching %i-character proof head and rejects a different prefix',
+    (length) => {
+      const head = '2c8c60c22a9dc92a778ef74653b7d5aa8be2ee4c'
+      const body = filled.replace(`Head: \`${head}\`.`, `Head: \`${head.slice(0, length)}\`.`)
+      expect(lintBody(body, { posted: true })).toEqual([])
+      expect(
+        lintBody(
+          body.replace(`Head: \`${head.slice(0, length)}\`.`, `Head: \`${'f'.repeat(length)}\`.`),
+          { posted: true }
+        )
+      ).toEqual([expect.stringContaining('but Verification ran at')])
+    }
+  )
+
+  it('isolates the HTML image refusal from every other rule', () => {
+    const body = readFileSync(join(scripts, 'fixtures/fail-html-image-outside.md'), 'utf8')
+    expect(lintBody(body, { posted: true })).toEqual([
+      expect.stringContaining('images go in the Screenshots section')
+    ])
+  })
+
   it.each(['    ```', '\t```', '```invalid`info'])(
     'does not hide images after a false fence: %j',
     (fence) => {

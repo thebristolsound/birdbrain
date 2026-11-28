@@ -27,9 +27,8 @@ name: Merge on label
 #   stamp on the current head, so the sign-off names one commit however the head later moves.
 #   An `approved` from anyone else is removed.
 #
-# No concurrency group: GitHub keeps one pending run per group and cancels the rest, which could
-# drop a withdrawal queued behind a request. Each run instead reconciles what it acts on: the
-# request re-reads the label and arms auto-merge only for the head it was labelled at.
+# Serialize requests and withdrawals; queue: max retains pending withdrawals instead of
+# replacing them. Each run still re-reads the state it acts on because queue arrival can vary.
 # - `issue-evidence`, when an issue gains `evidence-affecting`, cancels the merge request of
 #   every open PR that closes it: merge-gate cannot see an issue label change until it next runs.
 #
@@ -43,6 +42,10 @@ on:
     types: [labeled, unlabeled, synchronize, edited]
   issues:
     types: [labeled]
+
+concurrency:
+  group: merge-on-label-${{ github.event.pull_request.number || github.event.issue.number }}
+  queue: max
 
 permissions:
   contents: read
@@ -113,11 +116,14 @@ jobs:
               || refuse "the description has no Summary section to build the merge message from"
           fi
 
+          login="$(GH_TOKEN="$AGENT_TOKEN" gh api user --jq .login)"
+          [ "$login" = "${AGENT_LOGIN:-birdbrain-agent}" ] || refuse "the machine account token authenticates as $login"
+          gh api "repos/$GITHUB_REPOSITORY/pulls/$PR" --jq '.body // ""' > "$out/current-body.md"
+          cmp -s "$out/body.md" "$out/current-body.md" \
+            || refuse "the description changed while the merge request was being checked"
           # The run may have queued behind a removal; enable nothing the maintainer took back.
           gh api "repos/$GITHUB_REPOSITORY/issues/$PR/labels" --jq '.[].name' | grep -qx merge \
             || { echo "the merge label is gone; nothing enabled"; exit 0; }
-          login="$(GH_TOKEN="$AGENT_TOKEN" gh api user --jq .login)"
-          [ "$login" = "${AGENT_LOGIN:-birdbrain-agent}" ] || refuse "the machine account token authenticates as $login"
           GH_TOKEN="$AGENT_TOKEN" gh pr merge "$PR" --repo "$GITHUB_REPOSITORY" --auto --squash \
             --match-head-commit "$SHA" --subject "$(cat "$out/subject.txt")" --body-file "$out/body.txt" \
             || refuse "GitHub would not enable auto-merge; read the pull request's merge box"
@@ -254,7 +260,7 @@ jobs:
           done
 
   withdraw:
-    if: github.event_name == 'pull_request_target' && (github.event.action == 'synchronize' || (github.event.action == 'edited' && github.event.changes.body))
+    if: github.event_name == 'pull_request_target' && github.event.pull_request.state == 'open' && (github.event.action == 'synchronize' || (github.event.action == 'edited' && github.event.changes.body))
     permissions:
       contents: write
       pull-requests: write
@@ -266,6 +272,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.pull_request.number }}
+          ACTION: ${{ github.event.action }}
           LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
         run: |
           set -euo pipefail
@@ -273,6 +280,17 @@ jobs:
           # break-glass goes too (ADR-0057): the override is for the commit it was applied on.
           # A removal that fails fails the job, but only after auto-merge is off (#1753).
           failed=0
+          removed_merge=0
+          withdraw_labels=(approved merge break-glass)
+          if [ "$ACTION" = edited ]; then
+            # Sign-offs name a commit; editing its description does not replace that commit.
+            withdraw_labels=(merge)
+            if ! LABELS="$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/labels" --jq '[.[].name]')"; then
+              echo "::error::could not read the current label list"
+              failed=1
+              LABELS='["merge"]'
+            fi
+          fi
           # A label list that cannot be read counts as every label present: try all, then fail.
           # Slurped, because `jq -e` alone reports on the last of several values.
           if ! jq -e -s 'length == 1 and (.[0] | type == "array" and all(type == "string"))' \
@@ -281,10 +299,11 @@ jobs:
             failed=1
             LABELS='["approved", "merge", "break-glass"]'
           fi
-          for label in approved merge break-glass; do
+          for label in "${withdraw_labels[@]}"; do
             if jq -e --arg l "$label" 'index($l)' <<< "$LABELS" > /dev/null; then
               if gh pr edit "$PR" --repo "$GITHUB_REPOSITORY" --remove-label "$label" >/dev/null; then
                 echo "removed $label"
+                [ "$label" != merge ] || removed_merge=1
               else
                 echo "::error::could not remove $label"
                 failed=1
@@ -299,5 +318,11 @@ jobs:
           if [ "$auto" != "false" ]; then
             gh pr merge "$PR" --repo "$GITHUB_REPOSITORY" --disable-auto
             echo "auto-merge disabled"
+          fi
+          if [ "$ACTION" = edited ] && { [ "$removed_merge" = 1 ] || [ "$auto" != false ]; }; then
+            notice="$(mktemp)"
+            trap 'rm -f "$notice"' EXIT
+            printf 'Merge request withdrawn because the description changed. After this workflow finishes, apply the merge label again to request a merge of the current description.\n' > "$notice"
+            gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --body-file "$notice"
           fi
           exit "$failed"

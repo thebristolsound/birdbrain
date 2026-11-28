@@ -79,6 +79,15 @@ authorized pushing the branch and opening the PR. The
 quotes the request, the implementation summary, and the publication approval from the original
 session. Screenshot enforcement is an implementation choice of this PR.
 
+**Description edits, 2026-11-27.** On an open PR, a body edit schedules withdrawal of the merge
+request and disables auto-merge. The sign-off and review override stay bound to the unchanged
+commit; a push still withdraws both under ADR-0041 and ADR-0057. Closed PRs keep their labels
+when someone ticks an After merge checkbox. The label workflow serializes its runs with
+`queue: max`, re-reads the body before arming auto-merge, and explains a description withdrawal
+in a comment. The maintainer waits for that run to finish before applying `merge` again.
+These checks are asynchronous: the final body read and GitHub's merge operation are separate
+calls, so this is not an atomic body-version condition on the merge.
+
 The PR body shape is the same for humans and agents: `.github/pull_request_template.md` is a
 copy of the skill's template. The one difference is the attribution line: an agent ends with
 it, a human omits it, and the `--any-author` mode of the linter (what `merge-pr` runs under

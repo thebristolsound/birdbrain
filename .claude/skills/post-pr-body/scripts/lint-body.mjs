@@ -131,6 +131,10 @@ function imageSources(tag) {
 }
 
 function screenshotFindings(lines, posted) {
+  const indentedRow = /^(?: {4}| {0,3}\t)[ \t]*- (?:Visual changes:|(?:Before|After),)/i
+  if (lines.some((line) => indentedRow.test(line))) {
+    return ['screenshot rows cannot use code-block indentation; use at most three leading spaces']
+  }
   const declarations = lines.filter((line) => /^\s*- Visual changes:/i.test(line))
   if (declarations.length !== 1) {
     return ['Screenshots needs one "- Visual changes: Yes" or "- Visual changes: No. <reason>" declaration']

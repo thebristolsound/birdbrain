@@ -27,6 +27,37 @@ beforeEach(() => {
 afterEach(() => rmSync(dir, { recursive: true, force: true }))
 
 describe('PR screenshot evidence', () => {
+  it.each(['    ', '        ', '\t', ' \t'])(
+    'rejects screenshot evidence with code-block indentation: %j',
+    (indent) => {
+      const pair = rows(attachment('before'), attachment('after'))
+        .split('\n')
+        .map((line) => indent + line)
+        .join('\n')
+      expect(lint(`- Visual changes: Yes\n\n${pair}`, true)).toEqual([
+        expect.stringContaining('screenshot rows cannot use code-block indentation')
+      ])
+    }
+  )
+
+  it('accepts a rendered pair with up to three leading spaces', () => {
+    const pair = rows(attachment('before'), attachment('after'))
+      .split('\n')
+      .map((line) => '   ' + line)
+      .join('\n')
+    expect(lint(`- Visual changes: Yes\n\n${pair}`, true)).toEqual([])
+  })
+
+  it.each(['Yes', 'No. No screen changed.'])(
+    'rejects an indented visual declaration: %s',
+    (decision) => {
+      const pair = decision === 'Yes' ? rows(attachment('before'), attachment('after')) : ''
+      expect(lint(`        - Visual changes: ${decision}\n\n${pair}`, true)).toEqual([
+        expect.stringContaining('screenshot rows cannot use code-block indentation')
+      ])
+    }
+  )
+
   it.each([
     'Existing matches are never cleared',
     '| Existing matches are never cleared',

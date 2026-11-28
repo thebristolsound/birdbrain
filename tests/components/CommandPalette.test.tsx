@@ -280,6 +280,118 @@ describe('the action rows', () => {
   })
 })
 
+// The Case list scrolls once it holds more rows than fit. The arrow keys scroll it to the
+// highlighted row; the pointer is already over its row, so hovering scrolls nothing (#2019).
+describe('the Case list scroll', () => {
+  const scrolled: Element[] = []
+  const scrollIntoView = vi.fn(function (this: Element) {
+    scrolled.push(this)
+  })
+
+  beforeEach(() => {
+    scrolled.length = 0
+    scrollIntoView.mockClear()
+    // jsdom has no layout, so it has no scrollIntoView to spy on.
+    Element.prototype.scrollIntoView = scrollIntoView
+  })
+
+  afterEach(() => {
+    delete (Element.prototype as Partial<Element>).scrollIntoView
+  })
+
+  function caseRow(name: string): HTMLButtonElement {
+    return screen.getByText(name).closest('button') as HTMLButtonElement
+  }
+
+  async function openWithTenCases() {
+    const cases = Array.from({ length: 10 }, (_, i) =>
+      makeCase(`c${i + 1}`, `Case ${String(i + 1).padStart(2, '0')}`)
+    )
+    fakeBridge({
+      cases: { list: vi.fn(async () => cases) },
+      captures: { countsByCase: vi.fn(async () => ({})) }
+    })
+    useAppStore.setState({ commandPaletteOpen: true })
+    render(<CommandPalette />, { wrapper: Wrapper })
+    await screen.findByText('Case 10')
+    return screen.getByPlaceholderText('Switch case...')
+  }
+
+  it('scrolls the row ArrowDown highlights into view by the least amount', async () => {
+    const input = await openWithTenCases()
+
+    for (let i = 0; i < 9; i++) fireEvent.keyDown(input, { key: 'ArrowDown' })
+
+    expect(scrolled).toHaveLength(9)
+    expect(scrolled.at(-1)).toBe(caseRow('Case 10'))
+    expect(scrollIntoView).toHaveBeenLastCalledWith({ block: 'nearest' })
+  })
+
+  it('scrolls the row ArrowUp highlights into view', async () => {
+    const input = await openWithTenCases()
+    for (let i = 0; i < 9; i++) fireEvent.keyDown(input, { key: 'ArrowDown' })
+    scrolled.length = 0
+
+    fireEvent.keyDown(input, { key: 'ArrowUp' })
+
+    expect(scrolled).toEqual([caseRow('Case 09')])
+  })
+
+  it('scrolls nothing for the action rows, which sit outside the list', async () => {
+    const input = await openWithTenCases()
+    for (let i = 0; i < 9; i++) fireEvent.keyDown(input, { key: 'ArrowDown' })
+    scrolled.length = 0
+
+    fireEvent.keyDown(input, { key: 'ArrowDown' })
+
+    expect(document.querySelector('[role="dialog"] button.bg-accent-subtle')?.textContent).toBe(
+      'Create new case'
+    )
+    expect(scrolled).toEqual([])
+  })
+
+  it('does not scroll when the pointer moves the highlight', async () => {
+    await openWithTenCases()
+
+    fireEvent.mouseMove(caseRow('Case 08'))
+
+    expect(caseRow('Case 08').className).toContain('bg-accent-subtle')
+    expect(scrollIntoView).not.toHaveBeenCalled()
+  })
+
+  // ArrowUp on the first row moves nothing, so the hover after it must not take a scroll.
+  it('does not scroll on a hover after an arrow key that moved nothing', async () => {
+    const input = await openWithTenCases()
+    fireEvent.keyDown(input, { key: 'ArrowUp' })
+
+    fireEvent.mouseMove(caseRow('Case 08'))
+
+    expect(scrollIntoView).not.toHaveBeenCalled()
+  })
+
+  // Chromium fires mouseenter, and no mousemove, on the row a scroll slides under a pointer
+  // that has not moved. Taking the highlight there would undo the arrow key that scrolled.
+  it('keeps the highlight when a scroll slides another row under a resting pointer', async () => {
+    const input = await openWithTenCases()
+    for (let i = 0; i < 9; i++) fireEvent.keyDown(input, { key: 'ArrowDown' })
+
+    fireEvent.mouseEnter(caseRow('Case 08'))
+
+    expect(caseRow('Case 10').className).toContain('bg-accent-subtle')
+  })
+
+  it('goes back to the top when the query changes', async () => {
+    const input = await openWithTenCases()
+    const list = screen.getByTestId('palette-case-list')
+    list.scrollTop = 120
+
+    fireEvent.change(input, { target: { value: 'Case' } })
+
+    expect(list.scrollTop).toBe(0)
+    expect(caseRow('Case 01').className).toContain('bg-accent-subtle')
+  })
+})
+
 describe('the case result row', () => {
   // getByText matches the whole normalized text of the node, so '1 capture'
   // does not match a row reading '1 captures' — which is what pins #471.

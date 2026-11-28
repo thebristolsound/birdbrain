@@ -1,6 +1,6 @@
 # PR 2278 review handoff
 
-**Status:** active checkpoint before verification of the indentation fix. The
+**Status:** active checkpoint before verification of the list-fence fix. The
 [PR description](https://github.com/thebristolsound/birdbrain/pull/2278) holds the later
 verification result and current head.
 
@@ -10,14 +10,17 @@ verification result and current head.
 - `581e26366`: proof continuation rows, escaped and multiline image syntax, bounded merge
   queuing, description freshness, and commit-bound sign-offs. Its full verification passed:
   12,700 tests passed, 66 skipped, and coverage thresholds met.
+- `12d28b03d`: screenshot declarations and Before/After rows cannot use code-block
+  indentation. Its full verification passed: 12,707 tests passed, 66 skipped, and coverage
+  thresholds met. The finding received a reply and its thread is resolved.
 
 ## In flight at this checkpoint
 
-The [indented screenshot finding](https://github.com/thebristolsound/birdbrain/pull/2278#discussion_r4724819778)
-reproduced: the validator accepted a pair written as literal code. The pending fix rejects
-code-block indentation on screenshot declarations and Before/After rows. Four indentation
-reproductions failed before the fix; all seven focused cases pass afterward, including
-ordinary three-space indentation and indented declarations. Full verification at the new
+The list-fence finding reproduced: a two-space opening fence after the last Verification
+bullet hid an unindented image from validation. Three indentation reproductions failed before
+the fix. The pending fix rejects indented opening fences rather than guessing when a list
+container ends. Regression cases cover one to three spaces with backticks and tildes; an
+unindented opener with an indented closer remains accepted. Full verification at the new
 commit is still owed.
 
 ## Exact next command
@@ -25,7 +28,7 @@ commit is still owed.
 After committing this checkpoint with the fix:
 
 ```bash
-mise exec -- pnpm preflight > /tmp/birdbrain-2278-indent-preflight.log 2>&1
+mise exec -- pnpm preflight > /tmp/birdbrain-2278-fence-preflight.log 2>&1
 ```
 
 After it passes, push the branch, refresh the PR's Proof and Verification sections, and reply
@@ -34,5 +37,5 @@ the maintainer's action.
 
 ## Open questions
 
-None for the indentation fix. The separate final-body-read/merge timing window remains
+None for the list-fence fix. The separate final-body-read/merge timing window remains
 documented in ADR-0022 and the PR's Not done section; the operations are not atomic.

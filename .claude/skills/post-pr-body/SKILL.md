@@ -101,9 +101,10 @@ line. The layout follows the maintainer's work template, adapted to this reposit
 
 Everything above `## Verification` fits in 40 non-blank top-layer lines; collapsed lines do not
 count. The body has no other `##` sections: no acceptance-criteria walkthroughs and no reviewer
-notes. Fenced blocks appear only inside a `<details>` block. Claims name only actions you took
-and states you observed after taking them; a label another actor applies or a check CI will
-run is named as a handoff, never asserted.
+notes. Fenced blocks appear only inside a `<details>` block. Start each opening fence in the
+first column: the check rejects indented openers because list boundaries can end their block.
+Claims name only actions you took and states you observed after taking them; a label another
+actor applies or a check CI will run is named as a handoff, never asserted.
 
 Every sentence is one the review fleet can settle from its inputs: the diff and the repository
 at head, and the issues, pull requests, comments and reviews of this repository that the body

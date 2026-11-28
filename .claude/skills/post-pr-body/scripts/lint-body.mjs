@@ -367,7 +367,13 @@ export function lintBody(raw, { anyAuthor = false, posted = false } = {}) {
   const inFence = visibleText.map((l) => {
     const m = l.match(/^ {0,3}(`{3,}|~{3,})(.*)$/)
     if (!open) {
-      if (m && (m[1][0] !== '`' || !m[2].includes('`'))) open = m[1]
+      if (m && (m[1][0] !== '`' || !m[2].includes('`'))) {
+        if (l.startsWith(' ')) {
+          findings.push('fence openers must start in the first column; indented openers can change containers')
+          return false
+        }
+        open = m[1]
+      }
       return Boolean(open)
     }
     if (m && m[1][0] === open[0] && m[1].length >= open.length && l.trim() === m[1]) open = null

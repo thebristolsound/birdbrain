@@ -27,6 +27,28 @@ beforeEach(() => {
 afterEach(() => rmSync(dir, { recursive: true, force: true }))
 
 describe('PR screenshot evidence', () => {
+  it.each([' ```', '  ```', '   ```', ' ~~~', '  ~~~', '   ~~~'])(
+    'rejects ambiguous indented fence openers: %j',
+    (fence) => {
+      const body = filled.replace(
+        /(- `pnpm coverage:diff`[^\n]*\n)/,
+        `$1${fence}\n![tracker](https://example.com/pixel.png)\n`
+      )
+      expect(lintBody(body, { posted: true })).toEqual([
+        expect.stringContaining('fence openers must start in the first column'),
+        expect.stringContaining('images go in the Screenshots section')
+      ])
+    }
+  )
+
+  it('accepts an unindented fence with an indented closing fence', () => {
+    const body = filled.replace(
+      '`pnpm preflight` at',
+      '```text\n![quoted](image.png)\n  ```\n\n`pnpm preflight` at'
+    )
+    expect(lintBody(body, { posted: true })).toEqual([])
+  })
+
   it.each(['    ', '        ', '\t', ' \t'])(
     'rejects screenshot evidence with code-block indentation: %j',
     (indent) => {

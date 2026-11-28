@@ -318,7 +318,10 @@ newest_trusted() {
 # so an edited description cannot hold off activity that has not happened yet.
 answered_through() {
   local at now
-  at="$(jq -r '.body // ""' <<<"$1" \
+  # Only the Review findings section counts: the same text quoted elsewhere in the body, such as
+  # an example in Proof, is not dispatch's record.
+  at="$(jq -r '.body // ""' <<<"$1" | tr -d '\r' \
+    | awk '/^## /{in_section = ($0 == "## Review findings")} in_section' \
     | grep -oE '<!-- review findings answered through [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z -->' \
     | tail -1 | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]{8}Z')" || return 0
   now="$(date -u +%FT%TZ)"
@@ -521,6 +524,9 @@ for n in $(jq -r '.[]' <<<"$prs"); do
   # pipeline's own verdict counts there.
   after="$head_at"
   than="its head ($head_at)"
+  # The Review findings section records when the last round started reading the reviews
+  # (ADR-0060).
+  through="$(answered_through "$pr")"
   if [ -n "$woken_at" ]; then
     newest="$(newest_trusted "$items" others)"
     if [[ "$answered" > "$head_at" ]]; then
@@ -529,10 +535,8 @@ for n in $(jq -r '.[]' <<<"$prs"); do
     fi
   elif [ "$state" = success ]; then
     newest="$(newest_trusted "$items" others)"
-    # The Review findings section records when the last round started reading the reviews
-    # (ADR-0060). Activity after that is owed whether or not the round pushed: a comment posted
+    # Activity after the recorded read is owed whether or not the round pushed: a comment posted
     # while a fix round ran is older than the head it pushed, yet nothing answered it.
-    through="$(answered_through "$pr")"
     if [ -n "$through" ]; then
       after="$through"
       than="the review findings answered through $through"
@@ -540,13 +544,17 @@ for n in $(jq -r '.[]' <<<"$prs"); do
   else
     newest="$(newest_trusted "$items" all)"
   fi
-  # A review/fleet failure posted after the last answer is owed a cycle too, on a woken PR as
-  # on any other with a passing pre-pass: no comment announces it (ADR-0060).
+  # A review/fleet failure posted after the last recorded read is owed a cycle too, on a woken
+  # PR as on any other with a passing pre-pass: no comment announces it (ADR-0060), and a woken
+  # PR's later reply does not stand for having read it.
   if [ "$state" = success ]; then
+    fleet_after="${through:-$after}"
+    fleet_than="$than"
+    [ -z "$through" ] || fleet_than="the review findings answered through $through"
     fleet="$(trusted_statuses "$R" "$sha" "$me" \
       | jq -c '.["review/fleet"] // {state: "absent", at: ""}')"
-    if [ "$(jq -r .state <<<"$fleet")" = failure ] && [[ "$(jq -r .at <<<"$fleet")" > "$after" ]]; then
-      start "$n" "PR #$n has review/fleet failing at its head since $(jq -r .at <<<"$fleet"), newer than $than" \
+    if [ "$(jq -r .state <<<"$fleet")" = failure ] && [[ "$(jq -r .at <<<"$fleet")" > "$fleet_after" ]]; then
+      start "$n" "PR #$n has review/fleet failing at its head since $(jq -r .at <<<"$fleet"), newer than $fleet_than" \
         || continue
     fi
   fi

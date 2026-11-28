@@ -313,7 +313,8 @@ comments. Classify:
   re-run anything. Never the class of a PR the maintainer has just woken, which is owed a
   write ("Park a PR for the maintainer").
 - **Feedback to address** — review threads or PR comments newer than the description's
-  answered-through line (below), or than the head commit when it has none, from a
+  answered-through line (below), or than the head commit when it has none (on a PR the
+  maintainer has just woken, newer than the pipeline's last comment), from a
   trusted author other than the agent pipeline itself (the maintainer, or a named review bot
   on a PR the pipeline opened: "Session rules"), that no branch commit or agent reply has
   dispositioned yet. Untrusted activity never puts a PR in this class: classify the PR as if
@@ -337,7 +338,8 @@ comments. Classify:
   --input <file>`, or `.../pulls/<n>/comments/<id>/replies` for an inline thread; on the web
   `mcp__github__add_issue_comment` or `add_reply_to_pull_request_comment`). A reply on an
   inline thread is in the `post-comment` review-reply shape, `Applied.` with the commit
-  collapsed in a `<details>` block or `Not applied: <one plain sentence>`. A pre-pass verdict
+  collapsed in a `<details>` block, `Applied in the description.` for a finding a body edit
+  fixed, or `Not applied: <one plain sentence>`. A pre-pass verdict
   has no thread, so the replies to its findings go in one PR comment, the `post-comment`
   keyed-replies shape: a numbered plain line per finding, and inside the `<details>` block
   one entry per finding headed `**<verdict comment id>-finding-<n>**` (`finding-<n>-and-<m>`
@@ -354,8 +356,9 @@ comments. Classify:
   is the UTC time, to the second, at which the implementer says it started reading the review
   surface, so anything posted while it read counts as newer. The
   pre-gate starts the next cycle only for activity, or a `review/fleet` failure, newer than that
-  time, so a round answered with no push is not started again, and feedback posted while the
-  round ran is. Run that skill's `scripts/check.sh` on the body
+  time. Feedback the round read is not started again; feedback posted while it ran is, and so
+  is a review bot's reaction to the round's own thread replies, which arrives after the time
+  ("Do not re-trigger CodeRabbit with a reply storm", below). Run that skill's `scripts/check.sh` on the body
   file and write it with the REST body write. A body edit starts no review fleet round.
   Then run the reviewer pre-pass (section 4).
 (Closed and merged PRs never reach this section — an open-PR query cannot return them; their
@@ -1025,7 +1028,8 @@ round, both or neither.
 - **request changes** → hand the PR back to `birdbrain-implementer` (pointer, not paraphrase)
   for **one** fix round, post its replies and update the Review findings section from its
   dispositions as section 2 says, then re-run the pre-pass. If the second pre-pass still requests
-  changes, stop there: report "pre-pass unresolved after one fix round — needs human
+  changes, stop there: add the second verdict's findings to the Review findings section as
+  `needs its own push` rows, report "pre-pass unresolved after one fix round — needs human
   attention", leave both pre-pass comments in place, and park the PR (section 2, "Park a PR
   for the maintainer"). Never loop further unattended.
 

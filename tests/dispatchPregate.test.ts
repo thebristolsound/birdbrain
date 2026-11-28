@@ -649,6 +649,29 @@ describe.skipIf(!HAS_JQ)('pregate.sh on a PR parked for the maintainer', () => {
     })
   })
 
+  it('runs for a review/fleet failure the woken cycle had not read when it replied', () => {
+    const read = '2026-09-21T09:50:00Z'
+    const failed = '2026-09-21T09:55:00Z'
+    const result = run(
+      fixtures({
+        ...removedBy(MAINTAINER),
+        body: `## Review findings\n\n<!-- review findings answered through ${read} -->\n`,
+        comments: [
+          { login: PIPELINE, at: VERDICT_AT },
+          { login: PIPELINE, at: AFTER_WAKE }
+        ],
+        statuses: [
+          { state: 'success', by: PIPELINE, at: VERDICT_AT, description: 'Approved for human review.' },
+          { context: 'review/fleet', state: 'failure', by: PIPELINE, at: failed }
+        ]
+      })
+    )
+    expect(result.outputs).toEqual({
+      run: 'true',
+      reason: `PR #${PR} has review/fleet failing at its head since ${failed}, newer than the review findings answered through ${read}`
+    })
+  })
+
   it('owes one cycle to a woken PR whose head another account pushed, then goes quiet', () => {
     const wake: Args = {
       ...removedBy(MAINTAINER),
@@ -950,6 +973,22 @@ describe.skipIf(!HAS_JQ)('pregate.sh trust list', () => {
       })
     )
     expect(result.outputs).toEqual({ run: 'true', reason: RAN })
+  })
+
+  it('reads the answered-through time only inside Review findings', () => {
+    const quoted = '2026-09-20T15:00:00Z'
+    const result = run(
+      fixtures({
+        labels: UNPARKED,
+        state: 'success',
+        body: `${marker(ANSWERED)}\n## Proof\n\n<!-- review findings answered through ${quoted} -->\n`,
+        comments: [{ login: 'coderabbitai[bot]', at: LATER, type: 'Bot' }]
+      })
+    )
+    expect(result.outputs).toEqual({
+      run: 'true',
+      reason: `PR #${PR} has activity at ${LATER} newer than the review findings answered through ${ANSWERED}`
+    })
   })
 
   it('ignores an answered-through time that has not happened yet', () => {

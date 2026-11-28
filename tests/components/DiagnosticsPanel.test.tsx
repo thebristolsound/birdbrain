@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest'
 import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
@@ -294,7 +294,7 @@ describe('DiagnosticsPanel storage folder action', () => {
 // write that failed must say so rather than leave the previous clipboard to be
 // pasted as this one.
 describe('DiagnosticsPanel Copy report', () => {
-  let unhandled: ReturnType<typeof vi.fn>
+  let unhandled: Mock<(reason: unknown) => void>
 
   function stubClipboard(writeText: ReturnType<typeof vi.fn>) {
     Object.defineProperty(window.navigator, 'clipboard', {
@@ -313,7 +313,7 @@ describe('DiagnosticsPanel Copy report', () => {
         unreconciledDeletions: vi.fn().mockResolvedValue(cleanReport)
       }
     })
-    unhandled = vi.fn()
+    unhandled = vi.fn<(reason: unknown) => void>()
     process.on('unhandledRejection', unhandled)
   })
 
@@ -346,12 +346,29 @@ describe('DiagnosticsPanel Copy report', () => {
   it('shows Copied after a successful write, with no error', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined)
     stubClipboard(writeText)
+    fakeBridge({
+      diagnostics: {
+        get: vi.fn().mockResolvedValue({
+          ...snapshot,
+          slowOps: [
+            { at: snapshot.generatedAt, kind: 'extract', detail: 'https://example.test/', ms: 900 }
+          ]
+        }),
+        log,
+        unreconciledDeletions: vi.fn().mockResolvedValue(cleanReport)
+      }
+    })
     renderPanel()
 
     fireEvent.click(await screen.findByText('Copy report'))
 
     expect(await screen.findByText('Copied')).toBeDefined()
     expect(writeText).toHaveBeenCalledOnce()
+    // A slow operation's detail is a captured page URL, so it is blanked.
+    const copied = JSON.parse(writeText.mock.calls[0][0] as string) as DiagnosticsSnapshot
+    expect(copied.slowOps).toEqual([
+      { at: snapshot.generatedAt, kind: 'extract', detail: '', ms: 900 }
+    ])
     expect(toastFns.error).not.toHaveBeenCalled()
     expect(log).not.toHaveBeenCalled()
   })

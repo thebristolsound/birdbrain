@@ -32,8 +32,8 @@ This skill is for a session the maintainer started and handed one change to. A j
    Verification block names the pushed head.
 5. **Review.** Wait for CI, `review/fleet` and Codex with the harness's pull request watcher,
    then sort every finding by the table below. Done when `review/fleet` and every required
-   check but `merge-gate` are green at head, and each finding is fixed, declined on its thread
-   with a reason, or listed in the description. `merge-gate` is left out here because on an
+   check but `merge-gate` are green at head, and each finding has its row in the description's
+   Review findings section and, when it came on a thread, its reply there. `merge-gate` is left out here because on an
    `evidence-affecting` pull request it stays red until the sign-off step 6 asks for; step 7
    waits for it.
 6. **Hand over.** Ask the maintainer with `AskUserQuestion`: the link, the head sha, what you
@@ -83,14 +83,34 @@ Every push costs a full `pnpm preflight`, a review fleet round, and on an
 
 ## Sorting a finding
 
-| Finding | What it costs |
+This table is the one place that decides what a review finding gets (ADR-0060). The implementer
+and the dispatch skill sort findings by it too, so change the rule here; the row shape and its
+reason names are the `post-pr-body` skill's.
+
+| Finding | What it gets |
 | --- | --- |
-| Blocking, or a required check that fails | A fix and a new head. |
-| Non-blocking, about behaviour or a gap in a test | A fix in this round's push. |
-| Non-blocking, about wording in a comment or a doc, while `review/fleet` is red | A fix in this round's push. |
-| The same, once `review/fleet` is green at head | A bullet in the description's findings list. No push for wording alone. |
-| Against the description | An edit of the description. |
-| Outside the change | A bullet in the description's findings list; an issue only under the rule in `CLAUDE.md`, "Issue tracker". |
+| Must-fix: a blocking finding the other model family confirmed (the one that fails `review/fleet`), a required check that fails, a `blocking` or `gate` finding in a `request changes` pre-pass, an evidence-gate finding, or a request the maintainer wrote | A fix and a new head. |
+| Non-blocking, a behaviour bug you reproduced or traced, in a file the change already edits and inside its scope, or a missing test for a branch the change adds | A fix in a push that a must-fix finding already forces. With no such push, a `needs its own push` row. |
+| Non-blocking, about wording, style or the strength of a test | A `test or style only` row. Never a push. |
+| Must-fix, left unfixed when the PR is parked for the maintainer | A `needs its own push` row. The maintainer decides the next push. |
+| Against the description | An edit of the description, which runs `merge-gate` and not the review fleet. |
+| Outside the change | An `out of scope` row; an issue only under the rule in `CLAUDE.md`, "Issue tracker", which makes it a `filed as #N` row. |
+
+A row is a line in the description's `## Review findings` section, in the shape the
+`post-pr-body` skill gives. Every finding gets one, taken or not. A finding that came on a
+thread also gets a reply there, written from the same disposition; the review fleet's own
+findings have no thread.
+
+- **A round with no must-fix finding pushes nothing.** Edit the description and reply
+  on the threads; neither starts a review fleet round.
+- **The reviewer's severity stands.** You may dispute a finding, as a `disputed` row citing the
+  `file:line` at head that shows it is wrong. You may not relabel it as something smaller.
+- **A gate no push of yours will clear goes to the maintainer.** A must-fix finding you dispute,
+  or a `review/fleet` failure you can answer only in the description, leaves the gate red: say
+  so in the hand-over (dispatch parks the PR for the maintainer instead).
+- **A user-visible or evidence-affecting finding that is not taken is filed** under the rule in
+  `CLAUDE.md`, "Issue tracker", within its two per PR, and its row says `filed as #N`. Past
+  those two it stays a row with its other reason.
 
 A reviewer's reply to a wording fix is new wording to review. The table is what ends that loop.
 

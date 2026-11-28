@@ -1,6 +1,6 @@
 # One shape per posting surface, checked before the write
 
-**Status:** Accepted, amended 2026-09-19 (two layers per post) and 2026-11-26 (work template layout, screenshots in the body)
+**Status:** Accepted, amended 2026-09-19 (two layers per post), 2026-11-26 (work template layout, screenshots in the body) and 2026-11-27 (Review findings section, ADR-0060)
 
 **Date:** 2026-08-29
 
@@ -78,6 +78,13 @@ authorized pushing the branch and opening the PR. The
 [source record on PR #2278](https://github.com/thebristolsound/birdbrain/pull/2278#issuecomment-7230715790)
 quotes the request, the implementation summary, and the publication approval from the original
 session. Screenshot enforcement is an implementation choice of this PR.
+
+**Amended 2026-11-27 by [ADR-0060](0060-agents-fix-only-must-fix-review-findings-and-list-the-rest.md).**
+A Review findings section follows the Summary: a counts line and one collapsed row per review
+finding, taken or not, naming its reviewer in words and linking nothing. The linter requires
+and checks it on an agent-written body, and the merge paths check only what every section
+needs, so a PR opened before it existed still merges. A review reply may also read
+`Applied in the description.`, for a finding a body edit fixed with no commit to name.
 
 The PR body shape is the same for humans and agents: `.github/pull_request_template.md` is a
 copy of the skill's template. The one difference is the attribution line: an agent ends with

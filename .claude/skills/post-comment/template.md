@@ -67,6 +67,13 @@ Applied.
 ```
 
 ```
+Applied in the description.
+```
+
+The form above answers a finding against the PR description, which a body edit fixes with no
+commit to name.
+
+```
 Not applied: the suggested guard is unreachable because the observer is replaced on a second mutation.
 ```
 

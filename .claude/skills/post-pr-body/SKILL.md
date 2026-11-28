@@ -27,7 +27,7 @@ review:
 
 ## The shape
 
-The sections follow a fixed order, three of them optional, under a hard cap and one closing
+The sections follow a fixed order, four of them optional, under a hard cap and one closing
 line. The layout follows the maintainer's work template, adapted to this repository's gates:
 
 1. Line 1 is `Closes #N` (or `Closes #N, #M`). A PR with no issue writes
@@ -55,31 +55,51 @@ line. The layout follows the maintainer's work template, adapted to this reposit
    sequence, a state machine or a dependency, it holds a Mermaid diagram of the state after
    the merge, at most about 15 nodes, every edge labelled, with what this PR changed marked by
    the template's `changed` class and no fill colours. The commit stops at that block, so no Summary text may follow it.
-4. `## Proof`: one `<details>` block holding `Head: <sha>. Merge gate: <link or pending>.` and
+4. `## Review findings` (required on an agent-written body): every finding a review raised on
+   this PR and what happened to it, sorted by the table in `.claude/skills/ship-unit/SKILL.md`,
+   "Sorting a finding". The visible line is `No review findings yet.` until a review reports,
+   then `<n> taken, <m> not taken.` above one collapsed `<details>` block holding one row per
+   finding, each on one line:
+   ``- Taken: <reviewer>, <severity>: <finding>. Fixed in `<commit>`.``
+   (`Fixed in the description.` for a finding against the description) or
+   `- Not taken, <reason>: <reviewer>, <severity>: <finding>. <why>`, where the reason is
+   `out of scope`, `disputed` (with the `file:line` at head that shows it), `test or style only`,
+   `needs its own push` or `filed as #N`. The counts match the rows. Rows link no issue, pull
+   request or comment, and name no `#N` but the issue a `filed as #N` row was filed as: the
+   review fleet loads each as a source it must read and fails when one is gone, empty or in
+   another repository. The fleet reads a row as a record of review history and checks only its
+   `Fixed in` commit and its filed issue (ADR-0060), so the links go in the thread replies.
+   Dispatch also keeps a hidden `<!-- review findings answered through <time> -->` line in the
+   section, which its pre-gate reads. The section sits outside the Summary, so the merge commit
+   leaves it out. The merge paths check only what every section needs: its place in the order,
+   well-formed `<details>` blocks and plain words in its visible lines, so the record never holds up a merge and a PR opened before it existed
+   still merges; a human author may leave it out.
+5. `## Proof`: one `<details>` block holding `Head: <sha>. Merge gate: <link or pending>.` and
    the `| Acceptance criterion | Proof | Result |` table, one row per acceptance criterion of
    the closed issue (or per Summary claim when there is none): the test, check or run that
    proves it at head, and its result. A criterion nothing proves is a Not done bullet, never a
    row with an empty or hopeful result. A push that moves the head updates the line and every
    row it touches. Command output stays in Verification.
-5. `## Screenshots`: the visual-change declaration and, for Yes, the before and after rows,
+6. `## Screenshots`: the visual-change declaration and, for Yes, the before and after rows,
    as "Screenshots for visual changes" below states. Inline images, Markdown or `<img>`,
    appear here and nowhere else in the body.
-6. `## Not done` (optional): one bullet per gap, skipped test, or review finding not fixed here.
-7. `## Blast radius`: two bullets, `- On merge: <what ships>` (the next desktop app release,
+7. `## Not done` (optional): one bullet per gap or skipped test. A review finding not fixed here
+   is a Review findings row instead.
+8. `## Blast radius`: two bullets, `- On merge: <what ships>` (the next desktop app release,
    the extension, the docs site, or repository tooling only) and
    `- If wrong: <what breaks, how to back it out>`.
-8. `## Before merge` and `## After merge` (optional): one `- [ ] <step, owner>` checkbox per
+9. `## Before merge` and `## After merge` (optional): one `- [ ] <step, owner>` checkbox per
    step beyond review and a green merge gate, or owed once the PR merges.
-9. `## Changes`: a `<details>` block holding the `| Area | What changed | Why |` table (or one
+10. `## Changes`: a `<details>` block holding the `| Area | What changed | Why |` table (or one
    bullet per file group), and optionally a second `Decisions` block holding the
    `| Decision | Grade | Source |` table, one row per choice a reviewer could question,
    graded "in production here", "vendor-documented pattern" or "own judgment". No prose or
    test output outside the blocks.
-10. `## Evidence-affecting`: `Yes` or `No` on its own line. When Yes, a `<details>` block holding
+11. `## Evidence-affecting`: `Yes` or `No` on its own line. When Yes, a `<details>` block holding
    the `### Evidence impact` subsection with the four fields from the template. The definition
    and the tiered path list are in `CONTEXT.md` and
    `docs/specs/2026-07-31-evidence-affecting-paths-assessment.md`.
-11. `## Verification`: the block `pnpm preflight` wrote to `.preflight/verification.md`,
+12. `## Verification`: the block `pnpm preflight` wrote to `.preflight/verification.md`,
    pasted verbatim including its `<!-- preflight ... -->` marker, generated at the head sha
    under review (ADR-0018). When the new head only merged the base in and the diff against the
    base is byte-identical, `pnpm preflight --carry` writes the earlier block for the new head,
@@ -91,7 +111,7 @@ line. The layout follows the maintainer's work template, adapted to this reposit
    locally (dependabot, a human author) gets its block from
    `scripts/verification-from-ci.sh <n>`, which reads the required checks at head and marks
    the block `source=ci`; it refuses while any of them is not green.
-12. The last authored line is the attribution: exactly
+13. The last authored line is the attribution: exactly
    `Pull request description generated by Claude Code`, or the maintainer's global byline
    `Created with <model name> in <harness> (<app>)`, where ` in <harness>` and ` (<app>)`
    drop out when unknown. A `claude[bot]` platform footer appended after it is tolerated: the
@@ -99,8 +119,8 @@ line. The layout follows the maintainer's work template, adapted to this reposit
    `check.sh --any-author` (what `merge-pr` runs under `gh`) accepts both forms, and still
    wants the line last when present.
 
-Everything above `## Verification` fits in 40 non-blank top-layer lines; collapsed lines do not
-count. The body has no other `##` sections: no acceptance-criteria walkthroughs and no reviewer
+Everything above `## Verification` fits in 40 non-blank top-layer lines; collapsed lines and the
+Review findings section do not count. The body has no other `##` sections: no acceptance-criteria walkthroughs and no reviewer
 notes. Fenced blocks appear only inside a `<details>` block. Claims name only actions you took
 and states you observed after taking them; a label another actor applies or a check CI will
 run is named as a handoff, never asserted.
@@ -110,7 +130,8 @@ at head, and the issues, pull requests, comments and reviews of this repository 
 names as a bare `#N` outside a code span or links by URL
 (`.github/scripts/review-fleet/inputs.mjs`). A statement about
 anything else, such as a chat, an agent thread or an earlier review round, stays unchecked, and
-one unchecked item fails `review/fleet` (ADR-0057). Link the source, move the sentence to a PR
+one unchecked item fails `review/fleet` (ADR-0057). The one exception is who raised each finding
+in the Review findings rows, which the fleet reads as a record (ADR-0060). Link the source, move the sentence to a PR
 comment, or leave it out. No linter checks this: read each sentence for it before you post.
 
 ## Screenshots for visual changes

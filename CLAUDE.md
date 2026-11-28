@@ -85,7 +85,7 @@ Issues live as GitHub Issues in `thebristolsound/birdbrain`, accessed via the `g
 
 Two `gh` traps that produce wrong numbers rather than errors. **`gh api --jq` rejects `-r`**, and **`gh issue comment` has no `-q`** — in both cases the command fails, and a pipeline that ends in `| tail -1` swallows the failure and reports success. Never derive a count through a pipe whose exit status you have not checked. Separately, **the label-filtered issue search (`issues?labels=…`) reads GitHub's search index and lags a direct label read by seconds**, so never treat it as authoritative for a decision; read `issues/<n>/labels` for that.
 
-**File a defect only when it is user-visible or evidence-affecting, and file at most two per PR** (ADR-0028). Every other finding (process, tooling, CI, docs wording, a comment that overclaims, style) goes in the PR body's findings list or the review comment and is discarded when the PR merges. When you do file, say in the issue why it was kept out of the change that found it, and report it as filed with the number.
+**File a defect only when it is user-visible or evidence-affecting, and file at most two per PR** (ADR-0028). Every other finding (process, tooling, CI, docs wording, a comment that overclaims, style) goes in the PR body's Review findings section (ADR-0060) or the review comment and is discarded when the PR merges. When you do file, say in the issue why it was kept out of the change that found it, and report it as filed with the number.
 
 **Do not write that something "is filed" until it is.** File first, then reference the number you actually got back.
 

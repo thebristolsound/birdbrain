@@ -34,7 +34,7 @@ checked as top layer.
 | cycle claim | `Cycle claim: PR #<n>` | 3 lines | optional | which action is claimed |
 | cycle release | `Cycle release: PR #<n>` | 2 lines | none | none |
 | pre-pass verdict | `**Review verdict: <verdict>**` | 10 lines | required | at most 5 numbered findings, one plain sentence each; the block's summary starts `Full report` and names the reviewed commit id |
-| review reply | `Applied.` or `Not applied: <one sentence>` | 1 line | commit for `Applied.` | one reply per thread, nothing else |
+| review reply | `Applied.`, `Applied in the description.` or `Not applied: <one sentence>` | 1 line | commit for `Applied.` | one reply per thread, nothing else |
 | keyed replies | free, naming the review it answers | 20 lines | required | one numbered plain sentence per finding; the block holds one entry per finding, `**<verdict comment id>-finding-<n>**` on its own line and a review reply under it |
 | give-up or defect | `Give-up: <one clause>` or `Defect: <one clause>` | 10 lines | required | `**What:**` on top; `**Where:**` as `file:line` and `**Reproduce:**` inside the block |
 | friction notes | `Friction notes: dispatch cycle` or `Friction notes: PR review` | 12 lines | required | one numbered plain sentence per note; a block under `<summary>Each note in full</summary>` holds one table row per note; at most 3 notes per agent |

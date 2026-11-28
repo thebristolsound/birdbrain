@@ -87,6 +87,27 @@ finds fail-header-only-decisions.md 'block in Changes is empty'
 finds fail-decisions-blank-row.md 'block in Changes is empty'
 finds fail-section-order.md 'sections must be'
 finds fail-screenshots-in-fence.md 'no before/after screenshot pair'
+finds fail-review-findings-missing.md 'lists its review findings under ## Review findings'
+finds fail-review-findings-line.md 'Review findings shows one line'
+finds fail-review-findings-count.md 'but lists 1 and 2'
+finds fail-review-findings-reason.md 'Review findings rows are'
+finds fail-review-findings-linked.md 'links an issue, pull request or comment'
+finds fail-review-findings-taken-no-fix.md 'Review findings rows are'
+finds fail-review-findings-number.md 'names one as #N'
+finds fail-review-findings-placeholder.md 'Review findings rows are'
+finds fail-review-findings-disputed.md 'cites no file:line'
+finds fail-review-findings-marker.md 'the only form the dispatch pre-gate reads'
+finds fail-review-findings-hidden-link.md 'would load as a source'
+finds fail-review-findings-empty-hidden-link.md 'would load as a source'
+finds fail-review-findings-split-comment.md 'would load as a source'
+finds fail-review-findings-stray-marker.md 'belongs in Review findings'
+finds fail-review-findings-open.md 'opened with a plain <details> line'
+finds fail-review-findings-two-blocks.md 'holds its rows in one collapsed block'
+finds fail-review-findings-zero.md 'with nothing to list says'
+# The merge paths pass --posted and check nothing in the section, so the record never holds up a
+# merge: a body written before it existed merges, and so does one whose rows went stale.
+"$check" --any-author --posted "$fx/fail-review-findings-missing.md" >/dev/null 2>&1; expect 0 $? "direct --posted accepts a body written before Review findings existed"
+"$check" --any-author --posted "$fx/fail-review-findings-count.md" >/dev/null 2>&1; expect 0 $? "direct --posted does not check the Review findings rows"
 
 # The 1117 body must fail on the cap and the section rule specifically.
 out="$(node "$here/lint-body.mjs" "$fx/fail-1117-walkthrough.md")"
@@ -95,6 +116,7 @@ printf '%s' "$out" | grep -q 'sections must be ' && echo "ok   1117 trips the se
 
 expect 0 "$(hook "gh pr view 12")" "hook ignores a read"
 expect 2 "$(hook "gh pr create --body-file '$fx/fail-screenshots-missing.md'")" "hook requires the Screenshots section on new writes"
+expect 2 "$(hook "gh pr edit 12 --body-file '$fx/fail-review-findings-missing.md'")" "hook requires Review findings on an agent's body edit"
 expect 0 "$(hook "gh pr edit 12 --add-label agent-authored")" "hook allows an edit with no body"
 expect 0 "$(hook "gh pr create --draft --base main --title 't' --body-file pass-filled.md --label agent-authored")" "hook allows a passing body file"
 expect 0 "$(hook "agh pr create --draft --body-file=pass-filled.md")" "hook allows agh with --body-file="

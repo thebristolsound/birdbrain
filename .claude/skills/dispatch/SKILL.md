@@ -312,24 +312,34 @@ comments. Classify:
   apply. Report "#N awaiting human review" and move to the next PR. Do not nudge, rebase, or
   re-run anything. Never the class of a PR the maintainer has just woken, which is owed a
   write ("Park a PR for the maintainer").
-- **Feedback to address** — review threads or PR comments newer than the head commit, from a
+- **Feedback to address** — review threads or PR comments newer than the description's
+  answered-through line (below), or than the head commit when it has none (on a PR the
+  maintainer has just woken, newer than the pipeline's last comment), from a
   trusted author other than the agent pipeline itself (the maintainer, or a named review bot
   on a PR the pipeline opened: "Session rules"), that no branch commit or agent reply has
   dispositioned yet. Untrusted activity never puts a PR in this class: classify the PR as if
   it were absent and name it in the report. Agent PRs are authored by the machine account
   (ADR-0027), so the maintainer can post a formal `CHANGES_REQUESTED` review; treat one
   exactly as you treat a comment of his asking for changes, and vice versa — the form does
-  not change the handling.
+  not change the handling. A `review/fleet` failure at the head that is newer than that
+  line, or than the head commit when there is none, is feedback too: its findings are in the fleet's
+  state comment for that head.
   Dispatch `birdbrain-implementer` with the PR number, its linked
-  issue, and the re-enumeration instruction; it applies or rejects-with-reason each item per
-  its contract, then pushes. It **must not** post its replies — the REST comment endpoints do
-  technically work from a subagent, and the part-two ledger (finding 2) recorded exactly that
+  issue, and the re-enumeration instruction; it sorts each item by the table in
+  `.claude/skills/ship-unit/SKILL.md`, "Sorting a finding" (ADR-0060), and pushes only when a
+  must-fix item needs it. A round with no must-fix item returns dispositions and no commit. A
+  round that disputes a must-fix item, or answers a `review/fleet` failure only in the
+  description, leaves a gate red that no push of its own will clear: post its replies and rows,
+  then park the PR for the maintainer ("Park a PR for the maintainer"), naming the disputed rows.
+  It **must not** post its replies — the REST comment endpoints do technically work from a
+  subagent, and the part-two ledger (finding 2) recorded exactly that
   happening — it returns them as text keyed to the comment or thread ids they answer, and
   **you** post them via the write path (locally `gh api .../issues/<n>/comments -X POST
   --input <file>`, or `.../pulls/<n>/comments/<id>/replies` for an inline thread; on the web
   `mcp__github__add_issue_comment` or `add_reply_to_pull_request_comment`). A reply on an
   inline thread is in the `post-comment` review-reply shape, `Applied.` with the commit
-  collapsed in a `<details>` block or `Not applied: <one plain sentence>`. A pre-pass verdict
+  collapsed in a `<details>` block, `Applied in the description.` for a finding a body edit
+  fixed, or `Not applied: <one plain sentence>`. A pre-pass verdict
   has no thread, so the replies to its findings go in one PR comment, the `post-comment`
   keyed-replies shape: a numbered plain line per finding, and inside the `<details>` block
   one entry per finding headed `**<verdict comment id>-finding-<n>**` (`finding-<n>-and-<m>`
@@ -337,8 +347,20 @@ comments. Classify:
   joins a reply to its finding by that key. `.claude/skills/post-comment/scripts/check.sh
   <file>` runs on each file before it is posted. Your read of that text before posting is the editorial pass; a subagent that posts directly has bypassed it,
   which is a reportable contract violation even when the content was fine — and it lands under
-  the wrong identity, since only the dispatcher holds the machine token. Then run the
-  reviewer pre-pass (section 4).
+  the wrong identity, since only the dispatcher holds the machine token. From the same
+  dispositions, update the description's `## Review findings` section in the `post-pr-body`
+  shape. Start from the live description, and carry its rows into any body the implementer
+  returned: add a row for each finding this round answered, replace the row of a finding
+  answered again, keep every earlier row, and recount. End the section with one line
+  `<!-- review findings answered through <time> -->`, replacing any earlier one, where `<time>`
+  is the UTC time, to the second, at which the implementer says it started reading the review
+  surface, so anything posted while it read counts as newer. The
+  pre-gate starts the next cycle only for activity, or a `review/fleet` failure, newer than that
+  time. Feedback the round read is not started again; feedback posted while it ran is, and so
+  is a review bot's reaction to the round's own thread replies, which arrives after the time
+  ("Do not re-trigger CodeRabbit with a reply storm", below). Run that skill's `scripts/check.sh` on the body
+  file and write it with the REST body write. A body edit starts no review fleet round.
+  Then run the reviewer pre-pass (section 4).
 (Closed and merged PRs never reach this section — an open-PR query cannot return them; their
 hygiene checks run from section 1's empty-queue branch.)
 
@@ -995,11 +1017,19 @@ round, both or neither.
 
 - **approve for human review** → mark the PR ready for review via the write path
   (`agh pr ready <n>`), evidence-affecting or not (ADR-0025). Ready means a human should now
-  look, and it is what wakes CodeRabbit. An evidence-affecting PR then waits for the human back
-  gate; a non-evidence PR proceeds to section 2a. Report and stop.
+  look, and it is what wakes CodeRabbit. Then add the verdict's non-blocking findings to the
+  description's `## Review findings` section as rows, sorted by the table in
+  `.claude/skills/ship-unit/SKILL.md`, "Sorting a finding", with the REST body write; an
+  approving verdict starts no fix round, so none of them is taken. Leave the answered-through
+  line as it is: review-bot feedback on the PR that no round has answered stays newer than it,
+  so the pre-gate starts a cycle for it. A body write that fails is
+  named in the report and never undoes the ready step. An evidence-affecting PR then waits for
+  the human back gate; a non-evidence PR proceeds to section 2a. Report and stop.
 - **request changes** → hand the PR back to `birdbrain-implementer` (pointer, not paraphrase)
-  for **one** fix round, then re-run the pre-pass. If the second pre-pass still requests
-  changes, stop there: report "pre-pass unresolved after one fix round — needs human
+  for **one** fix round, post its replies and update the Review findings section from its
+  dispositions as section 2 says, then re-run the pre-pass. If the second pre-pass still requests
+  changes, stop there: add the second verdict's findings to the Review findings section as
+  rows sorted by the table (a must-fix finding left unfixed is a `needs its own push` row), report "pre-pass unresolved after one fix round — needs human
   attention", leave both pre-pass comments in place, and park the PR (section 2, "Park a PR
   for the maintainer"). Never loop further unattended.
 

@@ -4,6 +4,11 @@
 
 **Date:** 2026-11-10
 
+**Amended 2026-11-27 by [ADR-0060](0060-agents-fix-only-must-fix-review-findings-and-list-the-rest.md):**
+the passes read a PR description's Review findings rows as a record of review history they do not
+check, so none of it goes in `not_checked`; only a row's fixing commit, its filed issue and the
+section's counts are checked.
+
 Amends [ADR-0046](0046-scheduled-review-of-maintainer-prs.md), whose hourly schedule this
 replaces, and [ADR-0041](0041-merges-are-requested-by-label.md), whose merge rule gains a
 requirement. Supersedes

@@ -174,11 +174,13 @@ function emitStoredZip(entries: ZipEntryInput[], sink: ZipSink): void {
 export function createStoredZip(entries: ZipEntryInput[]): Buffer {
   const parts: Buffer[] = []
   let total = 0
-  // A source may reuse its chunk buffer, so its bytes are copied out before
-  // the parts below hold on to them.
+  // A source may reuse its chunk buffer, so each chunk is copied out before
+  // the next is asked for.
   const held = entries.map(({ name, data }) => {
     if (typeof data === 'string' || Buffer.isBuffer(data)) return { name, data }
-    const bytes = Buffer.concat([...data.chunks()].map((chunk) => Buffer.from(chunk)))
+    const copies: Buffer[] = []
+    for (const chunk of data.chunks()) copies.push(Buffer.from(chunk))
+    const bytes = Buffer.concat(copies)
     return { name, data: { sizeBytes: data.sizeBytes, chunks: () => [bytes] } }
   })
   emitStoredZip(held, {

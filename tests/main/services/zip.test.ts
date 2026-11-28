@@ -4,13 +4,28 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { createStoredZip, writeStoredZip, type ZipEntrySource } from '@main/services/zip'
+import { readStoredZip } from '@main/services/zipRead'
 
 const sha256 = (bytes: Buffer): string => createHash('sha256').update(bytes).digest('hex')
 
-/** Deterministic bytes that are not one repeated value, so a chunk out of order shows. */
+// The known answer's bytes, as they were when the answer was taken. They repeat every 65,536
+// bytes, the chunk size below, so the chunked tests use seededBytes instead.
 function counterBytes(size: number): Buffer {
   const bytes = Buffer.alloc(size)
   for (let i = 0; i < size; i++) bytes[i] = (i * 31 + (i >>> 8)) & 0xff
+  return bytes
+}
+
+/** Deterministic xorshift32 bytes, so a chunk repeated, dropped or out of place changes them. */
+function seededBytes(size: number): Buffer {
+  const bytes = Buffer.alloc(size)
+  let state = 0x9e3779b9
+  for (let i = 0; i < size; i++) {
+    state ^= state << 13
+    state ^= state >>> 17
+    state ^= state << 5
+    bytes[i] = state & 0xff
+  }
   return bytes
 }
 
@@ -66,9 +81,17 @@ describe('stored zip', () => {
     })
   })
 
+  it('uses chunked test bytes that differ from one chunk to the next', () => {
+    const large = seededBytes(4 * CHUNK)
+    const chunks = [0, 1, 2, 3].map((n) =>
+      large.subarray(n * CHUNK, (n + 1) * CHUNK).toString('hex')
+    )
+    expect(new Set(chunks).size).toBe(4)
+  })
+
   it('writes to disk the bytes it builds in memory, a chunked entry included', () => {
     // Over 50 chunks of one reused buffer, ending on a partial chunk.
-    const large = counterBytes(50 * CHUNK + 12_345)
+    const large = seededBytes(50 * CHUNK + 12_345)
     const entries = [...KNOWN_ENTRIES(), { name: 'pages/large.mhtml', data: large }]
     const out = join(dir, 'out.zip')
 
@@ -77,20 +100,21 @@ describe('stored zip', () => {
       { name: 'pages/large.mhtml', data: chunkedSource(large) }
     ])
 
-    expect(readFileSync(out).equals(createStoredZip(entries))).toBe(true)
+    const written = readFileSync(out)
+    expect(written.equals(createStoredZip(entries))).toBe(true)
+    expect(readStoredZip(written).get('pages/large.mhtml')?.equals(large)).toBe(true)
   })
 
   it('builds the same bytes in memory from a chunked entry as from a buffer', () => {
-    const large = counterBytes(3 * CHUNK + 7)
-    expect(
-      createStoredZip([{ name: 'a.bin', data: chunkedSource(large) }]).equals(
-        createStoredZip([{ name: 'a.bin', data: large }])
-      )
-    ).toBe(true)
+    const large = seededBytes(3 * CHUNK + 7)
+    const zip = createStoredZip([{ name: 'a.bin', data: chunkedSource(large) }])
+
+    expect(readStoredZip(zip).get('a.bin')?.equals(large)).toBe(true)
+    expect(zip.equals(createStoredZip([{ name: 'a.bin', data: large }]))).toBe(true)
   })
 
   it('writes each chunk to disk before it asks for the next', () => {
-    const large = counterBytes(20 * CHUNK)
+    const large = seededBytes(20 * CHUNK)
     const header = 30 + 'pages/large.mhtml'.length
     const onDisk: number[] = []
     writeStoredZip(join(dir, 'out.zip'), [

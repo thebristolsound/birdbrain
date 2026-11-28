@@ -1,8 +1,11 @@
 # Weekly repository health report
 
-**Status:** active. Slice 1 (the tool and the tree signals) merged as pull request #2249.
-Slice 2 (the workflow, the publisher and ADR-0058) is pull request #2251, in review; the
-after-merge checks under "Verification" are still to run.
+**Status:** active. Slice 1 (the tool and the tree signals) merged as pull request #2249 and
+slice 2 (the workflow, the publisher and ADR-0058) as pull request #2251. Of the after-merge
+checks under "Verification", the dry run is done (run 46085582708 on 2026-11-28: all fifteen
+signals measured, nothing written). The first real run is the scheduled one of 2026-11-30;
+this becomes `done` once that run has opened the issue and the following Monday's run has
+filled the "previous" column.
 
 ## Context
 
@@ -74,7 +77,7 @@ budget and any growth shows. The "Now" column is the 2026-11-20 reading.
 | 1 | Code | `eslint-disable` comments | Comment lines matching `eslint-disable` in code files under `src`, `extension/src`, `tests`, `e2e`, `scripts`, `.github/scripts` | 14 | <= 14 | tree |
 | 2 | Code | Double casts in product code | `as unknown as` under `src` and `extension/src`, tests excluded | 19 | <= 19 | tree |
 | 3 | Code | Unused files | `knip` JSON, `files` | 4 | <= 4 | install |
-| 4 | Code | Unused exports and types | `knip` JSON, exports, types, enum and namespace members, duplicates | 281 | <= 281 | install |
+| 4 | Code | Unused exports and types | `knip` JSON, exports, types, enum and namespace members, duplicates | 281 | <= 280 | install |
 | 5 | Dependencies | Deferred dependency decisions | Entries in `audit-exceptions.json` plus `dependency-name` entries under `ignore` in `.github/dependabot.yml`, not under `allow`. A Dependabot file with no `version` or `updates` key is not measured. | 9 | <= 9 | tree |
 | 6 | Dependencies | Audit exceptions expiring | Entries expired or within 21 days of expiry | 0 | <= 0 | tree |
 | 7 | Dependencies | Unused dependencies | `knip` JSON, `dependencies` plus `devDependencies` | 2 | <= 2 | install |
@@ -85,7 +88,7 @@ budget and any growth shows. The "Now" column is the 2026-11-20 reading.
 | 12 | Tests | Skipped or focused tests | Line-anchored `it`, `test`, `describe` and `suite` calls with `.skip`, `.only`, `.todo` or `.fixme` anywhere in the chain, plus `xit` and `xdescribe`, in test files. `skipIf` and `runIf` are not counted. | 2 | <= 2 | tree |
 | 13 | Tests | Line coverage on main | `coverage.json` on the `coverage-badge` branch through the contents API. Not measured if malformed or older than 14 days. | 95.93% | >= 95.0 | `gh` |
 | 14 | Tests | Main CI runs red or re-run, 7 days | Completed `ci.yml` push runs on main that failed, timed out or needed a second attempt. `cancelled` is ignored. Zero runs in the window, or more runs than the one page read, is not measured. | 0 | <= 1 | `gh` |
-| 15 | Repository | Stale remote branches | Branches with no open pull request and a tip older than 30 days, from one paged GraphQL query. `main` and `coverage-badge` are allowlisted in code. An empty listing is not measured. | 80 (2026-11-22) | <= 80 | `gh` |
+| 15 | Repository | Stale remote branches | Branches with no open pull request and a tip older than 30 days, from one paged GraphQL query. `main` and `coverage-badge` are allowlisted in code. An empty listing is not measured. | 80 (2026-11-22) | <= 81 | `gh` |
 
 Left out, with the reason:
 
@@ -240,7 +243,11 @@ Slice 2, before merge:
 After slice 2 merges (a workflow can be dispatched only once its file is on `main`):
 
 1. Dispatch `repo-health.yml` with the default dry run. Read the step summary, the `knip` rows
-   and the install time, and calibrate the `knip` budgets.
+   and the install time, and calibrate the `knip` budgets. Done on 2026-11-28, run 46085582708:
+   the install took 3 seconds from a warm cache and the report 8. The runner's `knip` counts
+   (4, 280, 2) match a full local install. Two budgets moved to the runner's reading: unused
+   exports from 281 to 280, and stale branches from 80, a local estimate from branch tips, to
+   81 of 102.
 2. Dispatch with `dry_run=false`. One issue appears, labelled `repo-health` and `process`.
 3. Dispatch again with `dry_run=false`. The body is rewritten and the comment count is unchanged.
 4. After the first scheduled Monday, the "last week" column is filled.

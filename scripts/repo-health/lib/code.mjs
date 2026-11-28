@@ -85,8 +85,8 @@ export const CODE_SIGNALS = [
     label: 'Unused exports and types (knip)',
     unit: 'count',
     better: 'lower',
-    budget: 281,
-    why: BUDGET_SOURCE,
+    budget: 280,
+    why: 'the first reading on a runner, run 46085582708 on 2026-11-28, so any growth shows',
     needs: 'install',
     measure: (ctx) => ({
       value: countIssues(ctx.knip(), [

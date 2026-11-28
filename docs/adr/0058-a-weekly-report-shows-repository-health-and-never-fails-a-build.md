@@ -10,6 +10,12 @@ It calls no model and reads no stored credential, so it has no spend to cap. Fol
 one-issue rule of [ADR-0028](0028-dispatch-works-a-hand-picked-queue.md) and
 [ADR-0050](0050-agents-leave-friction-notes-for-human-curation.md).
 
+**Amended 2026-11-28:** the first dry run on a runner (run 46085582708) measured all fifteen
+signals. Its `knip` counts match a full local install, so the consequence below about
+correcting those budgets is settled: only unused exports moved, from 281 to 280. The
+stale-branch budget is 81, the runner's first reading of 81 of 102 branches; the 80 below was a
+local estimate from branch tips.
+
 ## Context
 
 The Health workflow (`.github/workflows/health.yml`) watches the scheduled automation: its

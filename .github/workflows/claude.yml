@@ -53,7 +53,7 @@ jobs:
           # maintainer, the machine account and the named review bots. The action
           # matches GraphQL logins with `[bot]` appended, where the account REST calls
           # `Copilot` is copilot-swe-agent and copilot-pull-request-reviewer.
-          include_comments_by_actor: thebristolsound,birdbrain-agent,coderabbitai[bot],chatgpt-codex-connector[bot],copilot-pull-request-reviewer[bot],copilot-swe-agent[bot]
+          include_comments_by_actor: thebristolsound,birdbrain-agent,chatgpt-codex-connector[bot],copilot-pull-request-reviewer[bot],copilot-swe-agent[bot]
           additional_permissions: |
             actions: read
           settings: |

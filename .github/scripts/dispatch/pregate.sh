@@ -54,7 +54,7 @@ me="${LOGIN:-}"
 # REST names the Copilot reviewer's inline comments `Copilot` and its reviews
 # `copilot-pull-request-reviewer[bot]`. The maintainer's login is in lib.sh.
 maintainer="$MAINTAINER"
-review_bots='["coderabbitai[bot]","chatgpt-codex-connector[bot]","Copilot","copilot-pull-request-reviewer[bot]"]'
+review_bots='["chatgpt-codex-connector[bot]","Copilot","copilot-pull-request-reviewer[bot]"]'
 # Every label this step reads, and whose adding (labeled) and removing
 # (unlabeled) count: m is the maintainer, p the pipeline. A label's trusted state
 # is the one the newest counted event set, and an item with no counted event

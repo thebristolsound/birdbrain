@@ -30,8 +30,7 @@ const PREFLIGHT_MARKER = /^<!-- preflight v\d+ sha=[0-9a-f]{40} status=\w+( sour
 const PLATFORM_FOOTER = /^_?Generated (with|by) \[Claude Code\]\([^)]*\)_?$/
 const FORBIDDEN = [
   [/co-authored-by/i, 'a Co-authored-by trailer'],
-  [/Generated (with|by) \[Claude Code\]/, 'the platform attribution footer (the attribution line is the only one you author)'],
-  [/Summary by CodeRabbit/, 'a CodeRabbit summary (CodeRabbit writes its own; never paste one)']
+  [/Generated (with|by) \[Claude Code\]/, 'the platform attribution footer (the attribution line is the only one you author)']
 ]
 
 // Template prompts are HTML comments and do not count; the preflight marker is one too and does.

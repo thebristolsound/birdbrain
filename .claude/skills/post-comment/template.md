@@ -2,13 +2,13 @@
 
 Every comment has two layers. The top layer is plain language for a reader who does not know
 this repository's tooling. Everything else (file paths, commit ids, tables, commands, traces,
-test output) goes inside a `<details>` block under a plain `<summary>`, the way CodeRabbit nests
-its review. Line caps count the top layer only.
+test output) goes inside a `<details>` block under a plain `<summary>`. Line caps count the top
+layer only.
 
 ## Bot trigger (1 line, the command alone)
 
 ```
-@coderabbitai full review
+@codex review
 ```
 
 ## Cycle claim (3 lines, first line machine-read)

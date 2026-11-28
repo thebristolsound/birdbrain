@@ -92,6 +92,7 @@ reason names are the `post-pr-body` skill's.
 | Must-fix: a blocking finding the other model family confirmed (the one that fails `review/fleet`), a required check that fails, a `blocking` or `gate` finding in a `request changes` pre-pass, an evidence-gate finding, or a request the maintainer wrote | A fix and a new head. |
 | Non-blocking, a behaviour bug you reproduced or traced, in a file the change already edits and inside its scope, or a missing test for a branch the change adds | A fix in a push that a must-fix finding already forces. With no such push, a `needs its own push` row. |
 | Non-blocking, about wording, style or the strength of a test | A `test or style only` row. Never a push. |
+| Must-fix, left unfixed when the PR is parked for the maintainer | A `needs its own push` row. The maintainer decides the next push. |
 | Against the description | An edit of the description, which runs `merge-gate` and not the review fleet. |
 | Outside the change | An `out of scope` row; an issue only under the rule in `CLAUDE.md`, "Issue tracker", which makes it a `filed as #N` row. |
 

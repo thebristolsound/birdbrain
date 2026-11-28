@@ -48,7 +48,8 @@ where they differed.
    test for a branch the change adds, may ride in a push a must-fix finding already forces.
    Wording, style and test-strength findings never do. A must-fix finding the agent disputes,
    or a fleet failure it can answer only in the description, leaves a gate red that no push of
-   its own will clear, so dispatch parks the PR for the maintainer.
+   its own will clear, so dispatch parks the PR for the maintainer. A must-fix finding left
+   unfixed when the PR is parked is a `needs its own push` row.
 4. **The reviewer's severity stands.** An agent may dispute a finding with the `file:line` at
    head that shows it is wrong, and may not relabel it as something smaller.
 5. **The description lists every finding.** A `## Review findings` section follows the Summary:

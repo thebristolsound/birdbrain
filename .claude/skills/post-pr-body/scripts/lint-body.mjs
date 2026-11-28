@@ -350,19 +350,23 @@ export function lintBody(raw, { anyAuthor = false, posted = false } = {}) {
       } else if (taken !== Number(counts[1]) || notTaken !== Number(counts[2])) {
         findings.push(`Review findings counts ${counts[1]} taken and ${counts[2]} not taken, but lists ${taken} and ${notTaken}`)
       }
-      // The fleet reads links from the raw body, HTML comments included, so the raw lines are
-      // checked; a bare #N counts only in prose, so the visible rows are.
-      const linkedAt = reviewed.indexes.find((i) => ROW_LINK.test(lines[i]))
-      const linked = linkedAt !== undefined ? lines[linkedAt].trim() : rows.find(namesSource)
-      if (linked) {
-        findings.push(`Review findings row "${linked.slice(0, 60)}" links an issue, pull request or comment, or names one as #N other than the issue it was filed as; the review fleet would have to load it, so leave the link to the thread reply`)
+      const bare = rows.find(namesSource)
+      if (bare) {
+        findings.push(`Review findings row "${bare.slice(0, 60)}" links an issue, pull request or comment, or names one as #N other than the issue it was filed as; the review fleet would have to load it, so leave the link to the thread reply`)
       }
+    }
+    // The fleet reads links from the raw body, HTML comments included and across line breaks,
+    // so the whole section's raw text is checked, whatever it holds.
+    const raw = reviewed.indexes.map((i) => lines[i]).join('\n')
+    const hidden = raw.match(ROW_LINK)
+    if (hidden) {
+      findings.push(`Review findings holds "${hidden[0].replace(/\s+/g, ' ').slice(0, 60)}", which the review fleet would load as a source; leave links to the thread replies`)
     }
   }
   // The pre-gate reads the answered-through line only inside Review findings; one anywhere else
   // is a copy that says nothing, so it is refused rather than left to mislead a reader.
   const strayMarker = lines.findIndex(
-    (l, i) => /answered through/i.test(l) && /<!--/.test(l) && !(reviewed && i > reviewed.start && i < reviewed.end)
+    (l, i) => ANSWERED_MARKER.test(l.trim()) && !(reviewed && i > reviewed.start && i < reviewed.end)
   )
   if (strayMarker >= 0 && !posted) {
     findings.push(`line ${strayMarker + 1}: the answered-through line belongs in Review findings, the only place the dispatch pre-gate reads it`)

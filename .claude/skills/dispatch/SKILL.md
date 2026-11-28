@@ -1029,7 +1029,7 @@ round, both or neither.
   for **one** fix round, post its replies and update the Review findings section from its
   dispositions as section 2 says, then re-run the pre-pass. If the second pre-pass still requests
   changes, stop there: add the second verdict's findings to the Review findings section as
-  `needs its own push` rows, report "pre-pass unresolved after one fix round — needs human
+  rows sorted by the table (a must-fix finding left unfixed is a `needs its own push` row), report "pre-pass unresolved after one fix round — needs human
   attention", leave both pre-pass comments in place, and park the PR (section 2, "Park a PR
   for the maintainer"). Never loop further unattended.
 

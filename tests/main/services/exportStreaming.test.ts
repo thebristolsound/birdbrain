@@ -9,6 +9,7 @@ import { generateReport } from '@main/services/export'
 import { PACKAGE_FILE_CHUNK_BYTES } from '@main/services/packageFile'
 import { createStoredZip } from '@main/services/zip'
 import { readStoredZip } from '@main/services/zipRead'
+import { seededBytes } from '../../helpers/seededBytes'
 import {
   ingestLargePage,
   openStreamedExportCase,
@@ -21,12 +22,6 @@ import {
 // The export's peak memory is pinned in exportMemory.test.ts.
 
 const PAGE_BYTES = 5 * PACKAGE_FILE_CHUNK_BYTES + 4321
-
-function pageBytes(seed: number): Buffer {
-  const bytes = Buffer.alloc(PAGE_BYTES)
-  for (let i = 0; i < bytes.length; i++) bytes[i] = (i * 13 + seed + (i >>> 12)) & 0xff
-  return bytes
-}
 
 describe('streamed export', () => {
   let tempDir: string
@@ -46,7 +41,7 @@ describe('streamed export', () => {
   })
 
   it('writes the zip the in-memory writer builds from the same members', async () => {
-    const pages = [pageBytes(1), pageBytes(2), pageBytes(3)]
+    const pages = [1, 2, 3].map((seed) => seededBytes(PAGE_BYTES, seed))
     for (const [n, bytes] of pages.entries()) await ingestLargePage(caseId, n, bytes)
     const outputPath = join(tempDir, 'large.zip')
 
@@ -68,7 +63,7 @@ describe('streamed export', () => {
   })
 
   it('stops, writes no package and keeps no export entry when a page changes before the write', async () => {
-    const { capture } = await ingestLargePage(caseId, 0, pageBytes(1))
+    const { capture } = await ingestLargePage(caseId, 0, seededBytes(PAGE_BYTES, 1))
     const pagePath = join(tempDir, 'captures', capture.mhtmlPath!)
     const outputPath = join(tempDir, 'changed.zip')
     // The export entry is appended after the contents decision read every file and before

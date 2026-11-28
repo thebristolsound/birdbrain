@@ -14,6 +14,7 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 import { createStoredZip, writeStoredZip, type ZipEntrySource } from '@main/services/zip'
 import { readStoredZip } from '@main/services/zipRead'
+import { seededBytes } from '../../helpers/seededBytes'
 
 const sha256 = (bytes: Buffer): string => createHash('sha256').update(bytes).digest('hex')
 
@@ -22,19 +23,6 @@ const sha256 = (bytes: Buffer): string => createHash('sha256').update(bytes).dig
 function counterBytes(size: number): Buffer {
   const bytes = Buffer.alloc(size)
   for (let i = 0; i < size; i++) bytes[i] = (i * 31 + (i >>> 8)) & 0xff
-  return bytes
-}
-
-/** Deterministic xorshift32 bytes, so a chunk repeated, dropped or out of place changes them. */
-function seededBytes(size: number): Buffer {
-  const bytes = Buffer.alloc(size)
-  let state = 0x9e3779b9
-  for (let i = 0; i < size; i++) {
-    state ^= state << 13
-    state ^= state >>> 17
-    state ^= state << 5
-    bytes[i] = state & 0xff
-  }
   return bytes
 }
 

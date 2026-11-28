@@ -4,19 +4,14 @@ import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { PACKAGE_FILE_CHUNK_BYTES, readPackageFile } from '@main/services/packageFile'
+import { seededBytes } from '../../helpers/seededBytes'
 
 const sha256 = (bytes: Buffer): string => createHash('sha256').update(bytes).digest('hex')
-
-function counterBytes(size: number): Buffer {
-  const bytes = Buffer.alloc(size)
-  for (let i = 0; i < size; i++) bytes[i] = (i * 7 + (i >>> 10)) & 0xff
-  return bytes
-}
 
 describe('readPackageFile', () => {
   let dir: string
   let path: string
-  const bytes = counterBytes(3 * PACKAGE_FILE_CHUNK_BYTES + 1234)
+  const bytes = seededBytes(3 * PACKAGE_FILE_CHUNK_BYTES + 1234)
 
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'bb-package-file-'))
@@ -51,6 +46,8 @@ describe('readPackageFile', () => {
       PACKAGE_FILE_CHUNK_BYTES,
       1234
     ])
+    // No two chunks alike, so a chunk repeated or out of place would change the bytes read.
+    expect(new Set(copies.map(sha256)).size).toBe(copies.length)
     expect(Buffer.concat(copies).equals(bytes)).toBe(true)
     expect(file.bytes().equals(bytes)).toBe(true)
   })

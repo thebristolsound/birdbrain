@@ -175,7 +175,7 @@ pass above can still be non-compliant here. Check each one explicitly:
   implementer cannot remove it, so that footer alone is not a finding. A missing, altered, or
   mid-body attribution line is a finding.
 - **Screenshots.** When the diff changes anything that shows on screen (the renderer, the
-  extension's popup and pages, or a docs site page), the body's Changes section must hold a
+  extension's popup and pages, or a docs site page), the body's Screenshots section must hold a
   before and after pair per changed screen, attached through GitHub
   (`https://github.com/user-attachments/assets/...`), per the `post-pr-body` skill's
   "Screenshots for visual changes". A missing pair, a lone after shot, a local path, an image

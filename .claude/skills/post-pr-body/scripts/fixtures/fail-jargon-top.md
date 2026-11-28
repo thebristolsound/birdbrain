@@ -1,5 +1,8 @@
 Closes #829
 
+> [!CAUTION]
+> **Merge risk: High.** The next desktop app release changes which captures a selector reports as matching.
+
 ## Summary
 
 Adds `selectorLifecycle.rescanSelector` in selectorLifecycle.ts so an existing selector can be matched again against every capture in a case, from a
@@ -8,14 +11,53 @@ never clears existing ones first, per the wave-4 intake rulings on #829. The but
 busy until the rescan reports which selector it finished. The dispatch step opens and labels
 this pull request.
 
+<details>
+<summary>Diagram</summary>
+
+```mermaid
+flowchart LR
+  rail[Signals detail rail] -->|rescan request| main[Selector lifecycle]:::changed
+  main -->|insert or ignore| matches[(Match rows)]
+  classDef changed stroke-width:3px,stroke-dasharray:4 2
+```
+
+</details>
+
+## Proof
+
+<details>
+<summary>Each acceptance criterion and what proves it</summary>
+
+Head: `2c8c60c22a9dc92a778ef74653b7d5aa8be2ee4c`. Merge gate: pending.
+
+| Acceptance criterion | Proof | Result |
+| :-- | :-- | :-- |
+| Rescan matches every capture in the case | `selectorLifecycle.test.ts` rescan case | pass |
+| Existing matches are never cleared | `selectorLifecycle.test.ts` insert-or-ignore case | pass |
+
+</details>
+
+## Screenshots
+
+- Visual changes: Yes
+- Before, Signals detail rail: ![before](https://github.com/user-attachments/assets/0b1c2d3e-before)
+- After, Signals detail rail: ![after](https://github.com/user-attachments/assets/4f5a6b7c-after)
+
+## Blast radius
+
+- On merge: the next desktop app release carries the new button and the rescan.
+- If wrong: matches could be missed for a case, and reverting this pull request removes the button.
+
 ## Changes
 
 <details>
 <summary>Files changed, grouped by purpose</summary>
 
-- `src/main/services/selectorLifecycle.ts`, `src/main/ipcHandlers.ts`, `src/shared/ipc.ts`: the rescan pass and its channel
-- `src/renderer/components/signals/SignalDetailRail.tsx`, `useSelectorRescan.ts`: the button and its busy state
-- `tests/main/services/selectorLifecycle.test.ts`, `tests/components/SignalDetailRail.test.tsx`: known-answer and rail tests
+| Area | What changed | Why |
+| :-- | :-- | :-- |
+| `src/main/services/selectorLifecycle.ts`, `src/main/ipcHandlers.ts`, `src/shared/ipc.ts` | the rescan pass and its channel | the main process owns matching |
+| `src/renderer/components/signals/SignalDetailRail.tsx`, `useSelectorRescan.ts` | the button and its busy state | the rail is where a selector is reviewed |
+| `tests/main/services/selectorLifecycle.test.ts`, `tests/components/SignalDetailRail.test.tsx` | known-answer and rail tests | pins the insert-only rule |
 
 </details>
 

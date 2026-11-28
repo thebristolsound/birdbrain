@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { spawnSync } from 'child_process'
-import { readFileSync } from 'fs'
-import { resolve } from 'path'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { tmpdir } from 'os'
+import { join, resolve } from 'path'
 import { HAS_JQ } from './helpers/jq'
 import { type GhStub, makeGhStub } from './helpers/ghStub'
 
@@ -33,7 +34,7 @@ const run = (name: string, conclusion: string) => ({
 const routes = (
   rules: unknown,
   checkRuns: ReturnType<typeof run>[],
-  { author = 'someone-else', prePass = [] as { by: string; state: string }[] } = {}
+  { author = 'someone-else', prePass = [] as { by: string; state: string }[], body = BODY } = {}
 ) => ({
   user: { login: 'maintainer' },
   [`${API}/pulls/7`]: {
@@ -42,7 +43,7 @@ const routes = (
     draft: false,
     merged: false,
     title: 'feat(x): a thing',
-    body: BODY,
+    body,
     labels: [],
     head: { ref: 'feature', sha: SHA, repo: { full_name: 'o/r' } },
     base: { ref: 'main', repo: { full_name: 'o/r' } }
@@ -199,5 +200,27 @@ describe.skipIf(!HAS_JQ)('merge.sh takes the admin bypass only when asked', () =
     const reruns = gate.calls.filter((call) => call.startsWith('run rerun'))
     expect(reruns).toEqual(['run rerun 4242', 'run rerun 4343'])
     expect(mergeCall(gate.calls)).toBeUndefined()
+  })
+})
+
+describe.skipIf(!HAS_JQ)('merge.sh accepts only uploaded screenshots', () => {
+  const green = ['lint', 'typecheck', 'test'].map((name) => run(name, 'success'))
+  let dir: string | undefined
+
+  afterEach(() => {
+    if (dir) rmSync(dir, { recursive: true, force: true })
+    dir = undefined
+  })
+
+  it('refuses a body whose after screenshot is a readable local file', () => {
+    // A readable PNG passes the check without --posted, so only that flag can refuse it.
+    dir = mkdtempSync(join(tmpdir(), 'merge-shot-'))
+    const png = join(dir, 'after.png')
+    writeFileSync(png, Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
+    const body = BODY.replace('https://github.com/user-attachments/assets/4f5a6b7c-after', png)
+    const result = dryRun(routes(requiredRules(['lint', 'typecheck', 'test']), green, { body }))
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain('upload the screenshot')
+    expect(result.stderr).toContain('the body does not pass post-pr-body')
   })
 })

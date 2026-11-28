@@ -1,6 +1,6 @@
 # One shape per posting surface, checked before the write
 
-**Status:** Accepted, amended 2026-09-19 (two layers per post)
+**Status:** Accepted, amended 2026-09-19 (two layers per post), 2026-11-26 (work template layout, screenshots in the body), and 2026-11-27 (source correction, description edits withdraw merge requests)
 
 **Date:** 2026-08-29
 
@@ -58,6 +58,35 @@ amendment the pre-pass full report goes on the PR collapsed inside the verdict c
 original rule kept it off the PR entirely, after #1125 posted it in the open as a second
 comment); the file-group bullets, the Evidence impact fields and the preflight step list are
 collapsed too, and `scripts/preflight.mjs` writes the block that way.
+
+**Amended 2026-11-26.** The PR body takes the layout of the maintainer's work template, which
+the maintainer asked for in an interactive session on 2026-11-26. After `Closes #N` comes a
+Merge risk notice whose alert colour is its level, then Summary (with an optional collapsed
+Mermaid diagram the squash commit leaves out), Proof (one row per acceptance criterion at the
+head commit), Screenshots, an optional Not done, Blast radius (what merging ships, and how to
+back it out), optional Before merge and After merge checkboxes, Changes (file groups and an
+optional decisions table), Evidence-affecting and Verification as before. The 40-line cap
+counts non-blank lines. The agent added screenshot enforcement while implementing the template
+update: every body except
+dependabot's now declares its visual effect, inline images appear only in the Screenshots
+section, and both merge paths refuse a body whose screenshots are not GitHub attachments in
+that section.
+
+**Source correction 2026-11-27.** The original request asked for the template update, not
+separately for screenshot enforcement. After the agent described both changes, the maintainer
+authorized pushing the branch and opening the PR. The
+[source record on PR #2278](https://github.com/thebristolsound/birdbrain/pull/2278#issuecomment-7232849640)
+quotes the request, the implementation summary, and the publication approval from the original
+session. Screenshot enforcement is an implementation choice of this PR.
+
+**Description edits, 2026-11-27.** On an open PR, a body edit schedules withdrawal of the merge
+request and disables auto-merge. The sign-off and review override stay bound to the unchanged
+commit; a push still withdraws both under ADR-0041 and ADR-0057. Closed PRs keep their labels
+when someone ticks an After merge checkbox. The label workflow serializes its runs with
+`queue: max`, re-reads the body before arming auto-merge, and explains a description withdrawal
+in a comment. The maintainer waits for that run to finish before applying `merge` again.
+These checks are asynchronous: the final body read and GitHub's merge operation are separate
+calls, so this is not an atomic body-version condition on the merge.
 
 The PR body shape is the same for humans and agents: `.github/pull_request_template.md` is a
 copy of the skill's template. The one difference is the attribution line: an agent ends with

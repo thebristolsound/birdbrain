@@ -9,15 +9,21 @@ import { pathToFileURL } from 'node:url'
 const WRAP = 72
 
 export function summaryOf(body) {
-  const lines = body.replace(/\r\n/g, '\n').split('\n')
+  // Comments go first, so a <details> line inside one cannot end the Summary early.
+  const lines = body
+    .replace(/\r\n/g, '\n')
+    .replace(/<!--(?:>|->|[\s\S]*?-->)/g, '')
+    .split('\n')
   const start = lines.findIndex((l) => l.trim() === '## Summary')
   if (start < 0) return null
-  let end = lines.findIndex((l, i) => i > start && /^## /.test(l))
+  // The Summary's collapsed Diagram block stays on the PR, out of the commit.
+  // A bare <details> line, the same opener the description check reads as a block.
+  let end = lines.findIndex((l, i) => i > start && (/^## /.test(l) || /^\s*<details(\s[^>]*)?>\s*$/i.test(l)))
   if (end < 0) end = lines.length
   return lines
     .slice(start + 1, end)
     .join('\n')
-    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/<!--(?:>|->|[\s\S]*?-->)/g, '')
     .trim()
 }
 

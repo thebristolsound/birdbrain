@@ -144,7 +144,7 @@ fi
 # attribution line). Under gh the author may be human, so the attribution line is optional.
 any_author=""; [ "$cli" = "gh" ] && any_author="--any-author"
 # shellcheck disable=SC2086
-"$body_check" $any_author "$work/body.md" || fail "the body does not pass post-pr-body; fix it with '$cli pr edit $n --body-file <file>' first"
+"$body_check" --posted $any_author "$work/body.md" || fail "the body does not pass post-pr-body; fix it with '$cli pr edit $n --body-file <file>' first"
 say "body passes post-pr-body"
 
 # 4. Evidence-affecting: the machine account never merges one (ADR-0005, ADR-0014).

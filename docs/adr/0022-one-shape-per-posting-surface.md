@@ -75,7 +75,7 @@ that section.
 **Source correction 2026-11-27.** The original request asked for the template update, not
 separately for screenshot enforcement. After the agent described both changes, the maintainer
 authorized pushing the branch and opening the PR. The
-[source record on PR #2278](https://github.com/thebristolsound/birdbrain/pull/2278#issuecomment-7230715790)
+[source record on PR #2278](https://github.com/thebristolsound/birdbrain/pull/2278#issuecomment-7232849640)
 quotes the request, the implementation summary, and the publication approval from the original
 session. Screenshot enforcement is an implementation choice of this PR.
 

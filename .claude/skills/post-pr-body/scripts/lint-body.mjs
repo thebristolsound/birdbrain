@@ -41,9 +41,9 @@ const ATTACHMENT = /^https:\/\/github\.com\/user-attachments\/assets\/[\w-]+$/
 // inserts for an upload.
 const IMAGE = /!\[[^\]]*\]|<img\b/i
 // Image syntax quoted in a code span is text, not an image.
-const hasImage = (line) => IMAGE.test(line.replace(/`[^`]*`/g, ''))
+const hasImage = (line) => IMAGE.test(line.replace(/(?<!`)(`+)(?!`)[\s\S]*?(?<!`)\1(?!`)/g, ''))
 const PROOF_HEADER = /^\|\s*Acceptance criterion\s*\|\s*Proof\s*\|\s*Result\s*\|$/
-const TABLE_ROW = /^\s*\|.*\|\s*$/
+const TABLE_ROW = /^\s*\|.*\|.*$/
 const TABLE_RULE = /^\s*\|(\s*:?-+:?\s*\|)+\s*$/
 const IMPACT_FIELDS = [
   'Evidentiary result',
@@ -90,6 +90,22 @@ function countSentences(text) {
   return (prose.match(/[.!?](?=\s|$)/g) || []).length
 }
 
+function imageSources(tag) {
+  const attributes = tag.slice(4, -1)
+  const attribute = /\s+([^\s"'<>/=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/gy
+  const sources = []
+  let at = 0
+  while (attributes.slice(at).trim() !== '') {
+    if (attributes.slice(at).trim() === '/') break
+    attribute.lastIndex = at
+    const match = attribute.exec(attributes)
+    if (!match) return []
+    if (match[1].toLowerCase() === 'src') sources.push(match[2] ?? match[3] ?? match[4] ?? '')
+    at = attribute.lastIndex
+  }
+  return sources
+}
+
 function screenshotFindings(lines, posted) {
   const declarations = lines.filter((line) => /^\s*- Visual changes:/i.test(line))
   if (declarations.length !== 1) {
@@ -124,7 +140,7 @@ function screenshotFindings(lines, posted) {
     const [, phase, screen, markdown, tag] = shot
     // The rendered image is the tag's own src attribute; a second one, or src inside another
     // attribute such as data-src, could hide what GitHub shows.
-    const srcs = tag ? [...tag.matchAll(/\ssrc="([^"]*)"/gi)].map((m) => m[1]) : []
+    const srcs = tag ? imageSources(tag) : []
     if (tag && srcs.length !== 1) {
       findings.push(`${phase}, ${screen}: an <img> row has exactly one src attribute`)
       continue
@@ -313,10 +329,10 @@ export function lintBody(raw, { anyAuthor = false, posted = false } = {}) {
   // A fence closes only on the same character repeated at least as often as it opened with.
   let open = null
   const inFence = visibleText.map((l) => {
-    const m = l.match(/^\s*(`{3,}|~{3,})/)
+    const m = l.match(/^ {0,3}(`{3,}|~{3,})(.*)$/)
     if (!open) {
-      if (m) open = m[1]
-      return Boolean(m)
+      if (m && (m[1][0] !== '`' || !m[2].includes('`'))) open = m[1]
+      return Boolean(open)
     }
     if (m && m[1][0] === open[0] && m[1].length >= open.length && l.trim() === m[1]) open = null
     return true
@@ -373,6 +389,9 @@ export function lintBody(raw, { anyAuthor = false, posted = false } = {}) {
       const files = blockBody(blocks[0])
       const filled = files.some((l) => /^\s*- \S/.test(l)) || tableRows(files).some((r) => r.some((c) => c !== ''))
       if (!filled) findings.push('Changes lists no file group')
+      else if (tableRows(files).some((r) => r[0] === '')) {
+        findings.push('Changes file group row needs a filled Area cell')
+      }
       for (const b of blocks.slice(1)) {
         const lines = blockBody(b)
         const rows = tableRows(lines)

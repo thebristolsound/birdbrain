@@ -27,6 +27,81 @@ beforeEach(() => {
 afterEach(() => rmSync(dir, { recursive: true, force: true }))
 
 describe('PR screenshot evidence', () => {
+  it.each(['    ```', '\t```', '```invalid`info'])(
+    'does not hide images after a false fence: %j',
+    (fence) => {
+      const body = filled.replace(
+        '`pnpm preflight` at',
+        `${fence}\n![extra](/tmp/extra.png)\n${fence}\n\n\`pnpm preflight\` at`
+      )
+      expect(lintBody(body, { posted: true })).toEqual([
+        expect.stringContaining('images go in the Screenshots section')
+      ])
+    }
+  )
+
+  it.each([1, 2, 3])('treats matching %i-backtick spans as quoted image syntax', (count) => {
+    const ticks = '`'.repeat(count)
+    const body = filled.replace(
+      '`pnpm preflight` at',
+      `${ticks}Expected: ![before](image.png)${ticks}\n\n\`pnpm preflight\` at`
+    )
+    expect(lintBody(body, { posted: true })).toEqual([])
+  })
+
+  it('does not hide an image between unequal backtick runs', () => {
+    const body = filled.replace(
+      '`pnpm preflight` at',
+      '``Expected: ![before](image.png)`\n\n`pnpm preflight` at'
+    )
+    expect(lintBody(body, { posted: true })).toEqual([
+      expect.stringContaining('images go in the Screenshots section')
+    ])
+  })
+
+  it.each([
+    `alt='x src="${attachment('fake')}"' src='/tmp/after.png'`,
+    `alt='x src="${attachment('fake')}"' src=/tmp/after.png`,
+    `data-src="${attachment('fake')}" src="/tmp/after.png"`,
+    `src="/tmp/after.png" data-src="${attachment('fake')}"`
+  ])('checks the actual image source in %s', (attributes) => {
+    const shots = `- Visual changes: Yes\n- Before, Signals: ![before](${attachment('before')})\n- After, Signals: <img ${attributes}>`
+    expect(lint(shots, true)).toEqual([expect.stringContaining('upload the screenshot')])
+  })
+
+  it.each([`src='${attachment('after')}'`, `src=${attachment('after')}`])(
+    'accepts an attached source in %s',
+    (attributes) => {
+      const shots = `- Visual changes: Yes\n- Before, Signals: ![before](${attachment('before')})\n- After, Signals: <img ${attributes}>`
+      expect(lint(shots, true)).toEqual([])
+    }
+  )
+
+  it('checks incomplete proof rows without a trailing pipe', () => {
+    const body = filled.replace(
+      '| Existing matches are never cleared | `selectorLifecycle.test.ts` insert-or-ignore case | pass |',
+      '| Existing matches are never cleared | | pending'
+    )
+    expect(lintBody(body, { posted: true })).toEqual([
+      expect.stringContaining('lacks a proof or result')
+    ])
+    expect(
+      lintBody(filled.replace('insert-or-ignore case | pass |', 'insert-or-ignore case | pass'), {
+        posted: true
+      })
+    ).toEqual([])
+  })
+
+  it('requires the area in every file group row', () => {
+    const body = filled.replace(
+      '| `src/main/services/selectorLifecycle.ts`, `src/main/ipcHandlers.ts`, `src/shared/ipc.ts` |',
+      '| |'
+    )
+    expect(lintBody(body, { posted: true })).toEqual([
+      expect.stringContaining('Changes file group row needs a filled Area cell')
+    ])
+  })
+
   it('requires an explicit visual decision on every body', () => {
     expect(lintBody(filled)).toEqual([])
     expect(lintBody(undeclared)).toEqual([expect.stringContaining('Visual changes:')])
@@ -115,7 +190,8 @@ describe('PR body script suites', () => {
   // The fixture and compose suites are shell scripts; running them here puts them in CI.
   it.each([
     join(scripts, 'test-check.sh'),
-    resolve(scripts, '../../merge-pr/scripts/test-compose.sh')
+    resolve(scripts, '../../merge-pr/scripts/test-compose.sh'),
+    resolve(scripts, '../../post-comment/scripts/test-check.sh')
   ])(
     '%s passes',
     (suite) => {

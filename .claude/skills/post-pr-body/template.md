@@ -17,7 +17,7 @@ squash-merge commit. -->
 <details>
 <summary>Diagram</summary>
 
-<!-- Required when the change alters a flow, a call sequence, a state machine or a
+<!-- Optional: use when the change alters a flow, a call sequence, a state machine or a
 dependency. Draw the state after the merge in Mermaid, at most about 15 nodes, every edge
 labelled, and mark what this PR changed with the changed class. Delete the block when nothing
 changed that a diagram could show. -->

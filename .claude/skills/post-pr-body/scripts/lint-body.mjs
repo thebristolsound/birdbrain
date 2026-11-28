@@ -91,25 +91,38 @@ function countSentences(text) {
 }
 
 function stripCodeSpans(text) {
-  const runs = [...text.matchAll(/`+/g)]
+  const html = /<(?:[A-Za-z][A-Za-z\d-]*(?:[ \t\n]+[A-Za-z_:][\w.:-]*(?:[ \t\n]*=[ \t\n]*(?:"[^"]*"|'[^']*'|[^ \t\n"'=<>`]+))?)*[ \t\n]*\/?|\/[A-Za-z][A-Za-z\d-]*[ \t\n]*)>/
+  const uri = /<[A-Za-z][A-Za-z\d+.-]{1,31}:[^\x00-\x20\x7f<>]*>/
+  const email = /<[A-Za-z\d.!#$%&'*+\/=?^_`{|}~-]+@[A-Za-z\d](?:[A-Za-z\d-]{0,61}[A-Za-z\d])?(?:\.[A-Za-z\d](?:[A-Za-z\d-]{0,61}[A-Za-z\d])?)*>/
+  const other = /<!--(?:>|->|[\s\S]*?-->)|<\?[\s\S]*?\?>|<![A-Za-z][^>]*>|<!\[CDATA\[[\s\S]*?\]\]>/
+  const tokens = new RegExp([html.source, uri.source, email.source, other.source, '`+'].join('|'), 'g')
+  const closers = /`+/g
   let result = ''
   let from = 0
-  for (let i = 0; i < runs.length; i++) {
-    let start = runs[i].index
-    let size = runs[i][0].length
-    const slashes = text.slice(0, start).match(/\\+$/)?.[0].length ?? 0
+  let token
+  while ((token = tokens.exec(text))) {
+    const slashes = text.slice(0, token.index).match(/\\+$/)?.[0].length ?? 0
+    // HTML and autolinks consume their backticks before a code span can open there.
+    if (token[0][0] === '<') {
+      if (slashes % 2) tokens.lastIndex = token.index + 1
+      continue
+    }
+    let start = token.index
+    let size = token[0].length
     if (slashes % 2) {
       start++
       size--
     }
     if (!size) continue
-    const end = runs.findIndex((run, j) => j > i && run[0].length === size)
-    if (end < 0) continue
-    const after = runs[end].index + size
+    closers.lastIndex = tokens.lastIndex
+    let end
+    while ((end = closers.exec(text)) && end[0].length !== size) {}
+    if (!end) continue
+    const after = end.index + size
     // Preserve line numbers for diagnostics; backslashes inside a code span are literal.
     result += text.slice(from, start) + text.slice(start, after).replace(/[^\n]/g, '')
     from = after
-    i = end
+    tokens.lastIndex = after
   }
   return result + text.slice(from)
 }
@@ -187,6 +200,17 @@ function screenshotFindings(lines, posted) {
   }
   if (!/^- Visual changes: Yes\s*$/i.test(declaration)) {
     return ['Visual changes must say Yes, or No followed by a reason']
+  }
+
+  const wrapper = lines.find((line) => {
+    const t = line.trim()
+    return (
+      t.startsWith('<') && !/^<\/?details(\s[^>]*)?>$/i.test(t) &&
+      !/^<summary>.*<\/summary>$/i.test(t)
+    )
+  })
+  if (wrapper) {
+    return ['screenshot rows cannot use a raw HTML wrapper; use Markdown rows or the supported collapsed layout']
   }
 
   const findings = []
@@ -548,8 +572,7 @@ export function lintBody(raw, { anyAuthor = false, posted = false } = {}) {
     findings.push(`the last line must be exactly "${ATTRIBUTION}" or a "Created with <model name> in <harness> (<app>)" byline`)
   }
 
-  // The top layer is plain language. Protocol lines are exempt: line 1, the section
-  // headings, the Yes/No answer, the preflight marker and the attribution line.
+  // Required metadata uses fixed spelling that the prose rules would reject.
   const exempt = (i, l) => {
     const t = l.trim()
     return (

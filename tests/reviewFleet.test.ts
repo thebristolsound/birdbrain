@@ -797,7 +797,11 @@ exit 0
         'bash',
         [
           '-c',
-          stepScript('merge-on-label.yml', 'withdraw', 'Remove the sign-off and the merge request')
+          stepScript(
+            'merge-on-label.yml',
+            'withdraw',
+            'Remove the merge request and outdated sign-offs'
+          )
         ],
         {
           encoding: 'utf8',

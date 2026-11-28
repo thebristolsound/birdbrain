@@ -18,6 +18,10 @@ adds a requirement to the `merge-gate` rule of decision 1. On a pull request the
 covers, the `review/fleet` status must be success at head, or the maintainer's `break-glass`
 label must stand. The push in decision 2 removes `break-glass` with `approved` and `merge`.
 
+**Amended 2026-11-27:** [ADR-0022](0022-one-shape-per-posting-surface.md) records description-edit
+withdrawal. Editing an open pull request's description removes its merge request and disables
+auto-merge. The sign-off and review override stay bound to the unchanged commit.
+
 ## Context
 
 The `main` ruleset requires one approving review from a code owner, and `CODEOWNERS` names only
@@ -50,6 +54,8 @@ Evidence-Affecting Change is the maintainer's, whoever opened the pull request.
      status on the current head, so the sign-off names one commit however the head later moves.
 2. **A push withdraws the sign-off.** On every push the workflow removes `approved` and `merge`
    and turns off auto-merge. Removing `merge` also turns auto-merge off.
+   Editing an open pull request's description removes only `merge` and turns auto-merge off;
+   the sign-off and review override remain tied to the commit.
 3. **The maintainer requests a merge with the `merge` label.** A second workflow checks that a
    code owner applied it, composes the squash subject and body exactly as `merge-pr` does, and
    enables GitHub auto-merge as the machine account against the head commit. GitHub merges when
@@ -83,7 +89,8 @@ Evidence-Affecting Change is the maintainer's, whoever opened the pull request.
   branch and a same-repository branch could replace it; only the rule script is read from the
   default branch. The trusted controls are the `merge-on-label.yml` jobs, which run from the
   default branch: auto-merge is armed only on the maintainer's `merge` label, and disarmed on a
-  push, on the label's removal, and when a closed issue becomes evidence-affecting. A manual
+  push, on a description edit of an open pull request, on the label's removal, and when a
+  closed issue becomes evidence-affecting. A manual
   merge by an account with write access remains possible once the checks are green, as it was
   for any account allowed the bypass before.
 - A pre-pass verdict is a commit status, which starts no workflow on the pull request, so

@@ -29,6 +29,59 @@ beforeEach(() => {
 afterEach(() => rmSync(dir, { recursive: true, force: true }))
 
 describe('PR screenshot evidence', () => {
+  it.each([
+    '<span title="`">![x](https://example.com/p.png)<span title="`">',
+    "<span title='`'>![x](https://example.com/p.png)<span title='`'>",
+    '<span title="> `">![x](https://example.com/p.png)<span title="> `">',
+    '<https://example.com/`> ![x](https://example.com/p.png) <https://example.com/`>',
+    '<foo`bar@example.com> ![x](https://example.com/p.png) <foo`bar@example.com>'
+  ])('does not use backticks inside HTML or autolinks as code openers: %s', (snippet) => {
+    const body = filled.replace('`pnpm preflight` at', `${snippet}\n\n\`pnpm preflight\` at`)
+    expect(lintBody(body, { posted: true })).toEqual([
+      expect.stringContaining('images go in the Screenshots section')
+    ])
+    expect(
+      lint(
+        `${noVisualChange}\n\n<details>\n<summary>Example</summary>\n\n${snippet}\n\n</details>`,
+        true
+      )
+    ).toEqual([
+      expect.stringContaining('Visual changes is No but Screenshots contains screenshot images')
+    ])
+  })
+
+  it('keeps HTML literal when a code span opens first', () => {
+    const snippet = '`<span>![x](https://example.com/p.png)</span>`'
+    const body = filled.replace('`pnpm preflight` at', `${snippet}\n\n\`pnpm preflight\` at`)
+    expect(lintBody(body, { posted: true })).toEqual([])
+  })
+
+  it('treats escaped angle brackets as text before matching code spans', () => {
+    const snippet = '\\<span title="`">![x](https://example.com/p.png)\\<span title="`">'
+    const body = filled.replace('`pnpm preflight` at', `${snippet}\n\n\`pnpm preflight\` at`)
+    expect(lintBody(body, { posted: true })).toEqual([])
+  })
+
+  it.each(['pre', 'div', 'span', 'table', 'textarea'])(
+    'rejects screenshot rows in an HTML wrapper: %s',
+    (tag) => {
+      const pair = rows(attachment('before'), attachment('after'))
+      expect(lint(`- Visual changes: Yes\n\n<${tag}>\n${pair}\n</${tag}>`, true)).toEqual([
+        expect.stringContaining('raw HTML wrapper')
+      ])
+    }
+  )
+
+  it('accepts screenshot rows in the supported collapsed layout', () => {
+    const pair = rows(attachment('before'), attachment('after'))
+    expect(
+      lint(
+        `- Visual changes: Yes\n\n<details>\n<summary>Images</summary>\n\n${pair}\n\n</details>`,
+        true
+      )
+    ).toEqual([])
+  })
+
   it.each(['<!-->', '<!--->'])('does not hide rendered content after %s', (marker) => {
     const snippet = `${marker}\n![x](https://example.com/x.png)\n<!-- end -->`
     const body = filled.replace('`pnpm preflight` at', `${snippet}\n\n\`pnpm preflight\` at`)

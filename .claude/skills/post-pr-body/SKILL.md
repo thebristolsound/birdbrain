@@ -153,6 +153,9 @@ handing its body to the dispatcher. A change with no visual effect carries none.
    - After, capture viewer: ![after](/tmp/birdbrain-shots/fix-viewer/viewer-after.png)
    ```
 
+   Use the collapsed detail shape above when grouping a pair. The check rejects other
+   standalone HTML wrappers, including `<pre>` and `<div>`, because they can leave the rows as text.
+
 3. **Upload.** One route serves opening a PR and every later update, under the maintainer's
    `gh` and the dispatcher's `agh` alike. It avoids `gh pr edit`, which fails under the
    machine token (the `dispatch` skill, "GitHub access"). The PR must exist first.

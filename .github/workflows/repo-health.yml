@@ -1,0 +1,73 @@
+name: Repo health
+
+# Weekly report on the codebase itself: suppressions, unused code, deferred
+# dependency decisions, plans with no status, broken links, skipped tests,
+# coverage and red runs on main, branches left behind. Each number has a budget in
+# scripts/repo-health/lib/. The run rewrites one open issue labelled `repo-health`
+# and comments on it when a signal changes status or when last week's values cannot
+# be read (ADR-0058).
+#
+# It is a report, not a gate: a signal outside its budget never fails this run.
+# The run goes red only when the tool cannot run or cannot publish, and two red
+# scheduled runs raise the Health workflow's alert (.github/scripts/health/check.sh).
+#
+# No model is called and no stored credential is read: every step uses this
+# workflow's own token. A scheduled run uses the default branch. A manual run uses
+# the branch it is started on, and writes only on main. It checks out no pull
+# request.
+#
+# To pause it, disable the workflow (`gh workflow disable repo-health.yml`). Do
+# not add a job-level `if:` switch: a skipped job ends the run as skipped, and the
+# Health workflow counts any scheduled run that did not succeed towards its streak.
+#
+# Monday 09:13 UTC, clear of the Monday jobs at 06:00, 06:20 and 07:00.
+
+on:
+  schedule:
+    - cron: '13 9 * * 1'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Print the issue writes instead of making them'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  actions: read
+  issues: write
+  pull-requests: read
+
+concurrency:
+  group: repo-health
+  cancel-in-progress: false
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      # knip loads the Vite, Vitest and Playwright configurations, so it needs the
+      # packages on disk. No package's build script runs.
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Report
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          # A scheduled run writes. A manual run writes only from main with dry_run
+          # unticked. The tool writes only when this is exactly `false`.
+          DRY_RUN: ${{ (github.event_name == 'workflow_dispatch' && inputs.dry_run) || github.ref != 'refs/heads/main' }}
+        run: node scripts/repo-health/cli.mjs --publish

@@ -22,7 +22,7 @@ WARN_DAYS=14
 # two of the same job is a condition. For the 4-hourly dispatch that is eight
 # hours; for the weekly jobs, two weeks.
 STREAK=2
-WORKFLOWS=(dispatch.yml doc-curator.yml stale-agent-issues.yml)
+WORKFLOWS=(dispatch.yml doc-curator.yml stale-agent-issues.yml repo-health.yml)
 
 R="${GITHUB_REPOSITORY:-thebristolsound/birdbrain}"
 out="${GITHUB_OUTPUT:-/dev/stdout}"

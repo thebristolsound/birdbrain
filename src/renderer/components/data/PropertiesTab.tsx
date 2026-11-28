@@ -12,8 +12,10 @@ interface PropertiesTabProps {
   // The Capture row for a Capture Exhibit, for the Collector fields.
   capture?: Capture
   // The inline route for the menu's Copy SHA-256 and Copy relative path
-  // (#1151): a copy button beside each.
+  // (#1151): a copy button beside each. The SHA-256 goes through
+  // onCopyDigest, so an empty or malformed digest is not announced as copied.
   onCopy?: (value: string, label: string) => void
+  onCopyDigest?: (value: string, label: string) => void
 }
 
 interface Prop {
@@ -22,6 +24,7 @@ interface Prop {
   mono?: boolean
   // What a copy of this value is announced as; absent means not copyable.
   copyAs?: string
+  digest?: boolean
 }
 
 // Q10: kind, origin, Exhibit Number, recorded size (labelled as recorded at
@@ -69,7 +72,8 @@ export function propertiesFor(row: InventoryRow, rows: InventoryRow[], capture?:
     label: 'SHA-256',
     value: row.contentHash,
     mono: true,
-    copyAs: row.entity === 'staged-file' ? 'SHA-256 (not anchored)' : 'SHA-256'
+    copyAs: row.entity === 'staged-file' ? 'SHA-256 (not anchored)' : 'SHA-256',
+    digest: true
   })
   props.push({ label: 'Size (recorded at ingest)', value: formatBytes(row.sizeBytes) })
   props.push({
@@ -92,36 +96,39 @@ export function propertiesFor(row: InventoryRow, rows: InventoryRow[], capture?:
   return props
 }
 
-export function PropertiesTab({ row, rows, capture, onCopy }: PropertiesTabProps) {
+export function PropertiesTab({ row, rows, capture, onCopy, onCopyDigest }: PropertiesTabProps) {
   return (
     <dl
       className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2 p-4 text-xs"
       data-testid="properties-tab"
     >
-      {propertiesFor(row, rows, capture).map((prop) => (
-        <div key={prop.label} className="contents">
-          <dt className="text-text-faint">{prop.label}</dt>
-          <dd
-            className={
-              prop.mono
-                ? 'break-all font-mono text-text-secondary'
-                : 'break-words text-text-secondary'
-            }
-          >
-            {prop.value}
-            {prop.copyAs && onCopy && (
-              <button
-                type="button"
-                className="ml-2 rounded px-1.5 py-0.5 text-[10px] text-accent hover:bg-accent-subtle"
-                onClick={() => onCopy(prop.value, prop.copyAs!)}
-                data-testid={`copy-${prop.label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}
-              >
-                Copy
-              </button>
-            )}
-          </dd>
-        </div>
-      ))}
+      {propertiesFor(row, rows, capture).map((prop) => {
+        const copy = prop.digest ? onCopyDigest : onCopy
+        return (
+          <div key={prop.label} className="contents">
+            <dt className="text-text-faint">{prop.label}</dt>
+            <dd
+              className={
+                prop.mono
+                  ? 'break-all font-mono text-text-secondary'
+                  : 'break-words text-text-secondary'
+              }
+            >
+              {prop.value}
+              {prop.copyAs && copy && (
+                <button
+                  type="button"
+                  className="ml-2 rounded px-1.5 py-0.5 text-[10px] text-accent hover:bg-accent-subtle"
+                  onClick={() => copy(prop.value, prop.copyAs!)}
+                  data-testid={`copy-${prop.label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}
+                >
+                  Copy
+                </button>
+              )}
+            </dd>
+          </div>
+        )
+      })}
     </dl>
   )
 }

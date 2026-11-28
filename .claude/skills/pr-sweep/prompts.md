@@ -52,7 +52,8 @@ bump.>
 Merge origin/main into the branch (no rebase) and list each conflict and how both sides were
 kept. If a migration conflicts, renumber this PR's migration after main's and never edit
 main's. Verify with `pnpm preflight`, capturing exit codes. Commit per the
-post-commit-message skill (run its check.sh). Push only as a fast-forward of <sha>.
+post-commit-message skill (run its check.sh). Push only as a fast-forward of <sha>: re-read
+the remote head just before pushing, and if it moved, push nothing and return what you have.
 
 Return: the new head sha, what changed per finding, conflicts resolved, verification output
 with exit codes, a corrected full body file that passes

@@ -179,6 +179,11 @@ describe('isSourceLike', () => {
     expect(isSourceLike('scripts/diff-coverage.mjs')).toBe(false)
   })
 
+  it('names scripts/repo-health/, which vitest instruments as well', () => {
+    expect(isSourceLike('scripts/repo-health/cli.mjs')).toBe(true)
+    expect(isSourceLike('scripts/repo-health/lib/report.mjs')).toBe(true)
+  })
+
   it('does not name co-located package tests, which coverage excludes like tests/', () => {
     expect(isSourceLike('src/packages/example/tests/example.test.ts')).toBe(false)
     expect(isSourceLike('src/packages/example/tests/fixtures/sample.ts')).toBe(false)

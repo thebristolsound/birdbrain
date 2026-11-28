@@ -34,21 +34,29 @@ const PdfPartSchema = CaptureInventorySchema.shape.pdf
  * PDF); the part it signs says so. Never throws: a page the channel's check refuses or one taller
  * than MAX_PDF_CONTENT_HEIGHT_PX is not printed, and that, a print that fails or outlasts the
  * method's bound, and a PDF over MAX_PDF_SIZE each record the PDF absent as `failed`, with the
- * error that names the cause.
+ * error that names the cause. The log drops an error's message, so the height and size
+ * refusals also carry a code that says which one refused (#2268).
  */
 export async function printPdf(contentHeight: number, channel: PrintChannel): Promise<PdfOutcome> {
   try {
     channel.check?.()
     if (contentHeight > MAX_PDF_CONTENT_HEIGHT_PX) {
-      throw new Error(
-        `The page is ${contentHeight} CSS pixels tall, over MAX_PDF_CONTENT_HEIGHT_PX ` +
-          `(${MAX_PDF_CONTENT_HEIGHT_PX}), so it was not printed`
+      throw Object.assign(
+        new Error(
+          `The page is ${contentHeight} CSS pixels tall, over MAX_PDF_CONTENT_HEIGHT_PX ` +
+            `(${MAX_PDF_CONTENT_HEIGHT_PX}), so it was not printed`
+        ),
+        { code: 'PDF_TOO_TALL' }
       )
     }
     const bytes = await channel.print()
     if (bytes.length > MAX_PDF_SIZE) {
-      throw new Error(
-        `The PDF is ${bytes.length} bytes, over MAX_PDF_SIZE (${MAX_PDF_SIZE}), so it was discarded`
+      throw Object.assign(
+        new Error(
+          `The PDF is ${bytes.length} bytes, over MAX_PDF_SIZE (${MAX_PDF_SIZE}), so it was ` +
+            'discarded'
+        ),
+        { code: 'PDF_TOO_LARGE' }
       )
     }
     const inventory = PdfPartSchema.parse({ present: true, afterCollection: true }) as PresentPdf

@@ -4,6 +4,7 @@ import {
   accessSync,
   chmodSync,
   constants,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -43,7 +44,9 @@ vi.setConfig({ testTimeout: 60_000 })
 //
 // Axes: entry {present, absent} x bytes {readable, exists-unreadable, absent}
 // x chain {verified, broken}. Twelve states, each exported as an Evidence
-// Package and as a Working Copy.
+// Package and as a Working Copy. In the four where an entry names the file and
+// its bytes cannot be read, the Evidence Package export stops and writes
+// nothing (#2225), so only the Working Copy half has a package to check.
 
 const sh = (dir: string): number => {
   try {
@@ -290,15 +293,26 @@ describe('derived file states, end to end (#1156)', () => {
         outputPath: join(tempDir, 'evidence.zip')
       }
 
-      await generateReport(fixture.caseId, base, lifecycle)
-      const evidenceEntries = readStoredZipEntries(base.outputPath)
-      assertConsistent({
-        label: `evidence package, ${label}`,
-        entries: evidenceEntries,
-        subjectPath,
-        caseDerivedFileCount,
-        chainBroken: state.chain === 'broken'
-      })
+      let evidenceEntries: Map<string, Buffer> | null = null
+      if (state.entry === 'present' && state.bytes !== 'readable') {
+        await expect(generateReport(fixture.caseId, base, lifecycle)).rejects.toThrow(
+          new Error(
+            `No package was written: could not read the thumbnail Derived File of Capture ` +
+              `${fixture.captureId} (${subjectPath}), which a signed entry records.`
+          )
+        )
+        expect(existsSync(base.outputPath), `${label}: evidence package written`).toBe(false)
+      } else {
+        await generateReport(fixture.caseId, base, lifecycle)
+        evidenceEntries = readStoredZipEntries(base.outputPath)
+        assertConsistent({
+          label: `evidence package, ${label}`,
+          entries: evidenceEntries,
+          subjectPath,
+          caseDerivedFileCount,
+          chainBroken: state.chain === 'broken'
+        })
+      }
 
       // The Working Copy carries no report and no certification by design
       // (#399, ADR-0010), so its half of the property is the marker: the files
@@ -349,7 +363,7 @@ describe('derived file states, end to end (#1156)', () => {
 
       // Both shipped verifiers, on the same package, must reach the same
       // verdict: the app-side core the binary is built from, and verify.sh.
-      if (RUNS) {
+      if (RUNS && evidenceEntries) {
         const dir = join(tempDir, 'unpacked')
         unpack(evidenceEntries, dir)
         const programmatic = verifyEvidencePackage(dir)

@@ -1,13 +1,14 @@
 // @vitest-environment jsdom
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { renderHook, act } from '@testing-library/react'
+import { describe, it, expect, beforeEach, afterEach, vi, type Mock } from 'vitest'
+import { renderHook, act, waitFor } from '@testing-library/react'
 
 // Mock the router module so we don't pull in the full route tree, and so we can
 // assert navigation intent and control the current pathname. vi.hoisted keeps
 // these refs available inside the hoisted vi.mock factory.
-const { navigate, routerState } = vi.hoisted(() => ({
+const { navigate, routerState, diagnosticsLog } = vi.hoisted(() => ({
   navigate: vi.fn(),
-  routerState: { location: { pathname: '/' } }
+  routerState: { location: { pathname: '/' } },
+  diagnosticsLog: vi.fn(async () => {})
 }))
 vi.mock('@renderer/router', () => ({
   router: {
@@ -23,7 +24,7 @@ import { useAppStore } from '@renderer/stores/appStore'
 import { queryClient } from '@renderer/lib/queryClient'
 import { queryKeys } from '@renderer/lib/queries'
 import type { Capture, LaunchedBrowserStatus } from '@shared/types'
-import type { DeepLinkTarget, ExtensionAttachEvent } from '@shared/ipc'
+import type { DeepLinkTarget, ExtensionAttachEvent, SessionStateEvent } from '@shared/ipc'
 import { fakeBridge } from '../fakeBridge'
 
 // Registry of the callbacks the hook subscribes with, keyed by channel.
@@ -40,13 +41,22 @@ type Handlers = {
   popOut?: (e: { poppedOut: boolean }) => void
 }
 
-function installBirdbrain(handlers: Handlers, unsubs: Record<string, ReturnType<typeof vi.fn>>) {
+// What main holds when the hook mounts. The default is no Capture Session.
+const idle: SessionStateEvent = { sessionActive: false, activeCaseId: null, captureCount: 0 }
+
+function installBirdbrain(
+  handlers: Handlers,
+  unsubs: Record<string, ReturnType<typeof vi.fn>>,
+  snapshot: () => Promise<SessionStateEvent>
+) {
   const register = (key: keyof Handlers, unsubKey: string) => (cb: unknown) => {
     handlers[key] = cb as never
     unsubs[unsubKey] = unsubs[unsubKey] ?? vi.fn()
     return unsubs[unsubKey]
   }
   fakeBridge({
+    session: { snapshot },
+    diagnostics: { log: diagnosticsLog },
     onExtensionConnection: register('extension', 'extension'),
     onSessionStateChanged: register('session', 'session'),
     onCaptureActivity: register('capture', 'capture'),
@@ -77,13 +87,16 @@ function makeCapture(caseId: string, id: string): Capture {
 describe('useServerStatus', () => {
   let handlers: Handlers
   let unsubs: Record<string, ReturnType<typeof vi.fn>>
+  let snapshot: Mock<() => Promise<SessionStateEvent>>
 
   beforeEach(() => {
     handlers = {}
     unsubs = {}
+    snapshot = vi.fn(async () => idle)
     navigate.mockClear()
+    diagnosticsLog.mockClear()
     routerState.location.pathname = '/'
-    installBirdbrain(handlers, unsubs)
+    installBirdbrain(handlers, unsubs, () => snapshot())
     // Reset shared store state used across assertions.
     useAppStore.getState().setConnectedToExtension(false)
     useAppStore.getState().setSessionActive(false)
@@ -161,6 +174,90 @@ describe('useServerStatus', () => {
     renderHook(() => useServerStatus())
     act(() => handlers.session?.({ sessionActive: false, activeCaseId: 'case-3' }))
     expect(navigate).toHaveBeenCalledWith({ to: '/cases/$caseId', params: { caseId: 'case-3' } })
+  })
+
+  // #815: a reload starts the store Idle, and main pushes only on a change, so the Dashboard read
+  // Idle through a running Capture Session until a Case route activated.
+  describe('reading the Capture Session from main at mount', () => {
+    const active: SessionStateEvent = {
+      sessionActive: true,
+      activeCaseId: 'case-9',
+      captureCount: 2
+    }
+
+    function deferred(): {
+      promise: Promise<SessionStateEvent>
+      resolve: (s: SessionStateEvent) => void
+    } {
+      let resolve: (s: SessionStateEvent) => void = () => {}
+      const promise = new Promise<SessionStateEvent>((r) => (resolve = r))
+      return { promise, resolve }
+    }
+
+    it('shows a running Capture Session without entering its Case', async () => {
+      snapshot.mockResolvedValue(active)
+      renderHook(() => useServerStatus())
+      await waitFor(() => expect(useAppStore.getState().sessionActive).toBe(true))
+      expect(useAppStore.getState().activeCaseId).toBe('case-9')
+      expect(snapshot).toHaveBeenCalledTimes(1)
+      expect(navigate).not.toHaveBeenCalled()
+    })
+
+    // Started active, so a read that never wrote the store would fail here.
+    it('reads Idle when main holds no Capture Session', async () => {
+      useAppStore.setState({ sessionActive: true, activeCaseId: 'case-1' })
+      renderHook(() => useServerStatus())
+      await waitFor(() => expect(useAppStore.getState().sessionActive).toBe(false))
+      expect(useAppStore.getState().activeCaseId).toBeNull()
+      expect(navigate).not.toHaveBeenCalled()
+    })
+
+    it('asks main again rather than reading a cached snapshot', async () => {
+      queryClient.setQueryData(queryKeys.session, active)
+      useAppStore.setState({ sessionActive: true })
+      renderHook(() => useServerStatus())
+      await waitFor(() => expect(useAppStore.getState().sessionActive).toBe(false))
+      expect(snapshot).toHaveBeenCalledTimes(1)
+    })
+
+    it('yields to a pushed state that lands before the read returns', async () => {
+      const read = deferred()
+      snapshot.mockReturnValue(read.promise)
+      routerState.location.pathname = '/cases/case-9/overview'
+      renderHook(() => useServerStatus())
+      act(() => handlers.session?.(active))
+      await act(async () => {
+        read.resolve(idle)
+        await read.promise
+      })
+      expect(useAppStore.getState().sessionActive).toBe(true)
+      expect(useAppStore.getState().activeCaseId).toBe('case-9')
+    })
+
+    it('writes nothing once unmounted', async () => {
+      const read = deferred()
+      snapshot.mockReturnValue(read.promise)
+      const { unmount } = renderHook(() => useServerStatus())
+      unmount()
+      await act(async () => {
+        read.resolve(active)
+        await read.promise
+      })
+      expect(useAppStore.getState().sessionActive).toBe(false)
+      expect(useAppStore.getState().activeCaseId).toBeNull()
+    })
+
+    it('leaves the store Idle and logs the failure when the read fails', async () => {
+      snapshot.mockRejectedValue(new Error('main is gone'))
+      renderHook(() => useServerStatus())
+      await waitFor(() =>
+        expect(diagnosticsLog).toHaveBeenCalledWith(
+          expect.objectContaining({ code: 'query.failed', context: { domain: 'session' } })
+        )
+      )
+      expect(useAppStore.getState().sessionActive).toBe(false)
+      expect(useAppStore.getState().activeCaseId).toBeNull()
+    })
   })
 
   it('does not navigate when already on that case', () => {

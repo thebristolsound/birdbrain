@@ -72,3 +72,26 @@ The probe samples at most 40 mutants (`--max-mutants`), spread evenly over the c
 The probe does not run end-to-end specs, because each mutant would need a fresh `pnpm build`. The `test-reliability-reviewer` agent (`.claude/agents/test-reliability-reviewer.md`) reads changed specs and unit tests against their titles, and uses the probe's report as evidence.
 
 Both experiments edit tracked files while the tests run and put them back afterwards. The probe refuses to start on a tree with uncommitted changes, and `SIGINT` or `SIGTERM` stops the running tests and restores the files before it exits. While any file is edited, `.cache/test-reliability/journal.json` lists it. A run killed with no chance to restore leaves the journal, and the next run refuses to start and prints the `git checkout` command that restores the files. Do not edit files or run other tests in the same tree while the probe runs.
+
+## Mutation baseline
+
+The probe above scores the lines one branch changed, with at most 40 mutants from eight kinds of edit. `pnpm test:mutation` asks the wider question for a whole module: of every fault StrykerJS can write into it, how many do the unit tests catch? It runs on demand, is not in CI, and fails on no score. Use it to find a module whose tests are weaker than its coverage figure suggests, or to check a module before a refactor that will lean on its tests.
+
+Stryker copies the tree into `.cache/stryker-tmp/` and mutates the copy, so it runs on a dirty tree and never edits tracked files. `scripts/test-mutation.mjs` starts it inside Electron (`ELECTRON_RUN_AS_NODE=1`), as `pnpm test` starts Vitest: Stryker's workers run on the binary that started it, and the native modules are built for Electron's ABI.
+
+The default scope is `src/packages/`, scored against the tests under `src/packages/`. For anything else pass both flags:
+
+```bash
+pnpm test:mutation --mutate src/shared/safeFilename.ts --tests tests/shared
+pnpm test:mutation --mutate 'src/shared/noteDoc.ts:40-90' --tests tests/shared/noteDoc.test.ts
+```
+
+`--mutate` is Stryker's own flag and takes globs and line ranges. `--tests` belongs to the script: the directories or test files, comma-separated, that the mutants are scored against. Within them, a mutant reruns only the test files that import the mutated file. Keep `--tests` narrow. With all of `tests/` in scope, `src/shared/safeFilename.ts` (28 lines) pulled in the IPC and component suites and took seven minutes. A narrow scope also asks the stricter question: whether the module's own tests pin it.
+
+Do not use Stryker's `--testFiles` for this. With it, Stryker 10.1 switches a mutant on only after the test file has loaded, so a mutant in code that runs as a module loads (a top-level constant, or a function a test file calls at its top level) is never live and is reported as a survivor. `vitest.mutation.config.ts` narrows the tests in the Vitest config for that reason.
+
+A test that reads source files as text fails the initial run, because each sandboxed source file carries all of its mutants side by side. `vitest.mutation.config.ts` lists the ones to leave out (`READS_SOURCE_AS_TEXT`); add any other you meet.
+
+The report lands in `.cache/stryker/report/mutation.html`, with every mutant shown in place and the tests that covered it. Each set of arguments keeps its results in its own `.cache/stryker/incremental-<hash>.json`, so a run reports only the mutants in its own scope. The next run with the same arguments retests only mutants whose code or covering tests changed; `--force` retests everything.
+
+Read survivors as you read the probe's: name the input that would expose the mutant, or the reason none exists. Two kinds are usually noise here. A mutated log or error-message string is only a gap when the wording is part of a contract, and a `>=` for `>` survives wherever the two values can never be equal.

@@ -1,13 +1,123 @@
 # One reader for the Manifest
 
-**Status:** parked on 2026-10-23. No slice was started. Since this was written, `verify.sh` walks
-member chains (#1880), Case Archives compose every import's id map (#1953) and `merge` entries carry
-receipt stamps (#1912), so the problem statement and the slice list need re-checking against `main`
-before any slice starts.
+**Status:** parked on 2026-10-23, re-checked against `main` on 2026-11-26 (see "Re-check at
+85729b6c"). No slice was started. The known answers slice 1 needs before it edits the chain walk are
+in `tests/shared/verify/keyRule.test.ts`. The questions the re-check raised are answered (see
+"Rulings of 2026-11-27"); picking it up again starts with the slice list as amended there.
 
 Written 2026-10-02 from an architecture review lead, revised the same day after an adversarial
 review (see "Review disposition"). Not started. Most slices touch a blocking-tier path, so they
 carry `evidence-affecting` and wait for human review.
+
+## Re-check at 85729b6c
+
+Re-checked on 2026-11-26. Symbols are named instead of line numbers.
+
+### Done since the plan
+
+- **Separate ticket: writers name the chain id.** Shipped. A deletion signs under the id its
+  `capture` entry signed (#1876), the thumbnail backfill signs under the chain id (#1872), and
+  `deletionReconciliation.ts` matches through `rowDescriber` and `signedCaptureId`. Failure 3 of PR
+  #1672, Case Archives without Derived Files, was fixed by #1947.
+- **Entry signature by row id (#1472).** Fixed by #2048: `resolveEntrySignatures` falls back to
+  the chain id.
+- **Two token loops.** Gone. `decideTimestampTokens` in `src/packages/evidence-package-contents`
+  is the one admission loop, through `stampFor` (#2212). The certificate walk in `export.ts` reads
+  every token and admits none.
+- **Whole-package known answers.** `tests/main/services/exportKnownAnswer.test.ts` pins export
+  bytes for eleven packages, renamed rows and a Shared Case among them (#2208).
+
+### New copies of the rules
+
+- **`verify.sh` (#1880)** gained `cc_key_for` for member and lineage chains, a phase-C-style
+  boundary in `check_chain`, a lineage walk that repeats the fork-history rule of `sharedCase.ts`,
+  and `JQ_DELETED`, which repeats Package Verification's authored-deletion rule. Step 4a reads
+  member and lineage chains, so "`verify.sh` reads only `manifest.jsonl`" no longer holds.
+- **DER SPKI fingerprints** are now printed on a second screen: the Sharing roster and join
+  requests hash a member key through `joinHandshake.ts`, while `verify.sh` prints the PEM-text hash
+  for the same member keys.
+- **`signingKeyRanges`** has a second consumer, `entriesUnderCarriedKeys`, which decides whether
+  the report prints the carried-key prose.
+- **Receipt stamps (#1912)** brought `receiptStampFor` in `trustedTime.ts`, a sibling of
+  `stampFor`. Package Verification calls it through `receiptStampsFromEntries` and repeats only
+  the exclusion of `subject: 'entry'` tokens from content stamps. `verify.sh` has its own copy,
+  `VERIFY_RECIPES.receiptTokenFilter`.
+- **Export verifies the local chain twice**, once in `resolveExportCaptureEngine` and once in
+  `resolveExportLinkSources`. The Risks bullet "Export does not check the chain today" is out of
+  date.
+
+### Rulings of 2026-11-27
+
+The re-check raised three questions. The maintainer answered them in an interactive session on
+2026-11-27.
+
+1. **Ruling 3 stands, made precise.** A writer names an Exhibit by its confirmed chain id.
+   Failing that, it names the row's own id only when one of the Case's chains holds the `capture`
+   or `exhibit` entry that acquired it under that id. Otherwise it refuses and explains why. The
+   writers that shipped (`signedCaptureId`, `signedParentId`) fall back to the row id without that
+   check, so a deletion of a renamed Capture whose rename cannot be confirmed names an id the
+   chain never wrote. Package Verification retires an Exhibit only through a deletion naming the id its own
+   entry carries, so the original Exhibit stays active and every later Evidence Package that
+   includes it fails for its missing bytes. An edited index on a native row still deletes under
+   the row's own id.
+2. **Ruling 4 covers the Sharing screens.** Once its own pull request lands, the Sharing roster
+   and join requests will print the PEM-text hash packages print, which ruling 4 already asks of
+   the Data screen. Until then the roster, join requests and Data screen print the DER SPKI hash.
+   Packages do not change.
+3. **Invariant 4: names yes, signing no.** An inferred chain name may name an Exhibit in any
+   document an export writes. A Manifest Entry never names an Exhibit by an unconfirmed id: the
+   selection list of an `export` entry takes confirmed ids only, and a selection export refuses
+   when a selected Exhibit has none, whether export inferred its chain id or could not name it.
+   This follows the same rule as ruling 3.
+
+A second round the same day settled how the three are carried out, and three more rulings on the
+review of [ADR-0059](../adr/0059-a-signed-entry-names-an-exhibit-only-by-a-confirmed-id.md)
+settled renumbering and a Case whose local Manifest does not verify. ADR-0059 records rulings 1
+and 3 as the rule for every writer, and `CONTEXT.md` defines Chain Id and Confirmed Chain Id.
+
+- **Writers and the signed selection go first, in #2283.** A single delete and a batch delete
+  refuse without a confirmed id, naming the Exhibit and the reason, with no override. The
+  thumbnail backfill skips and logs. The one-time `renumber` entry numbers a renamed Exhibit
+  under its Confirmed Chain Id and leaves out, and logs, one that has none; legacy Captures keep
+  the numbering ADR-0023 gives them. A selection that includes a legacy Capture with no Manifest
+  Entry refuses. A Working Copy of a selection follows the same rule as an Evidence Package. The
+  fix needs no slice of this plan, so it lands before slice 1.
+- **The Sharing fingerprint change is its own pull request.** It switches the roster and join
+  requests to the PEM-text hash outright, with no period showing both, and keeps the roster's
+  short grouped form, which is a prefix of what `verify.sh` prints.
+- **Earlier wrong deletions stay as they are.** A deletion any release signed under an id no chain
+  wrote, before or after #1876, is not repaired or disclosed by this plan.
+- **A Case whose local Manifest does not verify.** A delete keeps signing the row's own id, with
+  the #1199 risk ADR-0059 rule 6 states, and the renumber works as today. A selection export
+  refuses when a selected Exhibit's row id names no `capture` or `exhibit` entry in any of the
+  Case's chains; other rows export as today. A failing member or lineage chain alone does not
+  bring this exception into play.
+
+### Amendments to the slices
+
+- **Slice 0.** Entry schemas run 1 to 7, not 1 to 4, and receipt stamps are an era of their own.
+  Reuse `exportKnownAnswer.test.ts` rather than rebuild its packages. Member-chain conformance
+  between `verify.sh` and Package Verification is now expected to agree.
+- **Slice 1.** Its known answers are in `keyRule.test.ts`, which pins both copies in the walk and
+  the two #1199 shapes. The `manifestSchema5TooOld`, `6TooOld` and `7TooOld` tests join its
+  byte-identity list. `cc_key_for` and its phase-C boundary need a conformance target.
+- **Slice 2.** `ChainInput.idMapPayload` becomes the Case's own map plus the carried maps, by
+  digest (#1953). `binds` needs the rows and the Shared Case's accepted entries, which
+  `readAnchoredIdMap` now checks. `manifest.ts` already exports `readCaseChains`, `CaseChains` and
+  `AuthorChain`, so the adapter needs another name.
+- **Slice 4.** Smaller: the single token loop and lookup by chain id are done. It keeps typed
+  entries, `signerRuns()` for the Certification and `entriesUnderCarriedKeys`, the break rule, the
+  newer-schema disclosure, and one chain walk instead of two. Byte identity also holds against
+  `exportKnownAnswer.test.ts`. The signed selection takes confirmed ids only from #2283 on, and
+  slice 4 keeps that by signing only a name whose `via` is `'own'` or `'id-map'`.
+- **Slice 5.** `entryDescribesRow` has a third call site in `recapture.ts`, and the newer `rowDescriber`
+  answers the same question at five call sites across `exhibits.ts`, `exhibitBackfill.ts`,
+  `deletionReconciliation.ts` and `captureLifecycle.ts`.
+- **Slice 7.** Add `caseArchive.ts`, which calls `isSharedCase`, and `JQ_DELETED` as a conformance
+  target. The byte-identity list gains the schema 5 to 7 tests, `receiptStamps.test.ts` and
+  `exportKnownAnswer.test.ts`.
+- **Placement.** `src/packages/evidence-package-layout`, `evidence-package-contents`,
+  `capture-finish` and `transaction-record` are all blocking tier now. Ruling 1 is unaffected.
 
 ## Problem
 
@@ -153,7 +263,9 @@ export function readCaseChain(
 ```
 
 `SignerRun` carries `fromIndex`, `toIndex`, `pem`, `carriedByImportAt`, `pemSha256`, and
-`spkiSha256`. `ChainName.via` is `'own' | 'id-map' | 'inferred'`.
+`spkiSha256`. `ChainName.via` is `'own' | 'id-map' | 'inferred'`. `'own'` means one of the Case's
+chains holds the `capture` or `exhibit` entry that acquired the row under its own id
+(ADR-0059 rule 1); a row with no confirmed rename and no such entry gets no `'own'` answer.
 
 The adapter reads no chain file. Export takes one `ManifestSnapshot` and one `SharedCaseSnapshot`
 with nothing awaited between (`export.ts:625-628`) and packages `manifest.jsonl` from the first
@@ -180,7 +292,8 @@ whether something was ever written, run on every new Exhibit, and verify nothing
    unreadable entry and the lines after it in `unreadEntries`, because `ManifestEntrySchema`
    accepts none of those. The fact methods read both lists. The view never truncates silently.
 4. `binds` accepts only `via: 'own' | 'id-map'`, and only for a case id the custody records name.
-   `chainName` may answer `'inferred'`, for naming package files only.
+   `chainName` may answer `'inferred'`, for naming an Exhibit in a document an export writes, and
+   never for an id a Manifest Entry signs (amended 2026-11-27, see "Rulings of 2026-11-27").
 5. `chainName` resolves over every row in `input.rows`, so it can refuse an id another row holds
    or two renamed rows claim.
 6. A deletion removes an Exhibit only when its authoring chain wrote the deletion, or no chain
@@ -321,7 +434,12 @@ known-answer test must use a source Case with no thumbnails.
    Verification does, and state how many later lines they left out as unverified.
 3. **When a writer cannot resolve a renamed Exhibit through its own id or the signed id map, the
    app refuses the operation** and explains why. It never signs an id it could not resolve.
+   Made precise on 2026-11-27: a row's own id counts as resolved only when one of the Case's
+   chains holds the `capture` or `exhibit` entry that acquired it under that id. Relaxed the same
+   day for a delete on a Case whose local Manifest does not verify, which keeps signing the row's
+   own id (ADR-0059 rule 6).
 4. **The Data screen prints the PEM-text key hash** that the Certification and `VERIFY.md` print.
+   Extended on 2026-11-27 to the Sharing roster and join requests.
 5. **When the Manifest holds a newer-schema entry, export reads every written line and discloses
    it.** It never truncates there.
 

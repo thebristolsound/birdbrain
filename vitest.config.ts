@@ -39,6 +39,7 @@ export default defineConfig({
         'src/packages/**/*.{ts,mts,cts}',
         'scripts/coverage-badge.mjs',
         'scripts/slop-audit/**/*.mjs',
+        'scripts/repo-health/**/*.mjs',
         'scripts/test-reliability/**/*.mjs',
         'scripts/jev-lens/**/*.mjs',
         'scripts/third-party-notices/**/*.mjs'

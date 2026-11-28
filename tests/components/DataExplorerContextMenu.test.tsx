@@ -11,14 +11,15 @@ vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => navigate
 }))
 const notifySuccess = vi.hoisted(() => vi.fn())
+const notifyWarn = vi.hoisted(() => vi.fn())
 vi.mock('@renderer/lib/notify', () => ({
-  notify: { success: notifySuccess, error: vi.fn(), warn: vi.fn(), info: vi.fn() }
+  notify: { success: notifySuccess, error: vi.fn(), warn: notifyWarn, info: vi.fn() }
 }))
 
 import { DataExplorer } from '@renderer/components/dashboard/cases/DataExplorer'
 import { useAppStore } from '@renderer/stores/appStore'
 import { fakeBridge } from '../renderer/fakeBridge'
-import { CAPTURES, HASH_A, HASH_STAGED, INVENTORY } from '../renderer/dataFixtures'
+import { CAPTURE_A, CAPTURES, HASH_A, HASH_STAGED, INVENTORY } from '../renderer/dataFixtures'
 
 const SNAPSHOT: CaseManifestSnapshot = {
   caseId: 'case1',
@@ -136,6 +137,7 @@ afterEach(() => {
   cleanup()
   navigate.mockReset()
   notifySuccess.mockReset()
+  notifyWarn.mockReset()
 })
 
 describe('Data screen context menus (#1151)', () => {
@@ -175,6 +177,63 @@ describe('Data screen context menus (#1151)', () => {
     })
   })
 
+  // The Properties tab's Copy beside SHA-256 checks the stored value as the
+  // row's right-click Copy SHA-256 does (#2117).
+  it.each([
+    ['valid', HASH_A, 'Copied SHA-256', null],
+    [
+      'malformed',
+      'not-a-digest',
+      null,
+      "Copied the stored SHA-256, but it isn't a 64-character hex digest"
+    ],
+    ['empty', '', null, 'Nothing was copied: the stored SHA-256 is empty']
+  ])(
+    'Properties Copy SHA-256 on a %s stored hash',
+    async (_case, contentHash, success, warning) => {
+      const rows = INVENTORY.map((row) => (row.id === CAPTURE_A.id ? { ...row, contentHash } : row))
+      window.birdbrain.exhibits.inventory = vi.fn(async () => ({
+        caseId: 'case1',
+        rows
+      })) as typeof window.birdbrain.exhibits.inventory
+      renderExplorer()
+      fireEvent.click(await screen.findByTestId('artifact-row-cap-a'))
+      fireEvent.click(await screen.findByRole('tab', { name: 'Properties' }))
+      fireEvent.click(screen.getByTestId('copy-sha-256'))
+
+      if (warning === null) {
+        await waitFor(() => expect(notifySuccess).toHaveBeenCalledWith(success))
+        expect(notifyWarn).not.toHaveBeenCalled()
+      } else {
+        await waitFor(() => expect(notifyWarn).toHaveBeenCalledExactlyOnceWith(warning))
+        expect(notifySuccess).not.toHaveBeenCalled()
+      }
+      if (contentHash === '') expect(writeText).not.toHaveBeenCalled()
+      else expect(writeText).toHaveBeenCalledExactlyOnceWith(contentHash)
+    }
+  )
+
+  it('staged row menu: an empty stored hash copies nothing and says so', async () => {
+    const rows = INVENTORY.map((row) =>
+      row.rowType === 'staged' ? { ...row, contentHash: '' } : row
+    )
+    window.birdbrain.exhibits.inventory = vi.fn(async () => ({
+      caseId: 'case1',
+      rows
+    })) as typeof window.birdbrain.exhibits.inventory
+    renderExplorer()
+    await select('staging')
+    const menu = await openMenu(await screen.findByTestId('artifact-row-staged-1'))
+    fireEvent.click(item(menu, 'staged-copy-hash'))
+
+    await waitFor(() =>
+      expect(notifyWarn).toHaveBeenCalledExactlyOnceWith(
+        'Nothing was copied: the stored SHA-256 (not anchored) is empty'
+      )
+    )
+    expect(writeText).not.toHaveBeenCalled()
+  })
+
   it('derived row: opens and verifies the parent Capture', async () => {
     renderExplorer()
     const menu = await openMenu(await screen.findByTestId('artifact-row-thumb-a'))
@@ -207,6 +266,9 @@ describe('Data screen context menus (#1151)', () => {
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(HASH_A))
     fireEvent.click(screen.getByTestId('copy-relative-path'))
     await waitFor(() => expect(writeText).toHaveBeenCalledWith('case1/cap-a.mhtml'))
+    // A path is not a digest: its copy takes no shape check (#2117).
+    await waitFor(() => expect(notifySuccess).toHaveBeenCalledWith('Copied relative path'))
+    expect(notifyWarn).not.toHaveBeenCalled()
 
     // The pane header verifies every Exhibit under the node.
     fireEvent.click(screen.getByTestId('node-verify'))
@@ -376,6 +438,28 @@ describe('Data screen context menus (#1151)', () => {
 
     fireEvent.keyDown(row, { key: 'Enter' })
     expect(screen.getByTestId('data-node-title').textContent).toBe('Example page')
+  })
+
+  // A tampered manifest line can parse with any entry hash (#2117).
+  it('ledger row: a malformed entry hash is copied as stored and not announced as a digest', async () => {
+    const [first] = SNAPSHOT.entries
+    if (!first.parsed) throw new Error('the fixture entry is parsed')
+    snapshot.mockResolvedValue({
+      ...SNAPSHOT,
+      entries: [{ ...first, entry: { ...first.entry, entryHash: 'not-a-digest' } }]
+    })
+    renderExplorer()
+    await select('manifest-ledger')
+    const row = await screen.findByTestId('ledger-row-0')
+    fireEvent.click(within(row).getByTitle(/click to copy/))
+
+    await waitFor(() =>
+      expect(notifyWarn).toHaveBeenCalledExactlyOnceWith(
+        "Copied the stored entry hash, but it isn't a 64-character hex digest"
+      )
+    )
+    expect(writeText).toHaveBeenCalledExactlyOnceWith('not-a-digest')
+    expect(notifySuccess).not.toHaveBeenCalled()
   })
 
   it('ledger row: an unreadable line shows no hash and copies none; only a readable first entry reads genesis', async () => {

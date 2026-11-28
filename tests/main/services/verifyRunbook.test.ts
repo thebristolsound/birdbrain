@@ -101,16 +101,30 @@ describe('buildVerifyRunbook', () => {
     expect(section(render(2))).not.toContain('```')
   })
 
-  // #2084: the receipt block's status, which sharedCaseExport.test.ts runs, is stated
-  // directly below it.
-  it('states below the receipt block that it fails on a bad receipt', () => {
-    const runbook = render(3)
-    const end = runbook.indexOf('\n```\n', runbook.indexOf('receipt=$(mktemp)'))
+  // The text of the paragraph directly below the first block that holds `marker`.
+  const belowBlock = (runbook: string, marker: string): string => {
+    const end = runbook.indexOf('\n```\n', runbook.indexOf(marker))
     expect(end).toBeGreaterThan(-1)
-    const after = runbook.slice(end + 5, runbook.indexOf('\n\n', end + 5))
-    expect(prose(after).trim()).toBe(
+    return prose(runbook.slice(end + 5, runbook.indexOf('\n\n', end + 5))).trim()
+  }
+
+  // #2084, #2203: the receipt block's status, which sharedCaseExport.test.ts and
+  // verifyRunbookExecution.test.ts run, is stated directly below it.
+  it('states below the receipt block that it fails on a bad receipt or an unread chain', () => {
+    expect(belowBlock(render(3), 'receipt=$(mktemp)')).toBe(
       'The block exits non-zero on any `RECEIPT FAIL` or `RECEIPT NAMES NO MERGE`, in any ' +
-        'chain it reads.'
+        'chain it reads. It also exits non-zero on `CHAIN UNREADABLE`, for a chain `jq` fails ' +
+        'on, and on `CHAIN MISSING OR EMPTY`, when `manifest.jsonl` is missing or holds no ' +
+        'JSON object.'
+    )
+  })
+
+  // #2203: verifyRunbookExecution.test.ts runs both blocks on each such manifest.
+  it('states below the derived-file block that both exhibit blocks fail on an unread manifest', () => {
+    expect(belowBlock(render(3), `select(.type == "derivation")'`)).toBe(
+      'Both blocks above also exit non-zero when `manifest.jsonl` is missing or holds no JSON ' +
+        'object, printing `CHAIN MISSING OR EMPTY`, and when `jq` fails on it, printing ' +
+        '`CHAIN UNREADABLE`.'
     )
   })
 

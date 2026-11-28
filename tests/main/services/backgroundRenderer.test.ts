@@ -24,7 +24,7 @@ import {
   trimTrailingBackground
 } from '@main/services/backgroundRenderer'
 import { ConsentBlockingUndoFailed } from '@main/services/consentBlocker'
-import { logger } from '@main/services/logger'
+import { disposeLogger, initLogger, logger, readRecentEntries } from '@main/services/logger'
 import { sanitizeError } from '@main/services/logSafe'
 import { ManifestEntrySchema, ScrollToLoadRecordSchema } from '@shared/schemas'
 import { RefusedAddressError } from '@main/services/localAddressPolicy'
@@ -2634,6 +2634,11 @@ describe('renderPageInHiddenWindow, the PDF', () => {
   }
 
   const errorOf = (pdf: PdfOutcome): string => String(pdf.present || pdf.error)
+  // What the log keeps of the error, which drops its message (#2268).
+  const loggedAs = (pdf: PdfOutcome) => {
+    const { name, code } = sanitizeError(pdf.present || pdf.error)
+    return { name, code }
+  }
 
   it('prints last, after the screenshot, the MHTML and the record, with the print defaults', async () => {
     const { pdf } = await render()
@@ -2666,6 +2671,7 @@ describe('renderPageInHiddenWindow, the PDF', () => {
     expect(Date.now() - startedAt).toBeLessThan(30_000)
     expect(result.pdf).toMatchObject({ present: false, reason: 'failed' })
     expect(errorOf(result.pdf)).toContain('The print did not settle within 5000ms')
+    expect(loggedAs(result.pdf)).toEqual({ name: 'PrintTimeout', code: null })
     expect(result.transactionRecord.present).toBe(true)
   }, 30_000)
 
@@ -2706,6 +2712,7 @@ describe('renderPageInHiddenWindow, the PDF', () => {
     expect(result.transactionRecord).toMatchObject({ present: false, reason: 'failed' })
     expect(result.pdf).toMatchObject({ present: false, reason: 'failed' })
     expect(errorOf(result.pdf)).toBe('Error: The Recapture timeout left no time for the print')
+    expect(loggedAs(result.pdf)).toEqual({ name: 'Error', code: 'NO_TIME_FOR_PRINT' })
     expect(ctl.order).not.toContain('printToPDF')
   }, 30_000)
 
@@ -2724,6 +2731,7 @@ describe('renderPageInHiddenWindow, the PDF', () => {
     expect(errorOf(result.pdf)).toContain(
       `The page is ${MAX_PDF_CONTENT_HEIGHT_PX + 1} CSS pixels tall, over MAX_PDF_CONTENT_HEIGHT_PX`
     )
+    expect(loggedAs(result.pdf)).toEqual({ name: 'Error', code: 'PDF_TOO_TALL' })
     expect(result.screenshotRecord.contentHeight).toBe(MAX_PDF_CONTENT_HEIGHT_PX + 1)
   }, 30_000)
 
@@ -2741,6 +2749,7 @@ describe('renderPageInHiddenWindow, the PDF', () => {
     expect(errorOf(over.pdf)).toContain(
       `The PDF is ${MAX_PDF_SIZE + 1} bytes, over MAX_PDF_SIZE (${MAX_PDF_SIZE})`
     )
+    expect(loggedAs(over.pdf)).toEqual({ name: 'Error', code: 'PDF_TOO_LARGE' })
 
     ctl.pdfBytes = Buffer.allocUnsafe(MAX_PDF_SIZE)
     const at = await render()
@@ -2769,6 +2778,7 @@ describe('renderPageInHiddenWindow, the PDF', () => {
       expect(errorOf(result.pdf)).toContain(
         `The page navigated after it was saved, to ${later}, so it was not printed`
       )
+      expect(loggedAs(result.pdf)).toEqual({ name: 'Error', code: 'NAVIGATED_BEFORE_PRINT' })
     },
     30_000
   )
@@ -2794,6 +2804,7 @@ describe('renderPageInHiddenWindow, the PDF', () => {
       expect(errorOf(result.pdf)).toContain(
         `The page navigated while it printed, to ${later}, so the PDF was discarded`
       )
+      expect(loggedAs(result.pdf)).toEqual({ name: 'Error', code: 'NAVIGATED_DURING_PRINT' })
     },
     30_000
   )
@@ -3904,4 +3915,89 @@ describe('a background Capture, known answers for the record, the PDF and the in
       'backgroundRenderer.pdf_failed: Error: Printing failed'
     ])
   }, 30_000)
+
+  // #2268 gives each PDF refusal a cause the log keeps; these hold what the Capture signs and
+  // the error it hands the logger.
+  it('stores the Capture with the PDF failed, and keeps the record, when the page is taller than the PDF bound', async () => {
+    ctl.contentHeight = MAX_PDF_CONTENT_HEIGHT_PX + 1
+    const { id, entry, handed, failures } = await captureOnce()
+    expect(entry.inventory).toEqual({
+      mhtml: MHTML_PART,
+      transactionRecord: RECORD_PART,
+      screenshot: { ...SCREENSHOT_PART, truncated: true, contentHeight: 50_001 },
+      pdf: FAILED
+    })
+    expect(entry).not.toHaveProperty('pdfHash')
+    expect(existsSync(file(id, 'pdf'))).toBe(false)
+    expect(entry.transactionRecordHash).toBe(sha256(readFileSync(file(id, 'warc.gz'))))
+    expect(finishFields(handed)).toEqual(['inventory', 'transactionRecord', 'boundTls'])
+    expect(failures).toEqual([
+      {
+        code: 'backgroundRenderer.pdf_failed',
+        context: [],
+        error:
+          'Error: The page is 50001 CSS pixels tall, over MAX_PDF_CONTENT_HEIGHT_PX (50000), ' +
+          'so it was not printed'
+      }
+    ])
+  }, 30_000)
+
+  it('stores the Capture with the PDF failed, and keeps the record, when the print does not settle', async () => {
+    ctl.printHangs = true
+    const { id, entry, handed, failures } = await captureOnce()
+    expect(entry.inventory).toEqual({
+      mhtml: MHTML_PART,
+      transactionRecord: RECORD_PART,
+      screenshot: SCREENSHOT_PART,
+      pdf: FAILED
+    })
+    expect(entry).not.toHaveProperty('pdfHash')
+    expect(existsSync(file(id, 'pdf'))).toBe(false)
+    expect(finishFields(handed)).toEqual(['inventory', 'transactionRecord', 'boundTls'])
+    expect(failures).toEqual([
+      {
+        code: 'backgroundRenderer.pdf_failed',
+        context: [],
+        error: 'PrintTimeout: The print did not settle within 5000ms'
+      }
+    ])
+  }, 30_000)
+
+  // The path the report behind #2268 came through: the queue's log line, read back from the log
+  // file the logger wrote.
+  it.each([
+    [
+      'a page taller than the PDF bound',
+      (): void => {
+        ctl.contentHeight = MAX_PDF_CONTENT_HEIGHT_PX + 1
+      },
+      { name: 'Error', code: 'PDF_TOO_TALL' }
+    ],
+    [
+      'a print that does not settle',
+      (): void => {
+        ctl.printHangs = true
+      },
+      { name: 'PrintTimeout', code: null }
+    ]
+  ] as const)(
+    'logs the cause of the PDF failure for %s',
+    async (_case, arrange, error) => {
+      arrange()
+      initLogger(tempDir, 'pdf-cause-session')
+      try {
+        await captureOnce()
+        const written = readRecentEntries(100)
+          .filter(({ code }) => code === 'backgroundRenderer.pdf_failed')
+          .map(({ code, error: logged }) => ({
+            code,
+            error: { name: logged?.name, code: logged?.code }
+          }))
+        expect(written).toEqual([{ code: 'backgroundRenderer.pdf_failed', error }])
+      } finally {
+        disposeLogger()
+      }
+    },
+    30_000
+  )
 })

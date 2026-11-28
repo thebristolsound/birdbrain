@@ -98,6 +98,8 @@ coverage/
 !.claude/skills/run-birdbrain/
 # Takes one change to a pull request that is ready to merge, while the maintainer is away.
 !.claude/skills/ship-unit/
+# The after-the-fact review of merges the fleet did not finish, and its debt list.
+!.claude/skills/catch-up-review/
 # The SessionStart hook that settings.json runs.
 !.claude/hooks/
 .codex
@@ -153,3 +155,8 @@ report-*.html
 # The test reliability probe's journal of files it has edited, and its Vitest reports
 # (scripts/test-reliability/cli.mjs)
 /.cache/test-reliability/
+
+# Stryker's incremental results and reports, and its sandbox copies of the tree
+# (stryker.config.mjs)
+/.cache/stryker/
+/.cache/stryker-tmp/

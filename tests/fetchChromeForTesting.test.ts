@@ -87,15 +87,16 @@ describe('fetch-chrome-for-testing', () => {
     expect(messages.join('\n')).toContain(`expected ${wrong}, got ${sha256(archive)}`)
   })
 
-  // With no archive tool on PATH, extracting first would fail with "not found" instead.
+  // With no archive tool to run, extracting first would fail with "not found" instead.
   it('checks the hash before it runs the archive tool', async () => {
     vi.stubEnv('PATH', join(cacheDir, '..'))
+    vi.stubEnv('SystemRoot', join(cacheDir, '..'))
     const { options } = run(archive, '0'.repeat(64))
 
     expect(await main(options)).toBe(1)
 
     expect(messages.join('\n')).toContain('SHA-256 mismatch')
-    expect(messages.join('\n')).not.toContain('was not found on PATH')
+    expect(messages.join('\n')).not.toContain('was not found')
   })
 
   it('exits zero without downloading when the pinned build is already in place', async () => {
@@ -157,14 +158,15 @@ describe('fetch-chrome-for-testing', () => {
     expect(messages.join('\n')).toContain('failed to extract the archive')
   })
 
-  it('names the archive tool when it is not on PATH', async () => {
+  it('names the archive tool when it is not found', async () => {
     vi.stubEnv('PATH', join(cacheDir, '..'))
+    vi.stubEnv('SystemRoot', join(cacheDir, '..'))
     const { options } = run(archive, sha256(archive))
 
     expect(await main(options)).toBe(1)
 
     const [tool] = extractCommand(process.platform, 'a.zip', 'out')
-    expect(messages.join('\n')).toContain(`\`${tool}\` was not found on PATH`)
+    expect(messages.join('\n')).toContain(`\`${tool}\` was not found`)
     expect(readdirSync(cacheDir)).toEqual([])
   })
 })
@@ -177,8 +179,18 @@ describe('extractCommand', () => {
     ])
   })
 
-  it('uses tar on win32', () => {
-    expect(extractCommand('win32', 'a.zip', 'out')).toEqual(['tar', ['-xf', 'a.zip', '-C', 'out']])
+  it('names the System32 tar on win32, ahead of any tar on PATH', () => {
+    expect(extractCommand('win32', 'a.zip', 'out', { SystemRoot: 'C:\\Windows' })).toEqual([
+      'C:\\Windows\\System32\\tar.exe',
+      ['-xf', 'a.zip', '-C', 'out']
+    ])
+  })
+
+  it('falls back to tar on PATH on win32 when SystemRoot is unset', () => {
+    expect(extractCommand('win32', 'a.zip', 'out', {})).toEqual([
+      'tar',
+      ['-xf', 'a.zip', '-C', 'out']
+    ])
   })
 })
 

@@ -1381,12 +1381,13 @@ export const ERROR_NAMES = [
   'PeerByeError',
   'PeerUnreachableError',
   // A Background Job that ran out of time or was cancelled, and the Transaction
-  // Record bound that expired (#2121): the log drops messages, so the name is
-  // what says which.
+  // Record bound that expired (#2121) or the print's (#2268): the log drops
+  // messages, so the name is what says which.
   'RecaptureTimeout',
   'RecaptureCancelled',
   'TransactionRecordCollectTimeout',
   'TransactionRecordWriteTimeout',
+  'PrintTimeout',
   // Thrown before a render's first step, so the name is all its failed line says of the cause.
   'EgressUnavailableError'
 ] as const

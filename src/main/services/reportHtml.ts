@@ -1194,7 +1194,7 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
   scope: {
     id: 'scope',
     title: 'Scope and limitations',
-    render: () => `
+    render: ({ options }) => `
 <section class="sheet">
   <h2>Scope and limitations</h2>
   <div class="rule-medium"></div>
@@ -1208,7 +1208,7 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
       recompute to the recorded SHA-256 digest, and that the digest is bound into an append-only
       hash-chained manifest. Where a timestamp token is retained, that the digest existed no later
       than the time asserted by the named RFC 3161 authority. This is asserted per capture and
-      never for the package as a whole — the exhibit index states the result for each, and any
+      never for the ${isPackagedExport(options) ? 'package' : 'captures described'} as a whole — the exhibit index states the result for each, and any
       capture recorded there as changed since capture, chain-broken, absent, legacy or not
       verified is excluded from this statement.</dd>
     </div>
@@ -1317,7 +1317,9 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
         ? ` It also leaves out ${data.selectionScope.excludedExhibitCount} committed exhibit${
             data.selectionScope.excludedExhibitCount === 1 ? '' : 's'
           } of other kinds that the case holds. The number is stated here rather than left to be
-    counted: an exhibit the chain records and this package does not enclose is accounted for by
+    counted: an exhibit the chain records and this ${
+      packaged ? 'package does not enclose' : 'report does not describe'
+    } is accounted for by
     the operator's selection, not missing.`
         : ''
     }${
@@ -1349,12 +1351,18 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
   ${
     data.unreconciledChainCaptureIds.length > 0
       ? `<div class="alert">
-    <p class="alert-title">The chain claims captures this package does not contain</p>
+    <p class="alert-title">The chain claims captures this ${
+      packaged ? 'package does not contain' : 'case does not hold'
+    }</p>
     <p>The manifest holds ${
       data.unreconciledChainCaptureIds.length
-    } capture entries with no corresponding deletion entry whose captures are neither listed as
+    } capture entries with no corresponding deletion entry whose captures ${
+      packaged
+        ? `are neither listed as
     exhibits below nor enclosed as stored page archives. The chain and the contents of this
-    package therefore disagree by that number. It is disclosed rather than omitted: a reader
+    package therefore disagree`
+        : 'the case does not hold, so none is listed as an exhibit below. The chain and the case therefore disagree'
+    } by that number. It is disclosed rather than omitted: a reader
     reconciling the two would otherwise find the shortfall unexplained.</p>
     <p>The known cause is Birdbrain's own capture-pipeline self-test, which in versions before
     this fix wrote a capture entry into a real case's chain and removed it without recording a
@@ -1536,14 +1544,18 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
 <section class="sheet">
   <h2>Independent verification instructions</h2>
   <div class="rule-medium"></div>
-  <p>Nothing in this report needs to be taken on trust. A reviewer holding the evidence package
-  can reproduce every integrity claim it makes using standard tools. The full procedure,
-  including exact commands, is in <code>VERIFY.md</code>.</p>
   ${
     isPackagedExport(options)
-      ? ''
-      : `<div class="alert">
-    <p class="alert-title">These steps require the evidence package</p>
+      ? `<p>Nothing in this report needs to be taken on trust. A reviewer holding the evidence package
+  can reproduce every integrity claim it makes using standard tools. The full procedure,
+  including exact commands, is in <code>VERIFY.md</code>.</p>
+  `
+      : `<p>Nothing in this report needs to be taken on trust. A reviewer holding an evidence package
+  exported from this case can reproduce every integrity claim this report makes using standard
+  tools. The full procedure, including exact commands, is in that package's
+  <code>VERIFY.md</code>.</p>
+  <div class="alert">
+    <p class="alert-title">These steps require an evidence package</p>
     <p>This document was exported on its own. The files named below — the stored page archives,
     the manifest, the signing key, the timestamp tokens and <code>evidence.json</code> — are not
     enclosed with it, so none of the steps can be carried out against this file alone. They are
@@ -1586,7 +1598,9 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
     that manifest entry, not to <code>evidence.json</code>. Exhibits of other kinds and derived
     files are checked the same way against their own entries. An entry written before entries
     were signed carries no signature: it is covered by ${stepRef(3, 4)} and by any timestamp
-    checked in ${stepRef(6)}, not by ${stepRef(2)}. An exhibit absent from the package
+    checked in ${stepRef(6)}, not by ${stepRef(2)}. An exhibit absent from ${
+      isPackagedExport(options) ? 'the' : 'a'
+    } package
     is accounted for only by a later deletion entry or by the selection scope in the signed export
     entry, never by the index or by this report.</li>
     <li><strong>Validate the timestamp tokens.</strong> Take the tokens from the signed timestamp
@@ -1606,8 +1620,12 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
     <code>tsa-intermediates.pem</code> — a name the token asserts about itself, which is a
     starting point for finding the authority and not evidence that it signed anything until
     the chain validates against the anchor you obtained. Do not take the issuer from this
-    report's cover either: the cover states what this installation had configured when the
-    package was built, not who signed a token retained from earlier`
+    report's cover either: the cover states what this installation had configured when ${
+      isPackagedExport(options)
+        ? `the
+    package was built`
+        : 'this report was generated'
+    }, not who signed a token retained from earlier`
     }.</li>
   </ol>
   <p>Where a package carries a signed export entry, Birdbrain's own verifier makes one further
@@ -1640,24 +1658,30 @@ export const REPORT_MODULES: Record<ReportModuleId, ReportModule> = {
     // The verified sentence points the operator at the run under "Chain of
     // custody", so it asks the tally that section and the cover print whether
     // one ran.
-    render: (ctx) => `
+    render: (ctx) => {
+      // A standalone report encloses no artefacts for the operator to vouch for.
+      const altered = isPackagedExport(ctx.options)
+        ? 'the captures, the manifest or the packaged artefacts'
+        : 'the captures or the manifest'
+      return `
 <section class="sheet">
   <h2>Operator statement</h2>
   <div class="rule-medium"></div>
   ${
     verificationTally(ctx).ran
       ? `<p>I generated this report from the Birdbrain case identified on the cover. I have not altered
-  the captures, the manifest or the packaged artefacts, and the integrity results reproduced
+  ${altered}, and the integrity results reproduced
   here are those produced by the tool at the verification run recorded under “Chain of
   custody”.</p>`
       : `<p>I generated this report from the Birdbrain case identified on the cover. I have not altered
-  the captures, the manifest or the packaged artefacts. <strong>No verification was run for this
+  ${altered}. <strong>No verification was run for this
   export</strong>, so the digests reproduced here are those recorded for each capture rather than
   values recomputed from the stored bytes at the time of export, and I make no statement about
   whether the stored bytes still match them.</p>`
   }
   <p>Operator: ${esc(operatorLine(ctx.data))}.</p>
 </section>`
+    }
   }
 }
 
@@ -1755,8 +1779,8 @@ function renderExhibit(e: ExhibitView, total: number, packaged: boolean): string
         e.waybackRefs.length === 1 ? 'It was' : 'They were'
       } recorded by the Internet Archive, independently of this capture and at the
       time${e.waybackRefs.length === 1 ? '' : 's'} stated below. Birdbrain did not
-      retrieve, hash or package the archived content: what follows is a reference to
-      a third party's record, and this package contains no copy of it. A pinned
+      ${packaged ? 'retrieve, hash or package' : 'retrieve or hash'} the archived content: what follows is a reference to
+      a third party's record, and this ${packaged ? 'package' : 'report'} contains no copy of it. A pinned
       reference establishes that archive.org listed a snapshot at the stated time
       when the operator looked the URL up. It does not establish what the archived
       page contained, nor that the archived page is the page reproduced in this
@@ -1802,7 +1826,7 @@ function renderExhibit(e: ExhibitView, total: number, packaged: boolean): string
       captured${e.annotationsBurned ? ', with operator annotations burned in for legibility' : ''}.
       ${
         e.annotationsBurned
-          ? 'Because the annotations are burned into the pixels, this image intentionally differs from the unannotated, digest-anchored copy in the package. Hashing the image reproduced here will not reproduce the digest below, and that mismatch is expected rather than evidence of alteration.'
+          ? `Because the annotations are burned into the pixels, this image intentionally differs from the unannotated, digest-anchored copy ${packaged ? 'in the package' : 'held by the tool'}. Hashing the image reproduced here will not reproduce the digest below, and that mismatch is expected rather than evidence of alteration.`
           : e.packaged.screenshot
             ? `Packaged copy: <code>${esc(e.packaged.screenshot)}</code>.`
             : ''

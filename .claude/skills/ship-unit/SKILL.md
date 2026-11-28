@@ -104,6 +104,9 @@ findings have no thread.
   on the threads; neither starts a review fleet round.
 - **The reviewer's severity stands.** You may dispute a finding, as a `disputed` row citing the
   `file:line` at head that shows it is wrong. You may not relabel it as something smaller.
+- **A gate no push of yours will clear goes to the maintainer.** A must-fix finding you dispute,
+  or a `review/fleet` failure you can answer only in the description, leaves the gate red: say
+  so in the hand-over (dispatch parks the PR for the maintainer instead).
 - **A user-visible or evidence-affecting finding that is not taken is filed** under the rule in
   `CLAUDE.md`, "Issue tracker", within its two per PR, and its row says `filed as #N`. Past
   those two it stays a row with its other reason.

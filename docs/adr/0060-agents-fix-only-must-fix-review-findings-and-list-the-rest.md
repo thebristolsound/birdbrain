@@ -46,7 +46,9 @@ where they differed.
    and thread replies, neither of which starts a fleet round. A behaviour bug the agent
    reproduced or traced, in a file the change already edits and inside its scope, or a missing
    test for a branch the change adds, may ride in a push a must-fix finding already forces.
-   Wording, style and test-strength findings never do.
+   Wording, style and test-strength findings never do. A must-fix finding the agent disputes,
+   or a fleet failure it can answer only in the description, leaves a gate red that no push of
+   its own will clear, so dispatch parks the PR for the maintainer.
 4. **The reviewer's severity stands.** An agent may dispute a finding with the `file:line` at
    head that shows it is wrong, and may not relabel it as something smaller.
 5. **The description lists every finding.** A `## Review findings` section follows the Summary:
@@ -60,13 +62,16 @@ where they differed.
    ADR-0057. The fleet fails on a description sentence its inputs do not settle, and a linked
    comment is an input it must load, which fails when the comment is gone, empty, or links
    another repository (`.github/scripts/review-fleet/inputs.mjs`). So rows name the reviewer in
-   words and link no issue, pull request or comment, and the fleet's shared prompt
-   (`.github/scripts/review-fleet/prompts/common.md`) reads which reviewer raised a row's finding,
-   and at what severity, as a record it does not check. The rest of a row is checked like any
-   other sentence: the commit it says fixed the finding, a `file:line` it cites, a filed issue.
+   words, link no issue, pull request or comment, and name no `#N` but a filed issue. The
+   fleet's shared prompt (`.github/scripts/review-fleet/prompts/common.md`) reads a row as a
+   record of review history as it stood when the row was written: who raised the finding, its
+   severity, what it said and the reason given are not checked, because a taken row describes
+   code its fix changed and an earlier row's `file:line` may have moved. Only a `Fixed in`
+   commit that the fleet's commit list holds, a filed issue, and the counts are checked.
 7. **Only agent writes are checked.** The body check requires the section, and checks its rows,
-   on a body with the attribution line. The two merge paths, which pass `--posted`, check
-   nothing in it beyond the well-formed `<details>` blocks every section needs, so the record
+   on a body with the attribution line. The two merge paths, which pass `--posted`, check only
+   what every section needs: its place in the order, well-formed `<details>` blocks and plain
+   words in its visible lines, so the record
    never holds up a merge and a PR opened before this decision still merges. A human author may
    leave the section out.
 8. **Filing keeps its limits.** A user-visible or evidence-affecting finding that is not taken
@@ -74,10 +79,11 @@ where they differed.
    a row with its other reason.
 9. **Dispatch wakes on what is newer than the last answer.** Each round dispatch records ends
    the section with `<!-- review findings answered through <time> -->`, the time that round
-   read the review surface. On a PR whose pre-pass passed,
-   `.github/scripts/dispatch/pregate.sh` starts a cycle for trusted activity newer than the
-   later of the head and that time, and for a `review/fleet` failure at the head posted after
-   it, which no comment announces. A round answered with no push is therefore not started
+   started reading the review surface. On a PR whose pre-pass passed and that the maintainer has not just
+   woken, `.github/scripts/dispatch/pregate.sh` starts a cycle for trusted activity newer than
+   that time, or than the head when there is none. On any PR whose pre-pass passed, woken or not, a
+   `review/fleet` failure at the head posted after the last answer starts one too, since no
+   comment announces it. A round answered with no push is therefore not started
    again, and feedback posted while a round ran, or a fleet finding confirmed after it, still
    is. A time in the future is ignored.
 
@@ -89,13 +95,14 @@ where they differed.
 - No check compares the section with the findings the reviews raised; the body check, at write
   time, checks only its shape and that its counts match its rows. A finding that arrives after
   the last body edit is missing until the next one, and the next cycle is started for it.
-- The fleet no longer checks who raised a row's finding. A row that names the wrong reviewer
-  passes; the comments it describes are on the same PR page.
+- The fleet checks a row only for its fixing commit, its filed issue and the counts. A row that
+  misstates a finding or names the wrong reviewer passes; the comments it describes are on the
+  same PR page.
 - Anyone who can edit the description can move the answered-through time up to the present,
   which holds off a cycle for activity already on the PR until something newer arrives. It
   cannot hold off a merge gate, which never reads it.
-- The section takes two of the 40 visible lines the body allows above Verification, so a body
-  near that cap needs trimming on its next agent edit.
+- The section does not count toward the 40 visible lines the body allows above Verification,
+  so adding it never pushes a body over that cap.
 - Some real fixes now wait: a test gap or a small bug with no must-fix push to ride in stays a
   `needs its own push` row, visible at merge.
 - A round with no commit still runs `pnpm preflight` once, because the implementer's stop hook

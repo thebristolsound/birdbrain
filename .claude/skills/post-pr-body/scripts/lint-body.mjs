@@ -117,26 +117,34 @@ function stripCodeSpans(text) {
 function stripCodeParagraphs(lines) {
   const result = []
   const paragraph = []
+  let paragraphDepth = 0
+  let tableDepth = -1
+  const quoteDepth = (line) => line.match(/^ {0,3}(?:> ?)+/)?.[0].match(/>/g).length ?? 0
   const flush = () => {
     if (paragraph.length) result.push(stripCodeSpans(paragraph.join('\n')))
     paragraph.length = 0
+    paragraphDepth = 0
   }
-  for (const line of lines) {
+  for (const [index, line] of lines.entries()) {
     const content = line.replace(/^ {0,3}(?:> ?)+/, '')
+    const depth = quoteDepth(line)
+    const list = /^\s*(?:[-+*]|\d+[.)])\s/.test(content)
     // Block boundaries stop inline spans; a line break within a paragraph does not.
     const block =
-      /^\s*(`{3,}|~{3,}|#{1,6}(?:\s|$)|<\/?(?:details|summary)\b|\|)/.test(content) ||
+      /^\s*(`{3,}|~{3,}|#{1,6}(?:\s|$)|<\/?(?:details|summary)\b)/.test(content) ||
       /^\s*(?:=+|-+|(?:\*[ \t]*){3,}|(?:_[ \t]*){3,}|(?:-[ \t]*){3,})\s*$/.test(content)
-    if (!line.trim() || block) {
+    if (!line.trim() || block || list || depth !== tableDepth) tableDepth = -1
+    const next = lines[index + 1]?.replace(/^ {0,3}(?:> ?)+/, '')
+    if (
+      next && TABLE_RULE.test(next) && cells(content).length === cells(next).length &&
+      depth === quoteDepth(lines[index + 1])
+    ) tableDepth = depth
+    if (!line.trim() || block || tableDepth >= 0) {
       flush()
       result.push(stripCodeSpans(line))
     } else {
-      if (
-        /^\s*(?:[-+*]|\d+[.)])\s/.test(content) ||
-        (/^ {0,3}>/.test(line) && paragraph.length && !/^ {0,3}>/.test(paragraph[0]))
-      ) {
-        flush()
-      }
+      if (list || depth > paragraphDepth) flush()
+      if (!paragraph.length) paragraphDepth = depth
       paragraph.push(line)
     }
   }
@@ -411,7 +419,7 @@ export function lintBody(raw, { anyAuthor = false, posted = false } = {}) {
   })
   const shots = section('## Screenshots')
   if (shots) {
-    const rendered = shots.indexes.filter((i) => !inFence[i]).map((i) => visibleText[i])
+    const rendered = shots.indexes.map((i) => (inFence[i] ? '' : visibleText[i]))
     findings.push(...screenshotFindings(rendered, posted))
   }
   const outside = stripCodeParagraphs(

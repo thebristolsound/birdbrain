@@ -1,6 +1,6 @@
 # PR 2278 review handoff
 
-**Status:** active checkpoint before verification of the earlier fleet findings. The
+**Status:** active checkpoint before verification of the code-span boundary follow-up. The
 [PR description](https://github.com/thebristolsound/birdbrain/pull/2278) holds the later
 verification result and current head.
 
@@ -19,6 +19,9 @@ verification result and current head.
 - `808701107`: table dividers with optional outer pipes never count as filled rows. Its full
   verification passed: 12,727 tests passed, 66 skipped, and coverage thresholds met. The finding
   received a reply and its thread is resolved.
+- `ebd2b531f`: local batch for the earlier fleet findings below. Its full run passed 12,746
+  tests with 66 skipped, typechecking, build, and coverage thresholds, but failed lint on a
+  new test regex. The follow-up changes that regex to use an explicit space count.
 
 ## In flight at this checkpoint
 
@@ -39,14 +42,17 @@ batch before its full verification:
   that fixture remains unchanged.
 
 The renderer inputs and outputs are under `/tmp/birdbrain-2278-render-*`. Full verification at
-the new commit is still owed.
+the new commit is still owed. Before publication, the follow-up also fixes three reproduced
+boundary cases: a pipe-prefixed paragraph is not automatically a table; a deeper quote starts
+a new block; and removed fenced lines still separate paragraphs in Screenshots. GitHub's
+renderer confirms the new image and quoted-image controls.
 
 ## Exact next command
 
 After committing this checkpoint with the fix:
 
 ```bash
-mise exec -- pnpm preflight > /tmp/birdbrain-2278-fleet-preflight.log 2>&1
+mise exec -- pnpm preflight > /tmp/birdbrain-2278-fleet-boundaries-preflight.log 2>&1
 ```
 
 After it passes, push the branch, refresh the PR's Proof and Verification sections, and reply

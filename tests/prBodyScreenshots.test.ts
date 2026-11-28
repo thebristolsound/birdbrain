@@ -52,8 +52,10 @@ describe('PR screenshot evidence', () => {
 
   it.each([
     'Note `a\n` ![x](https://example.com/x.png) `',
+    '| Note `a\n| ` ![x](https://example.com/x.png) `',
     '- Note `a\n  ` ![x](https://example.com/x.png) `',
-    '> Note `a\n> ` ![x](https://example.com/x.png) `'
+    '> Note `a\n> ` ![x](https://example.com/x.png) `',
+    '> > Note `a\n> ` ![x](https://example.com/x.png) `'
   ])('finds an image after a code span that closes on the next line: %s', (snippet) => {
     const body = filled.replace('`pnpm preflight` at', `${snippet}\n\n\`pnpm preflight\` at`)
     expect(lintBody(body, { posted: true })).toEqual([
@@ -99,6 +101,21 @@ describe('PR screenshot evidence', () => {
     const snippet = `\`a\n${divider}\n\` ![x](https://example.com/x.png) \``
     const body = filled.replace('`pnpm preflight` at', `${snippet}\n\n\`pnpm preflight\` at`)
     expect(lintBody(body, { posted: true })).toEqual([])
+  })
+
+  it.each([
+    '> Note `a\n>> ` ![x](https://example.com/x.png) `',
+    '| Column |\n| --- |\n| `a |\n| ` ![x](https://example.com/x.png) ` |',
+    'Note `a\n```text\nliteral\n```\n` ![x](https://example.com/x.png) `'
+  ])('keeps quoted images quoted across container and fence boundaries: %s', (snippet) => {
+    const body = filled.replace('`pnpm preflight` at', `${snippet}\n\n\`pnpm preflight\` at`)
+    expect(lintBody(body, { posted: true })).toEqual([])
+    expect(
+      lint(
+        `${noVisualChange}\n\n<details>\n<summary>Example</summary>\n\n${snippet}\n\n</details>`,
+        true
+      )
+    ).toEqual([])
   })
 
   it.each(['| :-- | :-- | :-- |', '| :-- | :-- | :--', ':-- | :-- | :-- |', ':-- | :-- | :--'])(

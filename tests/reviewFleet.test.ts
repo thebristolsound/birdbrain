@@ -905,7 +905,7 @@ exit 0
 
   it('binds the withdrawal action to the event action', () => {
     const workflow = readFileSync(join(WORKFLOWS, 'merge-on-label.yml'), 'utf8')
-    const job = workflow.split('\n  withdraw:')[1].split(/\n  [\w-]+:/)[0]
+    const job = workflow.split('\n  withdraw:')[1].split(/\n {2}[\w-]+:/)[0]
     expect(job).toContain('ACTION: ${{ github.event.action }}')
   })
 

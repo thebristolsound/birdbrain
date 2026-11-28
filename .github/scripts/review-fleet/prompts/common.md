@@ -81,11 +81,13 @@ not_checked: the contents of a commit or tag outside `commits.json`, a comment o
 files do not hold, the part of a patch past the limit, a commit list `stack.json` gives as
 `null`.
 
-**The description's `## Review findings` rows are a record of review history (ADR-0060).** Which
-reviewer raised a row's finding, and at what severity, is a record you do not check, and it never
-goes in `not_checked`. Everything else a row says is a claim like any other: the commit it says
-fixed the finding, a `file:line` it cites, a `filed as #N` issue, and whether what it says about
-the code is true at head.
+**The description's `## Review findings` rows are a record of review history (ADR-0060).** A row
+records which reviewer raised a finding, at what severity, what the finding said, and the reason
+given for it, as they stood when the row was written: the code may have moved since, and a taken
+row describes code its fix changed. None of that is checked, and none of it goes in
+`not_checked`. Two things in a row are claims: a `Fixed in` commit that `commits.json` holds is a
+commit of this pull request, and a `filed as #N` issue exists and is about that finding. The
+counts line is a claim too: it matches the rows below it.
 
 **The repository as it stood before this change is in the inputs.** `base-tree/` holds every
 file at the merge base with `main`. When the base branch is not `main` and has moved past that

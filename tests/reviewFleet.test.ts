@@ -815,6 +815,31 @@ exit 0
     return r.removed
   }
 
+  it.each([
+    ['synchronize', {}, true],
+    ['edited', { body: { from: 'Original description' } }, true],
+    ['edited', { body: { from: '' } }, true],
+    ['edited', { title: { from: 'Old title' } }, false],
+    ['labeled', {}, false]
+  ])('routes %s with %j to withdrawal: %s', (action, changes, expected) => {
+    const workflow = readFileSync(join(WORKFLOWS, 'merge-on-label.yml'), 'utf8')
+    const types = workflow
+      .match(/pull_request_target:\n\s+types: \[([^\]]+)\]/)?.[1]
+      .split(',')
+      .map((t) => t.trim())
+    const condition = workflow.match(/\n {2}withdraw:\n\s+if: (.*)/)?.[1]
+    expect(condition).toBeDefined()
+    // Evaluate the workflow's actual predicate, then exercise its script with an armed PR.
+    const github = { event_name: 'pull_request_target', event: { action, changes } }
+    const runs = types?.includes(action) && new Function('github', `return (${condition})`)(github)
+    expect(Boolean(runs)).toBe(expected)
+    if (runs) {
+      const result = withdraw(['merge'], { armed: true })
+      expect(result.status, result.stderr).toBe(0)
+      expect(result.disarmed).toBe(true)
+    }
+  })
+
   it('takes the break-glass override off with the sign-off and the merge request', () => {
     expect(removed(['break-glass', 'agent-pr'])).toEqual(['break-glass'])
     expect(removed(['approved', 'merge', 'break-glass'])).toEqual([

@@ -66,19 +66,25 @@ Mermaid diagram the squash commit leaves out), Proof (one row per acceptance cri
 head commit), Screenshots, an optional Not done, Blast radius (what merging ships, and how to
 back it out), optional Before merge and After merge checkboxes, Changes (file groups and an
 optional decisions table), Evidence-affecting and Verification as before. The 40-line cap
-counts non-blank lines. The maintainer also asked, in the same session, that screenshots be
-enforced in the body because some had been posted only in PR comments: every body except
+counts non-blank lines. The agent added screenshot enforcement while implementing the template
+update: every body except
 dependabot's now declares its visual effect, inline images appear only in the Screenshots
 section, and both merge paths refuse a body whose screenshots are not GitHub attachments in
 that section.
+
+**Source correction 2026-11-27.** The original request asked for the template update, not
+separately for screenshot enforcement. After the agent described both changes, the maintainer
+authorized pushing the branch and opening the PR. The
+[source record on PR #2278](https://github.com/thebristolsound/birdbrain/pull/2278#issuecomment-7230715790)
+quotes the request, the implementation summary, and the publication approval from the original
+session. Screenshot enforcement is an implementation choice of this PR.
 
 **Amended 2026-11-27 by [ADR-0060](0060-agents-fix-only-must-fix-review-findings-and-list-the-rest.md).**
 A Review findings section follows the Summary: a counts line and one collapsed row per review
 finding, taken or not, naming its reviewer in words and linking nothing. The linter requires
 and checks it on an agent-written body, and the merge paths check only what every section
-needs, so a PR opened
-before it existed still merges. A review reply may also read `Applied in the description.`,
-for a finding a body edit fixed with no commit to name.
+needs, so a PR opened before it existed still merges. A review reply may also read
+`Applied in the description.`, for a finding a body edit fixed with no commit to name.
 
 The PR body shape is the same for humans and agents: `.github/pull_request_template.md` is a
 copy of the skill's template. The one difference is the attribution line: an agent ends with

@@ -16,6 +16,8 @@ name: Merge on label
 #   auto-merge off, so a sign-off, a merge request and a review override always name the commit
 #   that lands. merge-gate also needs the `merge/approved` stamp on the current head, so a
 #   failed withdraw does not reopen the door for `approved`; `break-glass` needs its own `merge/break-glass` stamp.
+#   A description edit also withdraws the request, so changed screenshots need a fresh check
+#   before the maintainer requests the merge again.
 # - `cancel`, when `merge` is removed, turns auto-merge off.
 # - `reject`, when anyone but the maintainer applies `merge`, removes it and says why. It reads
 #   no secret, so it needs no spend guard. Authorization reads the label's sender, never
@@ -38,7 +40,7 @@ name: Merge on label
 
 on:
   pull_request_target:
-    types: [labeled, unlabeled, synchronize]
+    types: [labeled, unlabeled, synchronize, edited]
   issues:
     types: [labeled]
 
@@ -252,7 +254,7 @@ jobs:
           done
 
   withdraw:
-    if: github.event_name == 'pull_request_target' && github.event.action == 'synchronize'
+    if: github.event_name == 'pull_request_target' && (github.event.action == 'synchronize' || (github.event.action == 'edited' && github.event.changes.body))
     permissions:
       contents: write
       pull-requests: write

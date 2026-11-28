@@ -226,8 +226,8 @@ export const REMOTE_REPOSITORY_SIGNALS = [
     label: `Branches with no open pull request and no commit in ${BRANCH_MAX_AGE_DAYS} days`,
     unit: 'count',
     better: 'lower',
-    budget: 80,
-    why: '80 of 98 branches on 2026-11-22, so any growth shows; no sweep deletes remote branches',
+    budget: 81,
+    why: '81 of 102 branches in the first runner reading, run 46085582708 on 2026-11-28; no sweep deletes remote branches',
     needs: 'gh',
     measure: (ctx) => staleBranches(listBranches(ctx), ctx.now)
   }

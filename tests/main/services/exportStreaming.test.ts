@@ -1,5 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import {
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync
+} from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { Readable } from 'stream'
@@ -24,7 +32,8 @@ import type { ExportOptions } from '@shared/types'
 
 // The export writes its zip one chunk at a time (#932). These pin that what it writes is the
 // zip the in-memory writer builds from the same members, for a page archive many chunks
-// long, and that a file changed between the export's first read and the zip write stops it.
+// long, that a file changed between the export's first read and the zip write stops it, and
+// that the export's peak memory stays well below the size of the package it writes.
 
 const PAGE_BYTES = 5 * PACKAGE_FILE_CHUNK_BYTES + 4321
 
@@ -52,13 +61,15 @@ describe('streamed export', () => {
     outputPath
   })
 
-  const ingest = async (n: number, bytes: Buffer) =>
+  const ingest = async (n: number, bytes: Buffer | Iterable<Buffer>) =>
     ingestMhtmlCapture({
       caseId,
       url: `https://example.com/${n}`,
       title: `Large page ${n}`,
       timestamp: '2026-04-05T12:00:00.000Z',
-      stream: Readable.from([bytes]) as unknown as ReadableStream<Uint8Array>,
+      stream: Readable.from(
+        Buffer.isBuffer(bytes) ? [bytes] : bytes
+      ) as unknown as ReadableStream<Uint8Array>,
       textContent: `page ${n}`,
       headers: {},
       browserVersion: '',
@@ -140,5 +151,30 @@ describe('streamed export', () => {
       .map(({ type }) => type)
     expect(entryTypes).toContain('capture')
     expect(entryTypes).not.toContain('export')
+  })
+
+  it('holds a small part of the package in memory while it writes it', async () => {
+    // Four 32 MiB page archives, streamed into the Case so ingest never holds one whole.
+    const MiB = 1024 * 1024
+    const chunk = Buffer.alloc(MiB, 0x61)
+    function* page(n: number): Generator<Buffer> {
+      yield Buffer.from(`<html>${n}</html>`)
+      for (let i = 0; i < 32; i++) yield chunk
+    }
+    for (let n = 0; n < 4; n++) await ingest(n, page(n))
+    const outputPath = join(tempDir, 'memory.zip')
+
+    // maxRSS is the highest resident memory this process has reached, in KiB.
+    const before = process.resourceUsage().maxRSS
+    await generateReport(
+      caseId,
+      { ...options(outputPath), include: { ...options(outputPath).include, auditTrail: false } },
+      lifecycle
+    )
+    const grewBytes = (process.resourceUsage().maxRSS - before) * 1024
+
+    const packageBytes = statSync(outputPath).size
+    expect(packageBytes).toBeGreaterThan(4 * 32 * MiB)
+    expect(grewBytes).toBeLessThan(packageBytes / 3)
   })
 })

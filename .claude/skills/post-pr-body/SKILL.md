@@ -153,8 +153,11 @@ handing its body to the dispatcher. A change with no visual effect carries none.
    - After, capture viewer: ![after](/tmp/birdbrain-shots/fix-viewer/viewer-after.png)
    ```
 
-   Use the collapsed detail shape above when grouping a pair. The check rejects other
-   standalone HTML wrappers, including `<pre>` and `<div>`, because they can leave the rows as text.
+   To collapse the rows, put them in a `<details>` block whose first line is a
+   `<summary>...</summary>` line, with a blank line before and after the rows. The check rejects
+   other standalone HTML wrappers, such as `<pre>` and `<div>`, and a `<pre>`, `<script>`,
+   `<style>` or `<textarea>` block left open above the heading, because they can leave the rows
+   as text.
 
 3. **Upload.** One route serves opening a PR and every later update, under the maintainer's
    `gh` and the dispatcher's `agh` alike. It avoids `gh pr edit`, which fails under the

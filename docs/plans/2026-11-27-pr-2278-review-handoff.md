@@ -1,9 +1,8 @@
 # PR 2278 review handoff
 
-**Status:** historical checkpoint captured before verification of the HTML fixes. This file
-records the work at that time. Use the
-[PR description](https://github.com/thebristolsound/birdbrain/pull/2278) for the published head
-and its verification result.
+**Status:** done ([PR 2278](https://github.com/thebristolsound/birdbrain/pull/2278)). This
+file is a checkpoint captured before verification of the HTML fixes. The PR description holds
+the published head and its verification result.
 
 ## Preserved work
 

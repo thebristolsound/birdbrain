@@ -27,6 +27,45 @@ beforeEach(() => {
 afterEach(() => rmSync(dir, { recursive: true, force: true }))
 
 describe('PR screenshot evidence', () => {
+  it.each(['| :-- | :-- | :-- |', '| :-- | :-- | :--', ':-- | :-- | :-- |', ':-- | :-- | :--'])(
+    'rejects empty required tables with optional outer pipes: %s',
+    (rule) => {
+      const body = filled
+        .replace(
+          /(\| Acceptance criterion \| Proof \| Result \|\n)[^\n]+\n(?:\|[^\n]+\n)+/,
+          `$1${rule}\n`
+        )
+        .replace(/(\| Area \| What changed \| Why \|\n)[^\n]+\n(?:\|[^\n]+\n)+/, `$1${rule}\n`)
+      expect(lintBody(body, { posted: true })).toEqual([
+        expect.stringContaining('Proof has no filled row'),
+        expect.stringContaining('Changes lists no file group')
+      ])
+    }
+  )
+
+  it.each(['| :-- | :-- | :-- |', '| :-- | :-- | :--', ':-- | :-- | :-- |', ':-- | :-- | :--'])(
+    'accepts filled tables with optional outer pipes on the divider: %s',
+    (rule) => {
+      expect(lintBody(filled.replaceAll('| :-- | :-- | :-- |', rule), { posted: true })).toEqual([])
+    }
+  )
+
+  it.each(['| :-- | :-- | :-- |', '| :-- | :-- | :--', ':-- | :-- | :-- |', ':-- | :-- | :--'])(
+    'rejects an empty Decisions table with optional outer pipes: %s',
+    (rule) => {
+      const body = readFileSync(
+        join(scripts, 'fixtures/fail-header-only-decisions.md'),
+        'utf8'
+      ).replaceAll('| :-- | :-- | :-- |', rule)
+      expect(lintBody(body, { posted: true })).toEqual([
+        expect.stringContaining('the "Decisions" block in Changes is empty')
+      ])
+      expect(
+        lintBody(body.replace('| Decision | Grade | Source |\n', ''), { posted: true })
+      ).toEqual([expect.stringContaining('the "Decisions" block in Changes is empty')])
+    }
+  )
+
   it.each([' ```', '  ```', '   ```', ' ~~~', '  ~~~', '   ~~~'])(
     'rejects ambiguous indented fence openers: %j',
     (fence) => {
@@ -81,6 +120,7 @@ describe('PR screenshot evidence', () => {
   )
 
   it.each([
+    '---',
     'Existing matches are never cleared',
     '| Existing matches are never cleared',
     'Existing matches are never cleared | | pending'

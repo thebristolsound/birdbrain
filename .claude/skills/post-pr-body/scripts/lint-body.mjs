@@ -44,7 +44,7 @@ const IMAGE = /!\[[^\]]*\]|<img\b/i
 const hasImage = (text) => IMAGE.test(stripCodeSpans(text))
 const PROOF_HEADER = /^\|\s*Acceptance criterion\s*\|\s*Proof\s*\|\s*Result\s*\|$/
 const TABLE_ROW = /^\s*\|.*\|.*$/
-const TABLE_RULE = /^\s*\|(\s*:?-+:?\s*\|)+\s*$/
+const TABLE_RULE = /^\s*(?=.*\|)\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/
 const IMPACT_FIELDS = [
   'Evidentiary result',
   'What verification proves',
@@ -228,7 +228,7 @@ function tableRows(lines) {
   const rows = []
   let header = true
   for (const l of lines) {
-    if (!TABLE_ROW.test(l)) {
+    if (!TABLE_ROW.test(l) && !TABLE_RULE.test(l)) {
       header = true
       continue
     }
@@ -432,7 +432,7 @@ export function lintBody(raw, { anyAuthor = false, posted = false } = {}) {
       findings.push('Changes has no <details> block; the file groups are collapsed under a plain <summary>')
     } else {
       const body = blocks.flatMap(blockBody)
-      const bad = body.filter((l) => l.trim() !== '' && !/^\s*- /.test(l) && !TABLE_ROW.test(l))
+      const bad = body.filter((l) => l.trim() !== '' && !/^\s*- /.test(l) && !TABLE_ROW.test(l) && !TABLE_RULE.test(l))
       if (bad.length) findings.push(`Changes holds only bullets or table rows; found prose: "${bad[0].trim().slice(0, 60)}"`)
       const files = blockBody(blocks[0])
       const filled = files.some((l) => /^\s*- \S/.test(l)) || tableRows(files).some((r) => r.some((c) => c !== ''))
@@ -445,7 +445,7 @@ export function lintBody(raw, { anyAuthor = false, posted = false } = {}) {
         const rows = tableRows(lines)
         // A header with no rows, or a row of blank cells, is a template left unfilled.
         const blank = lines.every((l) => l.trim() === '')
-        if (blank || (lines.some((l) => TABLE_ROW.test(l)) && (!rows.length || rows.some((r) => r.every((c) => c === ''))))) {
+        if (blank || (lines.some((l) => TABLE_ROW.test(l) || TABLE_RULE.test(l)) && (!rows.length || rows.some((r) => r.every((c) => c === ''))))) {
           findings.push(`the "${b.summary}" block in Changes is empty; delete it when there is nothing to list`)
         }
       }

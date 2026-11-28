@@ -29,6 +29,10 @@ export function CommandPalette() {
   const [query, setQuery] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(0)
   const panelRef = useRef<HTMLDivElement>(null)
+  const listRef = useRef<HTMLDivElement>(null)
+  // Set when an arrow key moves the highlight and read once by the effect that scrolls the list.
+  // The pointer also moves the highlight, but the row under it is already on screen.
+  const scrollToHighlight = useRef(false)
 
   const { data: cases = [] } = useQuery(casesQueryOptions)
   const { data: captureCounts = {} } = useQuery(captureCountsQueryOptions)
@@ -150,18 +154,35 @@ export function CommandPalette() {
     setSelectedIndex((i) => Math.min(i, rowCount - 1))
   }, [rowCount])
 
+  // The action rows sit outside the scrolling list, so only a Case row has a match here.
+  useEffect(() => {
+    if (!scrollToHighlight.current) return
+    scrollToHighlight.current = false
+    // jsdom has no layout, so it has no scrollIntoView either.
+    listRef.current
+      ?.querySelector(`[data-case-index="${selectedIndex}"]`)
+      ?.scrollIntoView?.({ block: 'nearest' })
+  }, [selectedIndex])
+
   function selectCase(caseId: string) {
     navigate({ to: '/cases/$caseId/captures', params: { caseId } })
     setOpen(false)
   }
 
+  // A move that leaves the highlight where it is would leave the flag set for the next hover.
+  function moveHighlight(next: number) {
+    if (next === selectedIndex) return
+    scrollToHighlight.current = true
+    setSelectedIndex(next)
+  }
+
   function handleKeyDown(e: React.KeyboardEvent) {
     if (e.key === 'ArrowDown') {
       e.preventDefault()
-      setSelectedIndex((i) => Math.min(i + 1, rowCount - 1))
+      moveHighlight(Math.min(selectedIndex + 1, rowCount - 1))
     } else if (e.key === 'ArrowUp') {
       e.preventDefault()
-      setSelectedIndex((i) => Math.max(i - 1, 0))
+      moveHighlight(Math.max(selectedIndex - 1, 0))
     } else if (e.key === 'Enter') {
       e.preventDefault()
       const target = filtered[selectedIndex]
@@ -206,6 +227,8 @@ export function CommandPalette() {
                 onChange={(e) => {
                   setQuery(e.target.value)
                   setSelectedIndex(0)
+                  // The highlight goes back to the first row, so the list goes back to the top.
+                  if (listRef.current) listRef.current.scrollTop = 0
                 }}
                 onKeyDown={handleKeyDown}
                 placeholder="Switch case..."
@@ -217,7 +240,11 @@ export function CommandPalette() {
             </div>
 
             {/* Case list */}
-            <div className="max-h-72 overflow-y-auto py-1">
+            <div
+              ref={listRef}
+              data-testid="palette-case-list"
+              className="max-h-72 overflow-y-auto py-1"
+            >
               {filtered.length === 0 ? (
                 <div className="px-4 py-8 text-center text-sm text-text-faint">
                   No cases match &ldquo;{query}&rdquo;
@@ -230,13 +257,16 @@ export function CommandPalette() {
                   return (
                     <button
                       key={c.id}
+                      data-case-index={i}
                       className={[
                         'flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors',
                         isSelected
                           ? 'bg-accent-subtle text-text-primary'
                           : 'text-text-secondary hover:bg-elevated'
                       ].join(' ')}
-                      onMouseEnter={() => setSelectedIndex(i)}
+                      // Not onMouseEnter: Chromium fires it on the row an arrow-key scroll
+                      // slides under a resting pointer, taking the highlight from the key.
+                      onMouseMove={() => setSelectedIndex(i)}
                       onClick={() => selectCase(c.id)}
                     >
                       <div className="flex h-4 w-4 shrink-0 items-center justify-center">

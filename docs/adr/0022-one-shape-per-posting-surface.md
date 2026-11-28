@@ -77,7 +77,8 @@ A Review findings section follows the Summary: a counts line and one collapsed r
 finding, taken or not, naming its reviewer in words and linking nothing. The linter requires
 and checks it on an agent-written body, and the merge paths check only what every section
 needs, so a PR opened
-before it existed still merges.
+before it existed still merges. A review reply may also read `Applied in the description.`,
+for a finding a body edit fixed with no commit to name.
 
 The PR body shape is the same for humans and agents: `.github/pull_request_template.md` is a
 copy of the skill's template. The one difference is the attribution line: an agent ends with

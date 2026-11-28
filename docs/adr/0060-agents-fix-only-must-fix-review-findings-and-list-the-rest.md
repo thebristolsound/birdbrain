@@ -55,7 +55,9 @@ where they differed.
    one visible line, `<n> taken, <m> not taken.` (or `No review findings yet.`), above a
    collapsed block with one row per finding. A taken row says what fixed it; a row not taken
    gives one reason: out of scope, disputed, test or style only, needs its own push, or filed as
-   an issue. A finding that came on a thread gets its reply there from the same disposition.
+   an issue. A finding that came on a thread gets its reply there from the same disposition;
+   one a body edit fixed is answered `Applied in the description.`, the review reply that names
+   no commit.
    Each round adds its rows to the ones already there. The section is outside the Summary, so
    the squash commit leaves it out and ADR-0028's discard at merge stands.
 6. **Rows link nothing, and the fleet reads who raised them as a record.** This amends
@@ -82,10 +84,10 @@ where they differed.
    started reading the review surface. On a PR whose pre-pass passed and that the maintainer has not just
    woken, `.github/scripts/dispatch/pregate.sh` starts a cycle for trusted activity newer than
    that time, or than the head when there is none. On any PR whose pre-pass passed, woken or not, a
-   `review/fleet` failure at the head posted after the last answer starts one too, since no
-   comment announces it. A round answered with no push is therefore not started
-   again, and feedback posted while a round ran, or a fleet finding confirmed after it, still
-   is. A time in the future is ignored.
+   `review/fleet` failure at the head posted after that time starts one too, since no comment
+   announces it. Only the line inside the Review findings section counts. Feedback a round read therefore does not start another; feedback
+   posted while a round ran, a review bot's reaction to the round's own thread replies, and a
+   fleet finding confirmed after it still do. A time in the future is ignored.
 
 ## Consequences
 

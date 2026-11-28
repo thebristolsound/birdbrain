@@ -368,6 +368,21 @@ describe.skipIf(!HAS_JQ || process.platform !== 'linux')(
         expect(seen.STARTED).toBe('2026-01-01T00:00:00Z')
       })
 
+      it('starts an empty ledger for the pre-gate on the first fire, and keeps one that exists', () => {
+        pass(['identity'])
+        gate('run=true\nreason=a PR needs a pre-pass\n')
+        const ledger = join(state, 'ledger.jsonl')
+        expect(existsSync(ledger)).toBe(false)
+
+        expect(phase('pregate').status).toBe(0)
+        expect(readFileSync(ledger, 'utf8')).toBe('')
+
+        const line = '{"at":"2026-01-01T00:00:00Z","targets":null,"mode":"report","run":"r"}\n'
+        writeFileSync(ledger, line)
+        expect(phase('pregate').status).toBe(0)
+        expect(readFileSync(ledger, 'utf8')).toBe(line)
+      })
+
       it('reports an idle fire with the reason the pre-gate gave', () => {
         pass(['identity'])
         gate('run=false\nreason=the slot is free but the queue is empty\n')

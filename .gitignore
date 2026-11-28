@@ -160,3 +160,8 @@ report-*.html
 # (stryker.config.mjs)
 /.cache/stryker/
 /.cache/stryker-tmp/
+
+# The dispatch cycle's scratch directory (.github/scripts/dispatch/run.sh). The local host
+# (scripts/dispatch-workflow/phase.sh) moves it into its run directory at the end, and a run
+# that was killed can leave it behind.
+.dispatch/

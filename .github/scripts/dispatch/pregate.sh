@@ -12,7 +12,9 @@
 # trusted_prepass), and the rest is named in the step summary. And how much: the
 # spend cap below holds a cycle past its limits, and holds when it cannot count.
 # It counts only the runs GitHub still lists, and anyone with write access can
-# delete a finished run. The ceiling is then dispatch.yml's schedule: a fire
+# delete a finished run; a local host adds the cycles its own ledger records
+# (DISPATCH_LOCAL_LEDGER), of which the pre-gate on Actions has no record. The
+# ceiling on Actions is then dispatch.yml's schedule: a fire
 # every hour since ADR-0045 (every 4 hours when the maintainer accepted the
 # ceiling on 2026-09-28), one run at a time, and a job that skips any start or
 # re-run but a scheduled first attempt or his, so 24 cycles a day plus any he
@@ -29,7 +31,8 @@
 #
 # $1 = mode. report mode always runs; it exists to compare a runner's
 # classification against an interactive session's.
-# Env: GH_TOKEN (machine token), LOGIN (machine login, optional).
+# Env: GH_TOKEN (machine token), LOGIN (machine login, optional),
+#      DISPATCH_LOCAL_LEDGER (optional: a local host's record of its paid cycles).
 # Output: run=true|false, reason.
 set -euo pipefail
 
@@ -103,6 +106,25 @@ cap_target_since="$(date -u -d "$CAP_PER_TARGET_WINDOW" +%FT%TZ)"
 # GitHub allows a re-run up to 30 days after a run's first attempt.
 cap_rerun_since="$(date -u -d '30 days ago' +%FT%TZ)"
 
+# A local host (scripts/dispatch-workflow/phase.sh) has no Actions run to count, so it
+# records each paid cycle it starts as one JSON line in DISPATCH_LOCAL_LEDGER, with at
+# least {at, targets} in the shape paid_cycles gives. Prints the lines since
+# cap_total_since as [{at, targets}], and [] when no ledger is named. A named ledger that
+# is missing, or a line of any other shape, fails the count, and the caller holds: a
+# record this step cannot read is a cycle it cannot count.
+local_cycles() {
+  [ -n "${DISPATCH_LOCAL_LEDGER:-}" ] || { echo '[]'; return 0; }
+  [ -f "$DISPATCH_LOCAL_LEDGER" ] || return 1
+  jq -c -n --arg since "$cap_total_since" '[inputs
+    | if type == "object"
+        and ((.at | type) == "string")
+        and (.at | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"))
+        and (.targets == null
+          or ((.targets | type) == "array" and all(.targets[]; type == "number")))
+      then . else error("not a ledger line") end
+    | select(.at >= $since) | {at, targets}]' "$DISPATCH_LOCAL_LEDGER"
+}
+
 decide() {
   echo "run=$1" >> "$out"
   echo "reason=$2" >> "$out"
@@ -118,12 +140,16 @@ decide() {
 cap_paid=""
 cap_held=""
 start() {
-  local reason="$2" n last used
+  local reason="$2" n last used here
   local -a targets
   read -ra targets <<<"$1"
   if [ -z "$cap_paid" ]; then
     cap_paid="$(paid_cycles)" \
       || decide false "could not count the paid cycles already started, so the spend cap holds this one: $reason"
+    here="$(local_cycles)" \
+      || decide false "could not read the local host's record of its paid cycles, so the spend cap holds this one: $reason"
+    cap_paid="$(jq -c -n --argjson listed "$cap_paid" --argjson here "$here" '$listed + $here')" \
+      || decide false "could not count the paid cycles: $reason"
   fi
   used="$(jq length <<<"$cap_paid")" || decide false "could not count the paid cycles: $reason"
   if [ "$used" -ge "$CAP_TOTAL" ]; then

@@ -151,6 +151,9 @@ case "$phase" in
     load_identity
     gate_out="$run_dir/gate.out"
     : > "$gate_out"
+    # The pre-gate holds on a ledger it is given and cannot find, so the first fire on this
+    # machine starts an empty one.
+    [ -e "$ledger" ] || : > "$ledger" || fail "could not start the ledger $ledger"
     if ! GITHUB_OUTPUT="$gate_out" bash "$steps/pregate.sh" "$mode" > "$run_dir/pregate.log" 2>&1; then
       tail -n 20 "$run_dir/pregate.log" >&2
       fail "pre-gate exited non-zero; see $run_dir/pregate.log"

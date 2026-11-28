@@ -661,7 +661,12 @@ describe.skipIf(!HAS_JQ)('pregate.sh on a PR parked for the maintainer', () => {
           { login: PIPELINE, at: AFTER_WAKE }
         ],
         statuses: [
-          { state: 'success', by: PIPELINE, at: VERDICT_AT, description: 'Approved for human review.' },
+          {
+            state: 'success',
+            by: PIPELINE,
+            at: VERDICT_AT,
+            description: 'Approved for human review.'
+          },
           { context: 'review/fleet', state: 'failure', by: PIPELINE, at: failed }
         ]
       })

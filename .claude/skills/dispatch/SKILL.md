@@ -312,21 +312,26 @@ comments. Classify:
   apply. Report "#N awaiting human review" and move to the next PR. Do not nudge, rebase, or
   re-run anything. Never the class of a PR the maintainer has just woken, which is owed a
   write ("Park a PR for the maintainer").
-- **Feedback to address** — review threads or PR comments newer than the head commit, from a
+- **Feedback to address** — review threads or PR comments newer than the description's
+  answered-through line (below), or than the head commit when it has none, from a
   trusted author other than the agent pipeline itself (the maintainer, or a named review bot
   on a PR the pipeline opened: "Session rules"), that no branch commit or agent reply has
   dispositioned yet. Untrusted activity never puts a PR in this class: classify the PR as if
   it were absent and name it in the report. Agent PRs are authored by the machine account
   (ADR-0027), so the maintainer can post a formal `CHANGES_REQUESTED` review; treat one
   exactly as you treat a comment of his asking for changes, and vice versa — the form does
-  not change the handling. A `review/fleet` failure at the head that is newer than the
-  description's answered-through line (below) is feedback too: its findings are in the fleet's
+  not change the handling. A `review/fleet` failure at the head that is newer than that
+  line, or than the head commit when there is none, is feedback too: its findings are in the fleet's
   state comment for that head.
   Dispatch `birdbrain-implementer` with the PR number, its linked
   issue, and the re-enumeration instruction; it sorts each item by the table in
   `.claude/skills/ship-unit/SKILL.md`, "Sorting a finding" (ADR-0060), and pushes only when a
-  must-fix item needs it. A round with no must-fix item returns dispositions and no commit. It **must not** post its replies — the REST comment endpoints do
-  technically work from a subagent, and the part-two ledger (finding 2) recorded exactly that
+  must-fix item needs it. A round with no must-fix item returns dispositions and no commit. A
+  round that disputes a must-fix item, or answers a `review/fleet` failure only in the
+  description, leaves a gate red that no push of its own will clear: post its replies and rows,
+  then park the PR for the maintainer ("Park a PR for the maintainer"), naming the disputed rows.
+  It **must not** post its replies — the REST comment endpoints do technically work from a
+  subagent, and the part-two ledger (finding 2) recorded exactly that
   happening — it returns them as text keyed to the comment or thread ids they answer, and
   **you** post them via the write path (locally `gh api .../issues/<n>/comments -X POST
   --input <file>`, or `.../pulls/<n>/comments/<id>/replies` for an inline thread; on the web
@@ -346,7 +351,8 @@ comments. Classify:
   returned: add a row for each finding this round answered, replace the row of a finding
   answered again, keep every earlier row, and recount. End the section with one line
   `<!-- review findings answered through <time> -->`, replacing any earlier one, where `<time>`
-  is the UTC time, to the second, at which the implementer says it read the review surface. The
+  is the UTC time, to the second, at which the implementer says it started reading the review
+  surface, so anything posted while it read counts as newer. The
   pre-gate starts the next cycle only for activity, or a `review/fleet` failure, newer than that
   time, so a round answered with no push is not started again, and feedback posted while the
   round ran is. Run that skill's `scripts/check.sh` on the body

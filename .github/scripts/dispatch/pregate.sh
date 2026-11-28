@@ -529,22 +529,26 @@ for n in $(jq -r '.[]' <<<"$prs"); do
     fi
   elif [ "$state" = success ]; then
     newest="$(newest_trusted "$items" others)"
-    # A round answered without a push leaves the head where it was (ADR-0060). The Review
-    # findings section records when that round read the reviews, so only activity after it is
-    # owed, and so is a review/fleet failure posted after it, which no comment announces.
+    # The Review findings section records when the last round started reading the reviews
+    # (ADR-0060). Activity after that is owed whether or not the round pushed: a comment posted
+    # while a fix round ran is older than the head it pushed, yet nothing answered it.
     through="$(answered_through "$pr")"
-    if [[ "$through" > "$head_at" ]]; then
+    if [ -n "$through" ]; then
       after="$through"
       than="the review findings answered through $through"
     fi
+  else
+    newest="$(newest_trusted "$items" all)"
+  fi
+  # A review/fleet failure posted after the last answer is owed a cycle too, on a woken PR as
+  # on any other with a passing pre-pass: no comment announces it (ADR-0060).
+  if [ "$state" = success ]; then
     fleet="$(trusted_statuses "$R" "$sha" "$me" \
       | jq -c '.["review/fleet"] // {state: "absent", at: ""}')"
     if [ "$(jq -r .state <<<"$fleet")" = failure ] && [[ "$(jq -r .at <<<"$fleet")" > "$after" ]]; then
       start "$n" "PR #$n has review/fleet failing at its head since $(jq -r .at <<<"$fleet"), newer than $than" \
         || continue
     fi
-  else
-    newest="$(newest_trusted "$items" all)"
   fi
   if [ -n "$newest" ] && [[ "$newest" > "$after" ]]; then
     start "$n" "PR #$n has activity at $newest newer than $than" || continue

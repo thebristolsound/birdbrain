@@ -321,7 +321,7 @@ answered_through() {
   # Only the Review findings section counts: the same text quoted elsewhere in the body, such as
   # an example in Proof, is not dispatch's record.
   at="$(jq -r '.body // ""' <<<"$1" | tr -d '\r' \
-    | awk '/^## /{in_section = ($0 == "## Review findings")} in_section' \
+    | awk '/^## /{h = $0; sub(/[ \t]+$/, "", h); in_section = (h == "## Review findings")} in_section' \
     | grep -oE '<!-- review findings answered through [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z -->' \
     | tail -1 | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]{8}Z')" || return 0
   now="$(date -u +%FT%TZ)"
@@ -548,8 +548,8 @@ for n in $(jq -r '.[]' <<<"$prs"); do
   # PR as on any other with a passing pre-pass: no comment announces it (ADR-0060), and a woken
   # PR's later reply does not stand for having read it.
   if [ "$state" = success ]; then
-    fleet_after="${through:-$after}"
-    fleet_than="$than"
+    fleet_after="${through:-$head_at}"
+    fleet_than="its head ($head_at)"
     [ -z "$through" ] || fleet_than="the review findings answered through $through"
     fleet="$(trusted_statuses "$R" "$sha" "$me" \
       | jq -c '.["review/fleet"] // {state: "absent", at: ""}')"

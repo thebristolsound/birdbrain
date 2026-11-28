@@ -645,7 +645,7 @@ describe.skipIf(!HAS_JQ)('pregate.sh on a PR parked for the maintainer', () => {
     )
     expect(result.outputs).toEqual({
       run: 'true',
-      reason: `PR #${PR} has review/fleet failing at its head since ${failed}, newer than the pipeline's last comment (${AFTER_WAKE})`
+      reason: `PR #${PR} has review/fleet failing at its head since ${failed}, newer than its head (${HEAD_AT})`
     })
   })
 
@@ -674,6 +674,32 @@ describe.skipIf(!HAS_JQ)('pregate.sh on a PR parked for the maintainer', () => {
     expect(result.outputs).toEqual({
       run: 'true',
       reason: `PR #${PR} has review/fleet failing at its head since ${failed}, newer than the review findings answered through ${read}`
+    })
+  })
+
+  it('compares a fleet failure on a woken PR with no recorded read against its head', () => {
+    const failed = '2026-09-21T09:55:00Z'
+    const result = run(
+      fixtures({
+        ...removedBy(MAINTAINER),
+        comments: [
+          { login: PIPELINE, at: VERDICT_AT },
+          { login: PIPELINE, at: AFTER_WAKE }
+        ],
+        statuses: [
+          {
+            state: 'success',
+            by: PIPELINE,
+            at: VERDICT_AT,
+            description: 'Approved for human review.'
+          },
+          { context: 'review/fleet', state: 'failure', by: PIPELINE, at: failed }
+        ]
+      })
+    )
+    expect(result.outputs).toEqual({
+      run: 'true',
+      reason: `PR #${PR} has review/fleet failing at its head since ${failed}, newer than its head (${HEAD_AT})`
     })
   })
 
@@ -978,6 +1004,18 @@ describe.skipIf(!HAS_JQ)('pregate.sh trust list', () => {
       })
     )
     expect(result.outputs).toEqual({ run: 'true', reason: RAN })
+  })
+
+  it('reads the answered-through time under a heading with trailing spaces', () => {
+    const result = run(
+      fixtures({
+        labels: UNPARKED,
+        state: 'success',
+        body: `## Review findings  \n\n<!-- review findings answered through ${ANSWERED} -->\n`,
+        ...botActivity('coderabbitai[bot]', 'comments')
+      })
+    )
+    expect(result.outputs).toEqual({ run: 'false', reason: NOTHING_OWED })
   })
 
   it('reads the answered-through time only inside Review findings', () => {

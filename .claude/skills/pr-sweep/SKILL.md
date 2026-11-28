@@ -79,8 +79,9 @@ then set the status (`.claude/skills/pr-sweep/scripts/post-status.sh <n> success
 - **Blockers only in the body, sha unchanged**: fix the body yourself (`gh pr edit
   --body-file`, after `post-pr-body` check), post a short follow-up comment saying so, and
   set `success` on the same sha. No new code round.
-- **No Summary and no Verification** (a dependabot or human body): write the Summary,
-  Changes and Evidence-affecting sections yourself and append the block
+- **No Summary and no Verification** (a dependabot or human body): write the body in the
+  `post-pr-body` layout yourself (the Merge risk notice, Summary, Proof, Screenshots, Blast
+  radius, Changes and Evidence-affecting) and append the block
   `.claude/skills/post-pr-body/scripts/verification-from-ci.sh <n>` prints from the
   required checks at head. No local preflight: CI already ran that loop at this sha.
 - **Code blockers**: post `failure` and move the PR to **fix**.

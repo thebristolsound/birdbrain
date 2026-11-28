@@ -4,8 +4,6 @@ How to write documentation for Birdbrain — audience, claim discipline, tone, a
 
 This guide covers prose. For **where** a document goes and what it is named, see [`docs/README.md`](../README.md). For **what things are called**, see [`CONTEXT.md`](../../CONTEXT.md).
 
-CodeRabbit reads this file as review criteria for `docs/**`, `website/content/docs/**`, and root Markdown.
-
 ## Audience
 
 Investigators, activists, and researchers. Assume:

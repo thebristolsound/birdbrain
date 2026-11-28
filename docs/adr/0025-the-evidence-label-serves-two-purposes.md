@@ -1,6 +1,6 @@
 # The evidence label serves two purposes
 
-**Status:** Accepted
+**Status:** Accepted, amended 2026-11-27 (CodeRabbit removed)
 
 **Date:** 2026-09-01
 
@@ -98,6 +98,12 @@ evidence PR is the moment the human is reading, and that is where a second pair 
 value. On a non-evidence PR it fires at un-draft-then-merge and is out of the auto-merge path;
 ADR-0014's four conditions never counted it, so no policy relies on what this removes.
 
+**Amended 2026-11-27.** CodeRabbit is removed from the repository (#1112): `.coderabbit.yaml` is
+deleted, and the bot is off the dispatch trust list. The paragraph above no longer describes a
+reviewer. The review fleet reads every non-draft PR the maintainer or the machine account opens
+([ADR-0057](0057-a-two-family-review-fleet-reads-every-pr-and-gates-the-merge.md)). The pre-pass
+stays the only draft-phase reporter.
+
 **A prose-only delta gets a delta pass.** When every blocker in a verdict is a truth defect and
 the fix commit contains no executable change, the next pre-pass does not re-run the verify loop.
 The reviewer re-derives every claim the delta makes against the source, reads the required
@@ -121,7 +127,8 @@ is not coming back on this evidence.
   matrix, so the ready state hides no unreviewed work.
 - CodeRabbit's findings on an evidence PR arrive during human review and are handled there,
   by the maintainer, rather than relayed to the implementer during the draft loop. The dispatch
-  skill's guidance on reply storms still applies at that point.
+  skill's guidance on reply storms still applies at that point. **Superseded 2026-11-27** by the
+  amendment above: the repository no longer uses CodeRabbit, so this consequence no longer holds.
 - A prose-only fix round costs a claims check and a status read instead of a reviewer run over
   the suite. On the #1181 round-5 shape that is minutes rather than tens of minutes.
 - A delta pass is weaker in one specific way, and the verdict must say so: it trusts the

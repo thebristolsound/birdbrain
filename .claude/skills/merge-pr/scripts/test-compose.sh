@@ -14,8 +14,19 @@ node "$here/compose.mjs" "$fx/pass-filled.md" "feat(x): a thing" 12 "$out" >/dev
 [ -s "$out/body.txt" ] && ok "body is not empty" || bad "body is not empty"
 ! grep -q '^## ' "$out/body.txt" && ok "body carries no headings" || bad "body carries no headings"
 ! grep -q 'Pull request description generated' "$out/body.txt" && ok "body carries no attribution line" || bad "attribution line leaked"
+! grep -qi 'mermaid\|<details' "$out/body.txt" && ok "body carries no Diagram block" || bad "Diagram block leaked"
 ! grep -q 'preflight' "$out/body.txt" && ok "body carries no Verification text" || bad "Verification text leaked"
 [ -z "$(awk 'length > 72' "$out/body.txt")" ] && ok "body wraps at 72" || bad "body line over 72"
+
+# Built with node, not sed: BSD sed writes a literal n for \n in a replacement.
+node -e 'const fs = require("fs"); const [src, dst] = process.argv.slice(1)
+fs.writeFileSync(dst, fs.readFileSync(src, "utf8").replace(/^this pull request\.$/m,
+  "this pull request.\n\n<!-- a note\n<details>\nstill a comment -->\n\nA sentence after the comment."))' \
+  "$fx/pass-filled.md" "$out/comment.md"
+grep -q 'still a comment' "$out/comment.md" || bad "the comment case was not planted"
+node "$here/compose.mjs" "$out/comment.md" "t" 1 "$out" >/dev/null 2>&1
+grep -q 'A sentence after the comment' "$out/body.txt" && ! grep -q '<!--' "$out/body.txt" \
+  && ok "a details line inside a comment does not end the Summary" || bad "a comment cut the Summary short"
 
 node "$here/compose.mjs" "$fx/fail-first-line.md" "t" 1 "$out" >/dev/null 2>&1; rc=$?
 [ "$rc" -eq 0 ] && ok "a body with a Summary still composes (shape is post-pr-body's job)" || bad "unexpected exit $rc"

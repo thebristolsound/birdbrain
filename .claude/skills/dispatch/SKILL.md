@@ -118,9 +118,9 @@ exits immediately unless `CLAUDE_CODE_REMOTE=true`, by design. So:
   his spend rulings (#1310) decide whose comments, labels and pushes this routine acts on:
   - **Comments and reviews on a PR:** the maintainer (the repository owner), the machine
     account, and, on a PR the machine account opened, the named review bots
-    `coderabbitai[bot]`, `chatgpt-codex-connector[bot]`, `Copilot` and
-    `copilot-pull-request-reviewer[bot]`. `.github/scripts/dispatch/pregate.sh` holds the same
-    list, and `.github/workflows/claude.yml` a third copy under GraphQL names; change all three.
+    `chatgpt-codex-connector[bot]`, `Copilot` and `copilot-pull-request-reviewer[bot]`.
+    `.github/scripts/dispatch/pregate.sh` holds the same list, and
+    `.github/workflows/claude.yml` a third copy under GraphQL names; change all three.
   - **Comments on an issue:** the maintainer and the machine account. Only their comments raise
     or answer a question (section 3), and only theirs hold, release or withdraw a claim
     (sections 1 to 3).
@@ -233,8 +233,8 @@ exits immediately unless `CLAUDE_CODE_REMOTE=true`, by design. So:
   kinds (cycle claim and release, pre-pass verdict, review reply, give-up, anything else),
   their line caps, and the rule that a comment names only what you did and saw. Every kind
   has two layers: a plain-language top layer with no paths, commit ids, code spans or
-  repository terms, and the detail collapsed in `<details>` blocks, the way CodeRabbit nests
-  its review. Write the comment to a file, run
+  repository terms, and the detail collapsed in `<details>` blocks. Write the comment to a
+  file, run
   `.claude/skills/post-comment/scripts/check.sh <file>`, then post it with `--body-file` or
   `--input`; never `--body`. The same skill's template is the one the reviewer's verdict and
   the implementer's replies are written against.
@@ -359,7 +359,7 @@ either: GitHub serialises the merge, a second merge call against an already-merg
 rather than repeating it, and neither a reviewer nor an implementer is spawned.
 
 **The claim lives on the linked issue, not on the PR.** Two reasons, both load-bearing. A comment
-on the PR lands in the timeline a human reads and can wake CodeRabbit, which is what section 4's
+on the PR lands in the timeline a human reads and can wake a review bot, which is what section 4's
 reply storm rule exists to prevent. And a commit status is not an option at all: a status binds to
 a sha, and the claimed cycle's central act is a push that moves the sha, so the claim would
 evaporate in exactly the post-push, pre-verdict window where the race bites hardest.
@@ -704,7 +704,7 @@ PR-open is the leftover state section 1 has to clean up.
 **Screenshots go up once the PR exists.** When the implementer returned screenshot paths, run
 step 3 of `post-pr-body`'s "Screenshots for visual changes" through `agh` (`agh pr comment`
 with `--attach`, then the REST body write). Before opening, run that skill's
-`scripts/check.sh --screenshots <body-file>`; a visual change without captured PNGs returns to
+`scripts/check.sh <body-file>`; a visual change without captured PNGs returns to
 the implementer. If an upload fails, leave the PR in draft and report the command and error
 as a blocker, following step 4. Keep capture and upload with the implementer and dispatcher.
 A fix round that returns new paths gets the same steps. The body is ready for review when
@@ -796,9 +796,8 @@ Three rules that matter more than the mechanics:
   minutes because nothing indicated whether more was coming.
 - **`pending` means work is genuinely in flight.** Do not post it speculatively and do not
   leave it up after you stop.
-- **The pre-pass is the only draft-phase reporter (ADR-0025).** CodeRabbit reviews once the PR
-  is marked ready, which the approve verdict below does, so it reports after you and to the
-  human. Do not wait for it, do not count it, and put no reporter tally on the verdict line.
+- **The pre-pass is the only draft-phase reporter (ADR-0025).** Put no reporter tally on the
+  verdict line.
 
 `.github/workflows/pre-pass-gate.yml` seeds the status so non-agent PRs pass automatically and
 agent PRs start `pending`. It never overwrites a verdict you posted.
@@ -940,13 +939,13 @@ If it errors, times out or returns no report, post the reviewer's verdict alone,
 `Test pass: not run` line inside the collapsed block naming what happened, and name it in the
 section 5 report. A missing test pass does not hold the verdict.
 
-### Do not re-trigger CodeRabbit with a reply storm
+### Do not re-trigger a review bot with a reply storm
 
-Post the implementer's inline replies **after** the pre-pass report, in one batch, and expect
-CodeRabbit to react to them. On #423 six inline replies at 23:57:33–38 produced seven
-CodeRabbit reviews in the following 34 seconds — reacting to the replies, not to code — and
-some became findings the next round had to disposition. That PR also tripped CodeRabbit's
-"Review rate limited". Batching costs nothing and keeps the next round's surface honest.
+Post the implementer's inline replies **after** the pre-pass report, in one batch. A review bot
+can react to replies as it does to code. On #423 six inline replies at 23:57:33–38 produced
+seven reviews in the following 34 seconds from CodeRabbit, a bot since removed from this
+repository, and some became findings the next round had to disposition. Batching costs nothing
+and keeps the next round's surface honest.
 
 ### Watch the latency curve
 
@@ -995,8 +994,8 @@ round, both or neither.
 
 - **approve for human review** → mark the PR ready for review via the write path
   (`agh pr ready <n>`), evidence-affecting or not (ADR-0025). Ready means a human should now
-  look, and it is what wakes CodeRabbit. An evidence-affecting PR then waits for the human back
-  gate; a non-evidence PR proceeds to section 2a. Report and stop.
+  look. An evidence-affecting PR then waits for the human back gate; a non-evidence PR proceeds
+  to section 2a. Report and stop.
 - **request changes** → hand the PR back to `birdbrain-implementer` (pointer, not paraphrase)
   for **one** fix round, then re-run the pre-pass. If the second pre-pass still requests
   changes, stop there: report "pre-pass unresolved after one fix round — needs human

@@ -15,7 +15,7 @@ const FRICTION_PER_AGENT = 3
 const FRICTION_SOURCES = ['dispatcher', 'implementer', 'reviewer', 'pr-review']
 const FRICTION_KINDS = ['friction', 're-derived', 'confusing']
 const FRICTION_HEADER = '| # | from | kind | anchor | cost | fix |'
-const BOT_TRIGGER = /^@(coderabbitai|codex) (review|full review|security review)$/
+const BOT_TRIGGER = /^@codex (review|security review)$/
 // The leading note an agent adds when posting as the maintainer (global agent instructions).
 // The second form is the current one; the first predates it and still passes.
 const DISCLOSURE = [
@@ -26,8 +26,7 @@ const DISCLOSURE = [
 // check by name.
 const FORBIDDEN = [
   [/^\s*co-authored-by:/im, 'a Co-authored-by trailer'],
-  [/Generated (with|by) \[Claude Code\]/, 'the platform attribution footer'],
-  [/Summary by CodeRabbit|coderabbitai/i, 'CodeRabbit text']
+  [/Generated (with|by) \[Claude Code\]/, 'the platform attribution footer']
 ]
 
 // `cap` counts top-layer lines only; a <details> block is not on the top layer. `machineFirst`
@@ -35,7 +34,7 @@ const FORBIDDEN = [
 // exempt from the plain-language check. `details` is 'required', 'optional' or 'none'.
 const KINDS = [
   // A review-bot trigger is the command alone: the bot reads it back, so it is
-  // exempt from the plain-language check and from the CodeRabbit-text rule.
+  // exempt from the plain-language check.
   { name: 'bot trigger', first: BOT_TRIGGER, cap: 1, machineFirst: true, details: 'none' },
   { name: 'cycle claim', first: /^Cycle claim: PR #\d+$/, cap: 3, machineFirst: true, details: 'optional' },
   { name: 'cycle release', first: /^Cycle release: PR #\d+$/, cap: 2, machineFirst: true, details: 'none' },
@@ -190,7 +189,6 @@ export function lintComment(raw) {
   const first = all[0].trim()
   const kind = KINDS.find((k) => k.first.test(first))
   for (const [re, what] of FORBIDDEN) {
-    if (kind && kind.name === 'bot trigger' && what === 'CodeRabbit text') continue
     if (re.test(text)) findings.push(`comment contains ${what}; delete it`)
   }
 

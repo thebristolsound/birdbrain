@@ -124,7 +124,11 @@ export function parseLayers(lines) {
  * @returns {string | null}
  */
 export function jargonIn(line) {
-  const text = line.replace(/<!--[\s\S]*?-->/g, '').replace(/\[[^\]]*\]\([^)]*\)/g, (m) => m.replace(/\([^)]*\)$/, ''))
+  // A link target or an <img> tag's attributes are not prose a reader has to follow.
+  const text = line
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/<img\b[^>]*>/gi, '')
+    .replace(/\[[^\]]*\]\([^)]*\)/g, (m) => m.replace(/\([^)]*\)$/, ''))
   for (const [re, what, alt] of JARGON) {
     const m = text.match(re)
     if (!m) continue

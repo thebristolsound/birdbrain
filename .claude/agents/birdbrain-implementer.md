@@ -116,7 +116,8 @@ unaffected; only tests of shell semantics are. Do not change the tool shell to c
 - **You cannot post the reply yourself.** Return your per-item dispositions as text, keyed to
   the comment or thread id they answer, and the dispatcher posts them. Each disposition is
   the `post-comment` reply shape (`.claude/skills/post-comment/template.md`): `Applied.`
-  with the commit collapsed in a `<details>` block, or `Not applied: <one plain sentence>`.
+  with the commit collapsed in a `<details>` block, `Applied in the description.` for a finding
+  a body edit fixed, or `Not applied: <one plain sentence>`.
   Return the same dispositions as Review findings rows (the `post-pr-body` shape), one per
   finding, each saying what its reply says, and the UTC time, to the second, at which you
   started reading the review surface: the dispatcher posts the replies, adds the rows to the

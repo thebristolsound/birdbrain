@@ -62,7 +62,9 @@ const KINDS = [
   },
   {
     name: 'review reply',
-    first: /^(Applied\.|Not applied: \S.*)$/,
+    // `Applied in the description.` answers a finding against the PR description, which a body
+    // edit fixes with no commit to name (ADR-0060).
+    first: /^(Applied\.|Applied in the description\.|Not applied: \S.*)$/,
     cap: 1,
     details: 'optional',
     check(lines, top, blocks, findings) {

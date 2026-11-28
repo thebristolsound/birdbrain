@@ -442,7 +442,23 @@ export function lintBody(raw, { anyAuthor = false, posted = false } = {}) {
     return true
   })
   const shots = section('## Screenshots')
-  if (shots) {
+  // A <pre>, <script>, <style> or <textarea> block runs across blank lines to its closing tag,
+  // so one left open above the Screenshots heading swallows the whole section.
+  let rawCloser = null
+  for (let i = 0; shots && i < shots.start; i++) {
+    const l = visibleText[i]
+    if (!rawCloser) {
+      const m = inFence[i] ? null : l.match(/^ {0,3}<(pre|script|style|textarea)(?=[\s>]|$)/i)
+      if (!m) continue
+      rawCloser = new RegExp(`</${m[1]}>`, 'i')
+    }
+    if (rawCloser.test(l)) rawCloser = null
+  }
+  if (rawCloser) {
+    findings.push(
+      'screenshot rows cannot use a raw HTML wrapper; use Markdown rows or the supported collapsed layout'
+    )
+  } else if (shots) {
     const rendered = shots.indexes.map((i) => (inFence[i] ? '' : visibleText[i]))
     findings.push(...screenshotFindings(rendered, posted))
   }

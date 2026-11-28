@@ -72,6 +72,29 @@ describe('PR screenshot evidence', () => {
     }
   )
 
+  it.each(['pre', 'script', 'style', 'textarea'])(
+    'rejects a %s block opened above the Screenshots heading',
+    (tag) => {
+      const pair = rows(attachment('before'), attachment('after'))
+      const body = bodyWith(`- Visual changes: Yes\n\n${pair}`).replace(
+        'Merge gate: pending.\n',
+        `Merge gate: pending.\n\n<${tag}>\n`
+      )
+      expect(lintBody(body, { posted: true })).toEqual([
+        expect.stringContaining('raw HTML wrapper')
+      ])
+    }
+  )
+
+  it('accepts a pre block closed above the Screenshots heading', () => {
+    const pair = rows(attachment('before'), attachment('after'))
+    const body = bodyWith(`- Visual changes: Yes\n\n${pair}`).replace(
+      'Merge gate: pending.\n',
+      'Merge gate: pending.\n\n<pre>\nexample\n</pre>\n'
+    )
+    expect(lintBody(body, { posted: true })).toEqual([])
+  })
+
   it('accepts screenshot rows in the supported collapsed layout', () => {
     const pair = rows(attachment('before'), attachment('after'))
     expect(

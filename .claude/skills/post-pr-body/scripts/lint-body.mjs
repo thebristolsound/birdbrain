@@ -64,7 +64,7 @@ const FORBIDDEN = [
 
 // Template prompts are HTML comments and do not count; the preflight marker is one too and does.
 function stripComments(text) {
-  return text.replace(/<!--[\s\S]*?-->/g, (m) =>
+  return text.replace(/<!--(?:>|->|[\s\S]*?-->)/g, (m) =>
     /^<!-- preflight /.test(m) ? m : m.split('\n').map(() => '').join('\n')
   )
 }
@@ -114,6 +114,36 @@ function stripCodeSpans(text) {
   return result + text.slice(from)
 }
 
+function stripCodeParagraphs(lines) {
+  const result = []
+  const paragraph = []
+  const flush = () => {
+    if (paragraph.length) result.push(stripCodeSpans(paragraph.join('\n')))
+    paragraph.length = 0
+  }
+  for (const line of lines) {
+    const content = line.replace(/^ {0,3}(?:> ?)+/, '')
+    // Block boundaries stop inline spans; a line break within a paragraph does not.
+    const block =
+      /^\s*(`{3,}|~{3,}|#{1,6}(?:\s|$)|<\/?(?:details|summary)\b|\|)/.test(content) ||
+      /^\s*(?:=+|-+|(?:\*[ \t]*){3,}|(?:_[ \t]*){3,}|(?:-[ \t]*){3,})\s*$/.test(content)
+    if (!line.trim() || block) {
+      flush()
+      result.push(stripCodeSpans(line))
+    } else {
+      if (
+        /^\s*(?:[-+*]|\d+[.)])\s/.test(content) ||
+        (/^ {0,3}>/.test(line) && paragraph.length && !/^ {0,3}>/.test(paragraph[0]))
+      ) {
+        flush()
+      }
+      paragraph.push(line)
+    }
+  }
+  flush()
+  return result.join('\n')
+}
+
 function imageSources(tag) {
   const attributes = tag.slice(4, -1)
   const attribute = /\s+([^\s"'<>/=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/gy
@@ -141,7 +171,7 @@ function screenshotFindings(lines, posted) {
   }
   const declaration = declarations[0].trim()
   const no = declaration.match(/^- Visual changes: No\.\s+(\S.*)$/i)
-  const imageText = lines.map(stripCodeSpans).join('\n')
+  const imageText = stripCodeParagraphs(lines)
   if (no) {
     return IMAGE.test(imageText)
       ? ['Visual changes is No but Screenshots contains screenshot images']
@@ -384,11 +414,11 @@ export function lintBody(raw, { anyAuthor = false, posted = false } = {}) {
     const rendered = shots.indexes.filter((i) => !inFence[i]).map((i) => visibleText[i])
     findings.push(...screenshotFindings(rendered, posted))
   }
-  const outside = visibleText
-    .map((l, i) =>
-      inFence[i] || (shots && i > shots.start && i < shots.end) ? '' : stripCodeSpans(l)
+  const outside = stripCodeParagraphs(
+    visibleText.map((l, i) =>
+      inFence[i] || (shots && i > shots.start && i < shots.end) ? '' : l
     )
-    .join('\n')
+  )
   const stray = outside.search(IMAGE)
   if (stray >= 0) {
     const line = outside.slice(0, stray).split('\n').length

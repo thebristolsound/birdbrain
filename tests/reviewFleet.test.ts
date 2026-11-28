@@ -753,7 +753,10 @@ describe.skipIf(!HAS_JQ)('a push to a PR', () => {
   const GH = `#!/usr/bin/env bash
 echo "$*" >> "$GH_LOG"
 if [ "$WITHDRAW_FAIL" = 1 ] && [ "$1 $2" = "pr edit" ]; then echo HTTP-502 >&2; exit 1; fi
-if [ "$1" = api ]; then printf '%s\\n' "$LIVE_LABELS"; exit 0; fi
+if [ "$1" = api ]; then
+  [ "$LABELS_UNREAD" = 1 ] && { echo HTTP-503 >&2; exit 1; }
+  printf '%s\\n' "$LIVE_LABELS"; exit 0
+fi
 if [ "$1 $2" = "pr comment" ]; then
   while [ $# -gt 0 ]; do
     if [ "$1" = --body-file ]; then cat "$2" > "$COMMENT_OUT"; exit $?; fi
@@ -777,6 +780,7 @@ exit 0
       fail = false,
       armed = false,
       unread = false,
+      labelsUnread = false,
       action = 'synchronize',
       liveLabels = labels
     } = {}
@@ -808,6 +812,7 @@ exit 0
               autoMergeRequest: armed ? { enabledAt: '2026-11-10T12:00:00Z' } : null
             }),
             VIEW_FAIL: unread ? '1' : '0',
+            LABELS_UNREAD: labelsUnread ? '1' : '0',
             PR: '7',
             ACTION: action,
             GITHUB_REPOSITORY: REPO,
@@ -871,6 +876,37 @@ exit 0
     expect(result.status, result.stderr).toBe(0)
     expect(result.removed).toEqual(['merge'])
     expect(result.disarmed).toBe(true)
+  })
+
+  it('keeps an unrequested body edit quiet', () => {
+    const result = withdraw([], { action: 'edited' })
+    expect(result.status, result.stderr).toBe(0)
+    expect(result.removed).toEqual([])
+    expect(result.disarmed).toBe(false)
+    expect(result.notified).toBe(false)
+  })
+
+  it('explains a removed merge request even when auto-merge was not armed', () => {
+    const result = withdraw(['merge'], { action: 'edited' })
+    expect(result.status, result.stderr).toBe(0)
+    expect(result.removed).toEqual(['merge'])
+    expect(result.disarmed).toBe(false)
+    expect(result.notified).toBe(true)
+    expect(result.notice).toContain('description changed')
+  })
+
+  it('fails closed when a body edit cannot read the live labels', () => {
+    const result = withdraw([], { action: 'edited', armed: true, labelsUnread: true })
+    expect(result.status).not.toBe(0)
+    expect(result.stderr).toContain('HTTP-503')
+    expect(result.removed).toEqual(['merge'])
+    expect(result.disarmed).toBe(true)
+  })
+
+  it('binds the withdrawal action to the event action', () => {
+    const workflow = readFileSync(join(WORKFLOWS, 'merge-on-label.yml'), 'utf8')
+    const job = workflow.split('\n  withdraw:')[1].split(/\n  [\w-]+:/)[0]
+    expect(job).toContain('ACTION: ${{ github.event.action }}')
   })
 
   it('removes a merge label applied after the edit event and explains the withdrawal', () => {
@@ -950,7 +986,12 @@ describe('merge request ordering', () => {
     )
   })
 
-  it.each([false, true])('refuses a body changed during authorization: %s', (changed) => {
+  it.each([
+    [false, true],
+    [true, true],
+    [false, false],
+    [true, false]
+  ])('checks a changed body (%s) only while merge is requested (%s)', (changed, requested) => {
     const dir = mkdtempSync(join(tmpdir(), 'merge-request-order-'))
     try {
       mkdirSync(join(dir, '.github'))
@@ -968,7 +1009,7 @@ if [ "$1" = api ]; then
     user)
       [ "$CHANGE_ON_LOGIN" = 0 ] || touch "$EDITED"
       echo birdbrain-agent ;;
-    */labels) echo merge ;;
+    */labels) [ "$REQUESTED" = 0 ] || echo merge ;;
     */pulls/7)
       if [ "$4" = .title ]; then echo 'fix(posting): test request';
       elif [ -f "$EDITED" ]; then echo 'Changed description';
@@ -993,6 +1034,7 @@ exit 0
             PATH: `${dir}:${process.env.PATH}`,
             GH_LOG: log,
             CHANGE_ON_LOGIN: changed ? '1' : '0',
+            REQUESTED: requested ? '1' : '0',
             EDITED: edited,
             BODY: body,
             PR: '7',
@@ -1008,7 +1050,13 @@ exit 0
         }
       )
       const calls = readFileSync(log, 'utf8')
-      if (changed) {
+      if (!requested) {
+        expect(result.status, result.stderr).toBe(0)
+        expect(result.stdout).toContain('the merge label is gone; nothing enabled')
+        expect(calls).not.toContain('--auto --squash')
+        expect(calls).not.toContain('pr comment')
+        expect(calls).not.toContain('--remove-label merge')
+      } else if (changed) {
         expect(result.status).toBe(1)
         expect(result.stdout).toContain(
           'description changed while the merge request was being checked'

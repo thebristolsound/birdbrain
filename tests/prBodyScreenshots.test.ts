@@ -5,6 +5,8 @@ import { join, resolve } from 'path'
 import { spawnSync } from 'child_process'
 // @ts-expect-error - skill script with no type declarations
 import { lintBody } from '../.claude/skills/post-pr-body/scripts/lint-body.mjs'
+// @ts-expect-error - skill script with no type declarations
+import { summaryOf } from '../.claude/skills/merge-pr/scripts/compose.mjs'
 
 const scripts = resolve(__dirname, '../.claude/skills/post-pr-body/scripts')
 const filled = readFileSync(join(scripts, 'fixtures/pass-filled.md'), 'utf8')
@@ -27,6 +29,78 @@ beforeEach(() => {
 afterEach(() => rmSync(dir, { recursive: true, force: true }))
 
 describe('PR screenshot evidence', () => {
+  it.each(['<!-->', '<!--->'])('does not hide rendered content after %s', (marker) => {
+    const snippet = `${marker}\n![x](https://example.com/x.png)\n<!-- end -->`
+    const body = filled.replace('`pnpm preflight` at', `${snippet}\n\n\`pnpm preflight\` at`)
+    expect(lintBody(body, { posted: true })).toEqual([
+      expect.stringContaining('images go in the Screenshots section')
+    ])
+    expect(
+      lint(
+        `${noVisualChange}\n\n<details>\n<summary>Example</summary>\n\n${snippet}\n\n</details>`,
+        true
+      )
+    ).toEqual([
+      expect.stringContaining('Visual changes is No but Screenshots contains screenshot images')
+    ])
+    expect(
+      summaryOf(
+        `## Summary\n\nA sentence.\n\n${marker}\nA visible second sentence.\n<!-- end -->\n\n## Proof\n`
+      )
+    ).toContain('A visible second sentence.')
+  })
+
+  it.each([
+    'Note `a\n` ![x](https://example.com/x.png) `',
+    '- Note `a\n  ` ![x](https://example.com/x.png) `',
+    '> Note `a\n> ` ![x](https://example.com/x.png) `'
+  ])('finds an image after a code span that closes on the next line: %s', (snippet) => {
+    const body = filled.replace('`pnpm preflight` at', `${snippet}\n\n\`pnpm preflight\` at`)
+    expect(lintBody(body, { posted: true })).toEqual([
+      expect.stringContaining('images go in the Screenshots section')
+    ])
+    expect(
+      lint(
+        `${noVisualChange}\n\n<details>\n<summary>Example</summary>\n\n${snippet}\n\n</details>`,
+        true
+      )
+    ).toEqual([
+      expect.stringContaining('Visual changes is No but Screenshots contains screenshot images')
+    ])
+  })
+
+  it('accepts image syntax quoted across a paragraph line break', () => {
+    const snippet = 'Note `a\n![x](https://example.com/x.png) `'
+    const body = filled.replace('`pnpm preflight` at', `${snippet}\n\n\`pnpm preflight\` at`)
+    expect(lintBody(body, { posted: true })).toEqual([])
+    expect(
+      lint(
+        `${noVisualChange}\n\n<details>\n<summary>Example</summary>\n\n${snippet}\n\n</details>`,
+        true
+      )
+    ).toEqual([])
+  })
+
+  it('does not pair code spans across a blank paragraph boundary', () => {
+    const snippet = '`a\n\n` ![x](https://example.com/x.png) `'
+    const body = filled.replace('`pnpm preflight` at', `${snippet}\n\n\`pnpm preflight\` at`)
+    expect(lintBody(body, { posted: true })).toEqual([])
+  })
+
+  it.each(['# ', '- ', '> '])('does not pair spans across a new block: %s', (prefix) => {
+    const snippet = `\`a\n${prefix}\` ![x](https://example.com/x.png) \``
+    const body = filled.replace('`pnpm preflight` at', `${snippet}\n\n\`pnpm preflight\` at`)
+    expect(lintBody(body, { posted: true })).toEqual(
+      prefix === '# ' ? [expect.stringContaining('no top-level heading')] : []
+    )
+  })
+
+  it.each(['***', '___', '- - -'])('does not pair spans across a thematic break: %s', (divider) => {
+    const snippet = `\`a\n${divider}\n\` ![x](https://example.com/x.png) \``
+    const body = filled.replace('`pnpm preflight` at', `${snippet}\n\n\`pnpm preflight\` at`)
+    expect(lintBody(body, { posted: true })).toEqual([])
+  })
+
   it.each(['| :-- | :-- | :-- |', '| :-- | :-- | :--', ':-- | :-- | :-- |', ':-- | :-- | :--'])(
     'rejects empty required tables with optional outer pipes: %s',
     (rule) => {

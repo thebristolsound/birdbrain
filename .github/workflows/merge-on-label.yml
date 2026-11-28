@@ -118,12 +118,12 @@ jobs:
 
           login="$(GH_TOKEN="$AGENT_TOKEN" gh api user --jq .login)"
           [ "$login" = "${AGENT_LOGIN:-birdbrain-agent}" ] || refuse "the machine account token authenticates as $login"
-          gh api "repos/$GITHUB_REPOSITORY/pulls/$PR" --jq '.body // ""' > "$out/current-body.md"
-          cmp -s "$out/body.md" "$out/current-body.md" \
-            || refuse "the description changed while the merge request was being checked"
           # The run may have queued behind a removal; enable nothing the maintainer took back.
           gh api "repos/$GITHUB_REPOSITORY/issues/$PR/labels" --jq '.[].name' | grep -qx merge \
             || { echo "the merge label is gone; nothing enabled"; exit 0; }
+          gh api "repos/$GITHUB_REPOSITORY/pulls/$PR" --jq '.body // ""' > "$out/current-body.md"
+          cmp -s "$out/body.md" "$out/current-body.md" \
+            || refuse "the description changed while the merge request was being checked"
           GH_TOKEN="$AGENT_TOKEN" gh pr merge "$PR" --repo "$GITHUB_REPOSITORY" --auto --squash \
             --match-head-commit "$SHA" --subject "$(cat "$out/subject.txt")" --body-file "$out/body.txt" \
             || refuse "GitHub would not enable auto-merge; read the pull request's merge box"

@@ -12,7 +12,7 @@ export function summaryOf(body) {
   // Comments go first, so a <details> line inside one cannot end the Summary early.
   const lines = body
     .replace(/\r\n/g, '\n')
-    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/<!--(?:>|->|[\s\S]*?-->)/g, '')
     .split('\n')
   const start = lines.findIndex((l) => l.trim() === '## Summary')
   if (start < 0) return null
@@ -23,7 +23,7 @@ export function summaryOf(body) {
   return lines
     .slice(start + 1, end)
     .join('\n')
-    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/<!--(?:>|->|[\s\S]*?-->)/g, '')
     .trim()
 }
 

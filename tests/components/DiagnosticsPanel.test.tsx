@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest'
 import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
@@ -287,6 +287,90 @@ describe('DiagnosticsPanel storage folder action', () => {
     expect(payload).not.toContain(STORAGE_ROOT)
     expect(payload).not.toContain('tester')
     expect(payload).toContain('"error":"Error"')
+  })
+})
+
+// #921. The copied snapshot is what an operator pastes into a bug report, so a
+// write that failed must say so rather than leave the previous clipboard to be
+// pasted as this one.
+describe('DiagnosticsPanel Copy report', () => {
+  let unhandled: Mock<(reason: unknown) => void>
+
+  function stubClipboard(writeText: ReturnType<typeof vi.fn>) {
+    Object.defineProperty(window.navigator, 'clipboard', {
+      value: { writeText },
+      configurable: true
+    })
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    log = vi.fn().mockResolvedValue('cid-1')
+    fakeBridge({
+      diagnostics: {
+        get: vi.fn().mockResolvedValue(snapshot),
+        log,
+        unreconciledDeletions: vi.fn().mockResolvedValue(cleanReport)
+      }
+    })
+    unhandled = vi.fn<(reason: unknown) => void>()
+    process.on('unhandledRejection', unhandled)
+  })
+
+  afterEach(() => {
+    process.off('unhandledRejection', unhandled)
+    cleanup()
+  })
+
+  it('names the failed copy, logs it, and leaves the button unchanged', async () => {
+    const writeText = vi.fn().mockRejectedValue(new Error('Document is not focused.'))
+    stubClipboard(writeText)
+    renderPanel()
+
+    fireEvent.click(await screen.findByText('Copy report'))
+
+    await waitFor(() => expect(toastFns.error).toHaveBeenCalled())
+    expect(writeText).toHaveBeenCalledOnce()
+    expect(toastFns.error.mock.calls[0][0]).toBe(
+      "Couldn't copy the diagnostics report to your clipboard"
+    )
+    await waitFor(() => expect(log).toHaveBeenCalled())
+    expect(log.mock.calls[0][0]).toMatchObject({ level: 'error', error: 'Error' })
+    expect(screen.getByText('Copy report')).toBeDefined()
+    expect(screen.queryByText('Copied')).toBeNull()
+    // Node reports an unhandled rejection only after the microtask queue drains.
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(unhandled).not.toHaveBeenCalled()
+  })
+
+  it('shows Copied after a successful write, with no error', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    stubClipboard(writeText)
+    fakeBridge({
+      diagnostics: {
+        get: vi.fn().mockResolvedValue({
+          ...snapshot,
+          slowOps: [
+            { at: snapshot.generatedAt, kind: 'extract', detail: 'https://example.test/', ms: 900 }
+          ]
+        }),
+        log,
+        unreconciledDeletions: vi.fn().mockResolvedValue(cleanReport)
+      }
+    })
+    renderPanel()
+
+    fireEvent.click(await screen.findByText('Copy report'))
+
+    expect(await screen.findByText('Copied')).toBeDefined()
+    expect(writeText).toHaveBeenCalledOnce()
+    // A slow operation's detail is a captured page URL, so it is blanked.
+    const copied = JSON.parse(writeText.mock.calls[0][0] as string) as DiagnosticsSnapshot
+    expect(copied.slowOps).toEqual([
+      { at: snapshot.generatedAt, kind: 'extract', detail: '', ms: 900 }
+    ])
+    expect(toastFns.error).not.toHaveBeenCalled()
+    expect(log).not.toHaveBeenCalled()
   })
 })
 

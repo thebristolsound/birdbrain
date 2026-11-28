@@ -275,21 +275,29 @@ export function DiagnosticsPanel() {
     // The unreconciled-deletion findings (#622) are deliberately absent: they
     // carry case names, capture ids and operator names — investigation data,
     // not environment facts — and nothing in a bug report needs them.
-    await navigator.clipboard.writeText(
-      JSON.stringify(
-        {
-          ...data,
-          storage: {
-            ...data.storage,
-            storageRoot: data.storage.storageRoot ? '‹path›' : '',
-            dbPath: data.storage.dbPath ? data.storage.dbPath.split(/[\\/]/).pop() : ''
+    try {
+      await navigator.clipboard.writeText(
+        JSON.stringify(
+          {
+            ...data,
+            storage: {
+              ...data.storage,
+              storageRoot: data.storage.storageRoot ? '‹path›' : '',
+              dbPath: data.storage.dbPath ? data.storage.dbPath.split(/[\\/]/).pop() : ''
+            },
+            slowOps: data.slowOps.map((op) => ({ ...op, detail: '' }))
           },
-          slowOps: data.slowOps.map((op) => ({ ...op, detail: '' }))
-        },
-        null,
-        2
+          null,
+          2
+        )
       )
-    )
+    } catch (cause) {
+      // React does not await onClick, so an uncaught rejection here escapes
+      // unhandled with the button unchanged, and the operator can paste the
+      // previous clipboard into a bug report as this snapshot (#921).
+      notify.error("Couldn't copy the diagnostics report to your clipboard", { cause })
+      return
+    }
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }

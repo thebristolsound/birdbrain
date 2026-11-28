@@ -200,6 +200,7 @@ export function createStoredZip(entries: ZipEntryInput[]): Buffer {
         }
         end = start
       }
+      throw new Error(`zip: no byte at offset ${position} to rewrite`)
     }
   })
   return Buffer.concat(parts)
@@ -239,7 +240,11 @@ export function writeStoredZip(outputPath: string, entries: ZipEntryInput[]): vo
     }
     renameSync(partialPath, outputPath)
   } catch (err) {
-    rmSync(partialPath, { force: true })
+    try {
+      rmSync(partialPath, { force: true })
+    } catch {
+      // A temporary file that cannot be removed does not replace the write's error.
+    }
     throw err
   }
 }

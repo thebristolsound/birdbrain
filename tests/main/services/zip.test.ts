@@ -1,6 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createHash } from 'crypto'
-import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'fs'
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  unlinkSync,
+  writeFileSync
+} from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { createStoredZip, writeStoredZip, type ZipEntrySource } from '@main/services/zip'
@@ -149,6 +158,30 @@ describe('stored zip', () => {
       ])
     ).toThrow('EIO: read failed')
     expect(readdirSync(dir)).toEqual([])
+  })
+
+  it('reports the read error when the temporary file cannot be removed either', () => {
+    const out = join(dir, 'out.zip')
+    let partial = ''
+    const failing: ZipEntrySource = {
+      sizeBytes: 3 * CHUNK,
+      *chunks() {
+        yield Buffer.alloc(CHUNK)
+        // A directory where the temporary file was, which removing a file refuses.
+        partial = join(
+          dir,
+          readdirSync(dir).find((name) => name.endsWith('.partial'))!
+        )
+        unlinkSync(partial)
+        mkdirSync(partial)
+        throw new Error('EIO: read failed')
+      }
+    }
+
+    expect(() => writeStoredZip(out, [{ name: 'b.bin', data: failing }])).toThrow(
+      'EIO: read failed'
+    )
+    expect(() => rmSync(partial, { force: true })).toThrow()
   })
 
   it('leaves a file already at the output path as it was when the write fails', () => {
